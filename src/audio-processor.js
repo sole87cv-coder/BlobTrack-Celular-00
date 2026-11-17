@@ -1,4 +1,4 @@
-class Cv0Engine extends AudioWorkletProcessor {
+class BlobTrackAudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.signals = { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: [0,0,0,0,0,0] };
@@ -30,4 +30,4 @@ class Cv0Engine extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('cv0-engine', Cv0Engine);
+registerProcessor('blobtrack-audio', BlobTrackAudioProcessor);

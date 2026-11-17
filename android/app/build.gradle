@@ -1,0 +1,36 @@
+plugins {
+  id "com.android.application"
+}
+android {
+  namespace "com.blobtrack.celular00"
+  compileSdk 35
+  defaultConfig {
+    applicationId "com.blobtrack.celular00"
+    minSdk 23
+    targetSdk 35
+    versionCode 1
+    versionName "0.0.1"
+  }
+  buildTypes {
+    debug { applicationIdSuffix ".debug" }
+    release { minifyEnabled false }
+  }
+  sourceSets {
+    main.assets.srcDir(layout.buildDirectory.dir("generated/blobtrackAssets"))
+  }
+}
+dependencies {
+  implementation "androidx.webkit:webkit:1.12.1"
+}
+def webRoot = file("../..")
+tasks.register("syncBlobTrackWeb", Sync) {
+  from(webRoot) {
+    include "index.html"
+    include "manifest.webmanifest"
+    include "sw.js"
+    include "src/**"
+    include "icons/**"
+  }
+  into(layout.buildDirectory.dir("generated/blobtrackAssets"))
+}
+tasks.named("preBuild").configure { dependsOn("syncBlobTrackWeb") }
