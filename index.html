@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#090b10">
+  <meta name="description" content="Instrumento audiovisual ao vivo, feito para celular.">
+  <title>BlobTrack Celular-00</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./src/app.css">
+</head>
+<body>
+  <main class="app-shell" id="appShell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">●</span><div><strong>BlobTrack</strong><small>Celular-00</small></div></div>
+      <div class="status" aria-live="polite"><i id="statusLight"></i><span id="statusText">Pronto para ligar</span></div>
+      <button class="icon-button" id="installButton" type="button" aria-label="Instalar aplicativo" hidden>＋</button>
+    </header>
+
+    <section class="workspace" aria-label="Instrumento">
+      <section class="stage" id="stage" aria-label="Palco visual">
+        <video id="camera" playsinline muted aria-hidden="true"></video>
+        <canvas id="visual" aria-label="Imagem processada ao vivo"></canvas>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+        <canvas id="analysis" aria-hidden="true"></canvas>
+        <div class="stage-shade"></div>
+        <div class="stage-top"><span class="live-pill"><i></i> AO VIVO</span><span id="cameraLabel">Câmera aguardando</span></div>
+        <div class="stage-message" id="stageMessage"><div class="pulse-icon">◉</div><h1>O movimento vira imagem e som</h1><p>Ligue a câmera e comece a sessão.</p><button class="primary-button" id="startButton" type="button">Ligar</button></div>
+        <div class="stage-bottom"><span id="frameInfo">—</span><span id="renderInfo">WebGL2</span></div>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      </section>
+
+      <nav class="mobile-tabs" aria-label="Painéis">
+        <button type="button" class="tab-button active" data-panel="measurePanel">Medições</button>
+        <button type="button" class="tab-button" data-panel="controlPanel">Controles</button>
+      </nav>
+
+      <aside class="measure-panel panel active" id="measurePanel" aria-label="Medições">
+        <div class="panel-heading"><div><span class="eyebrow">SINAIS DA SALA</span><h2>Medições</h2></div><span class="measure-stamp" id="measureStamp">—</span></div>
+        <div class="signal-grid">
+          <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i></div>
+          <div class="signal-card"><span>Densidade</span><b id="signal-density">—</b><i><u id="bar-density"></u></i></div>
+          <div class="signal-card"><span>Velocidade</span><b id="signal-speed">—</b><i><u id="bar-speed"></u></i></div>
+          <div class="signal-card"><span>Coerência</span><b id="signal-coherence">—</b><i><u id="bar-coherence"></u></i></div>
+          <div class="signal-card wide"><span>Nível ambiente</span><b id="signal-ambient">—</b><i><u id="bar-ambient"></u></i></div>
+        </div>
+        <div class="section-label"><span>ZONAS · 3 × 2</span><span>atividade medida</span></div>
+        <div class="zone-grid" id="zoneGrid" aria-label="Atividade nas seis zonas">
+          <div class="zone" data-zone="0"><span>01</span><b>—</b></div><div class="zone" data-zone="1"><span>02</span><b>—</b></div><div class="zone" data-zone="2"><span>03</span><b>—</b></div>
+          <div class="zone" data-zone="3"><span>04</span><b>—</b></div><div class="zone" data-zone="4"><span>05</span><b>—</b></div><div class="zone" data-zone="5"><span>06</span><b>—</b></div>
+        </div>
+        <div class="readout-list">
+          <div><span>Espera câmera · rastreio · ciclo</span><b id="timeReadout">— ms · — ms · — ms</b></div>
+          <div><span>Barramento de sinais</span><b id="busReadout">— ms</b></div>
+          <div><span>Áudio · pico · vozes</span><b id="audioReadout">—</b></div>
+        </div>
+        <div class="section-label"><span>GANHOS DE TELA</span><span>master × ganho × envelope</span></div>
+        <div class="gain-list" id="gainList"><div><span>Exposição</span><b>—</b></div><div><span>Crescimento</span><b>—</b></div><div><span>Umbral</span><b>—</b></div><div><span>Dither</span><b>—</b></div><div><span>Velocidade</span><b>—</b></div></div>
+        <div class="log-line" id="logLine" aria-live="polite">Avisos aparecem aqui.</div>
+      </aside>
+
+      <aside class="control-panel panel" id="controlPanel" aria-label="Controles">
+        <div class="panel-heading"><div><span class="eyebrow">AJUSTES DO INSTRUMENTO</span><h2>Controles</h2></div></div>
+        <div class="control-section">
+          <div class="section-label"><span>CÂMERA</span></div>
+          <div class="button-row"><button class="control-button" id="switchCamera" type="button" disabled>Trocar câmera</button><button class="control-button" id="exposureButton" type="button" disabled aria-describedby="exposureHint">Exposição</button></div>
+          <small class="hint" id="exposureHint">Manual quando disponível pela câmera.</small>
+        </div>
+        <div class="control-section">
+          <div class="section-label"><span>EFEITO</span></div>
+          <div class="effect-row" role="group" aria-label="Efeito visual"><button type="button" data-effect="invert" class="effect-button active">Invert</button><button type="button" data-effect="threshold" class="effect-button">BW umbral</button><button type="button" data-effect="dither" class="effect-button">BW dither</button></div>
+        </div>
+        <div class="control-section slider-section">
+          <label for="motionThreshold"><span>Limiar de movimento</span><b id="motionValue">0,18</b></label><input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
+          <label for="trackingWidth"><span>Resolução de rastreio</span><b id="trackingValue">640 px</b></label><input id="trackingWidth" type="range" min="160" max="1280" step="160" value="640">
+          <label for="master"><span>Master</span><b id="masterValue">1,00</b></label><div class="range-line"><button type="button" class="nudge" id="masterDown" aria-label="Diminuir master">−</button><input id="master" type="range" min="0" max="2" step="0.25" value="1"><button type="button" class="nudge" id="masterUp" aria-label="Aumentar master">＋</button></div>
+          <label for="bias"><span>Bias</span><b id="biasValue">0,00</b></label><input id="bias" type="range" min="-1" max="1" step="0.05" value="0">
+        </div>
+        <div class="control-section">
+          <div class="section-label"><span>PALCO E SOM</span></div>
+          <div class="toggle-grid">
+            <button class="toggle-button active" id="reactButton" type="button" aria-pressed="true">Reagir</button>
+            <button class="toggle-button" id="muteButton" type="button" aria-pressed="false">Mudo</button>
+            <button class="toggle-button" id="flipButton" type="button" aria-pressed="false">Flip</button>
+            <button class="toggle-button active" id="overlayButton" type="button" aria-pressed="true">Overlay</button>
+            <button class="toggle-button" id="maskButton" type="button" aria-pressed="false">Ver binarizada</button>
+            <button class="toggle-button" id="backgroundButton" type="button">Fundo</button>
+            <button class="toggle-button" id="reseedButton" type="button">Reseed</button>
+            <button class="toggle-button" id="rectangleButton" type="button">Novo retângulo</button>
+            <button class="toggle-button" id="captureButton" type="button">Capturar</button>
+          </div>
+          <div class="button-row tracking-buttons"><button class="control-button" id="trackDown" type="button">Tracking −</button><button class="control-button" id="trackUp" type="button">Tracking +</button></div>
+        </div>
+        <div class="footer-note">Uma sessão por aba · controles por toque</div>
+      </aside>
+    </section>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

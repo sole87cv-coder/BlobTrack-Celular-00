@@ -1,0 +1,15 @@
+{
+  "id": "./",
+  "name": "BlobTrack Celular-00",
+  "short_name": "BlobTrack",
+  "description": "Instrumento audiovisual ao vivo para celular.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "theme_color": "#090b10",
+  "background_color": "#090b10",
+  "icons": [
+    { "src": "./icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
