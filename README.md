@@ -50,6 +50,23 @@ Para testar no celular pela rede, use um túnel HTTPS ou publique em um host HTT
 ## APK de teste Android
 
 O módulo `android/` gera uma versão debug offline. O APK está em `dist/BlobTrack-Celular-00-debug.apk`; consulte `android/README.md` para instalar ou recompilar.
+## Efeitos visuais reativos
+
+No painel **Efeito**, os filtros base (Invert, BW umbral e BW dither) podem ser combinados com três camadas reativas: **Rastro** guarda posições recentes de cada blob; **Ondas** emite círculos que variam com velocidade e densidade; **Grade** deforma uma malha ao redor dos blobs. As camadas podem ser ligadas separadamente e seguem o flip e o recorte da câmera.
+
+**Janela viva** vem ligada por padrão. O vídeo cru da câmera é composto uma única vez, recortado pela união das caixas dos blobs, acima do filtro e das camadas reativas. O contorno e os rótulos continuam visíveis quando Overlay está ligado. Capturar e compartilhar usam essa composição final. A opção é lembrada no dispositivo.
+
+O painel de medições mostra o custo da composição das janelas. Se a taxa de quadros ficar abaixo do limite adaptado ao perfil do celular, Rastro, Ondas e Grade são pausados; a Janela viva continua ativa. Os efeitos voltam quando o desempenho se estabiliza.
+
+### Checklist manual dos efeitos
+
+1. No painel Efeito, teste Rastro, Ondas e Grade separadamente e em conjunto; mova o objeto para conferir a resposta à posição e à velocidade.
+2. Com Janela viva ligada, alterne Invert, BW umbral e BW dither: dentro das caixas deve aparecer a imagem crua; fora delas, o filtro.
+3. Compare flip ligado/desligado, máscara e câmera frontal; confira o alinhamento dos recortes e efeitos.
+4. Capture e compartilhe uma imagem; confira se o resultado inclui filtro, efeitos e janelas cruas. Desligue Janela viva, recarregue e confirme que a preferência foi salva.
+5. Teste o Gear VR SM-R323 e gire o telefone; as duas vistas devem manter a composição sem reiniciar a sessão.
+6. Deixe o app sob carga para conferir a pausa automática dos efeitos reativos e o custo da composição no painel de medições.
+
 ## Limites conhecidos
 
 O rastreador usa mudança de luminância, não profundidade. Um objeto imóvel que passa a integrar o fundo pode deixar de aparecer; iluminação instável pode criar blobs extras. Exposição manual, instalação, tela cheia, Wake Lock e seleção da lente variam por navegador e aparelho. Métricas que o navegador não mede permanecem como `—`.

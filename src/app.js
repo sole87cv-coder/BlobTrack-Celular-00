@@ -7,17 +7,21 @@ const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPr
 const fallbackContext = gl ? null : canvas.getContext('2d', { alpha: false });
 const overlayContext = overlayCanvas.getContext('2d');
 const ctx = analysisCanvas.getContext('2d', { willReadFrequently: true });
+const frameCanvas = document.createElement('canvas');
+const frameContext = frameCanvas.getContext('2d', { alpha: false });
+Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false,
+  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { average: 0, slowFrames: 0, fastFrames: 0 },
+  performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lastFrame: 0, lastSignalsAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0,
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
-  timing: { camera: null, tracking: null, cycle: null, bus: null },
+  timing: { camera: null, tracking: null, cycle: null, bus: null, composition: null, windows: null },
 };
 const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : 0));
 const fmt = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—';
@@ -31,6 +35,10 @@ try {
   if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
   if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
   if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
+  if (typeof saved.videoWindows === 'boolean') state.videoWindows = saved.videoWindows;
+  if (typeof saved.trailEffect === 'boolean') state.trailEffect = saved.trailEffect;
+  if (typeof saved.waveEffect === 'boolean') state.waveEffect = saved.waveEffect;
+  if (typeof saved.meshEffect === 'boolean') state.meshEffect = saved.meshEffect;
   if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
   if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
   if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
@@ -42,6 +50,13 @@ const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
 const tracker = new BlobTracker();
 let releaseSessionLock = null;
+const TRAIL_SLOTS = 12, TRAIL_POINTS = 18;
+const trailIds = new Int32Array(TRAIL_SLOTS).fill(-1);
+const trailPoints = new Float32Array(TRAIL_SLOTS * TRAIL_POINTS * 2);
+const trailCursor = new Uint8Array(TRAIL_SLOTS), trailLength = new Uint8Array(TRAIL_SLOTS);
+const trailAge = new Uint8Array(TRAIL_SLOTS), trailSpeed = new Float32Array(TRAIL_SLOTS);
+const trailSeen = new Uint8Array(TRAIL_SLOTS), mapPointA = new Float32Array(2), mapPointB = new Float32Array(2);
+const cropRect = new Float32Array(4), gridPoint = new Float32Array(2), blobViewPoints = new Float32Array(TRAIL_SLOTS * 2);
 
 const tabId = Math.random().toString(36).slice(2);
 // One tab owns capture and audio. An existing active session answers the probe.
@@ -64,7 +79,7 @@ function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect})); } catch {} }
 function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey}); }
 
 toggle($('reactButton'),state.reacting);
@@ -73,6 +88,10 @@ $('audioSensitivity').value=String(state.audioSensitivity);$('audioSensitivityVa
 $('audioOscillation').value=String(state.audioOscillation);$('audioOscillationValue').textContent=`${Math.round(state.audioOscillation*100)}%`;
 $('audioPitchRange').value=String(state.audioPitchRange);$('audioPitchRangeValue').textContent=`${fmt(state.audioPitchRange,1)} semitons`;
 $('audioKey').value=String(state.audioKey);
+toggle($('blobWindowButton'),state.videoWindows);
+toggle($('trailEffectButton'),state.trailEffect);
+toggle($('waveEffectButton'),state.waveEffect);
+toggle($('meshEffectButton'),state.meshEffect);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
@@ -218,11 +237,20 @@ new ResizeObserver(resize).observe(canvas);
 window.addEventListener('orientationchange', () => requestAnimationFrame(resize), { passive: true });
 function prepareAnalysis() { resize(); }
 
-function analyze() {
+// One immutable camera snapshot feeds tracking, the main render and raw blob windows.
+function captureVideoFrame() {
+  if (frameCanvas.width !== video.videoWidth || frameCanvas.height !== video.videoHeight) {
+    frameCanvas.width = video.videoWidth; frameCanvas.height = video.videoHeight;
+  }
+  frameContext.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+  return frameCanvas;
+}
+
+function analyze(source = video) {
   const t0 = performance.now();
   const dt = state.lastSignalsAt ? Math.max(0.001, (t0 - state.lastSignalsAt) / 1000) : 1 / deviceProfile.fps;
   state.lastSignalsAt = t0;
-  const result = tracker.update(video, ctx, analysisCanvas, state.trackingWidth, state.threshold, dt);
+  const result = tracker.update(source, ctx, analysisCanvas, state.trackingWidth, state.threshold, dt);
   if (!result) return null;
   state.timing.tracking = performance.now() - t0;
   state.timing.camera = null;
@@ -241,35 +269,238 @@ function updateSignals(raw, dt) {
   state.timing.bus = performance.now() - t0;
   return applied;
 }
-function render(applied) {
-  if (!video.videoWidth) return;
+function render(applied, source = video) {
+  if (!source.videoWidth) return;
   state.timing.camera = state.timing.camera ?? null;
   const t0 = performance.now(); resize();
-  if (!gl || !glProgram) { if(fallbackContext){fallbackContext.save();fallbackContext.filter=state.effect==='invert'?'invert(1)':state.effect==='threshold'?'grayscale(1) contrast(8)':'grayscale(1) contrast(2)';if(state.gearVr){const half=canvas.width/2;for(let eye=0;eye<2;eye++){const x=Math.floor(eye*half),w=Math.ceil((eye+1)*half)-x;fallbackContext.save();fallbackContext.beginPath();fallbackContext.rect(x,0,w,canvas.height);fallbackContext.clip();fallbackContext.translate(x+(state.camera==='user'?w:0),state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,x,0,w,canvas.height);fallbackContext.restore();}}else{fallbackContext.translate(state.camera==='user'?canvas.width:0,state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,0,0,canvas.width,canvas.height);}fallbackContext.restore();} state.timing.camera=performance.now()-t0; state.timing.cycle=performance.now()-t0; return; }
+  if (!gl || !glProgram) {
+    if (fallbackContext) {
+      fallbackContext.save(); fallbackContext.filter = state.effect === 'invert' ? 'invert(1)' : state.effect === 'threshold' ? 'grayscale(1) contrast(8)' : 'grayscale(1) contrast(2)';
+      const eyes = state.gearVr ? 2 : 1, eyeWidth = canvas.width / eyes;
+      for (let eye = 0; eye < eyes; eye++) {
+        const x = Math.floor(eye * eyeWidth), width = Math.ceil((eye + 1) * eyeWidth) - x;
+        fallbackContext.save(); fallbackContext.beginPath(); fallbackContext.rect(x, 0, width, canvas.height); fallbackContext.clip();
+        fallbackContext.translate(x + (state.camera === 'user' ? width : 0), state.flip ? canvas.height : 0);
+        fallbackContext.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+        calculateCoverCrop(source.videoWidth, source.videoHeight, width, canvas.height, cropRect);
+        fallbackContext.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, width, canvas.height);
+        fallbackContext.restore();
+      }
+      fallbackContext.restore();
+    }
+    state.timing.camera = performance.now() - t0; state.timing.cycle = performance.now() - t0; return;
+  }
   gl.useProgram(glProgram); gl.bindTexture(gl.TEXTURE_2D,texture);
-  try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video); } catch { return; }
+  try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source); } catch { return; }
   state.timing.camera = performance.now() - t0;
   const uniform=(name,val)=>gl.uniform1f(gl.getUniformLocation(glProgram,name),val);
   gl.uniform1i(gl.getUniformLocation(glProgram,'uTexture'),0); gl.uniform1i(gl.getUniformLocation(glProgram,'uEffect'),({invert:0,threshold:1,dither:2})[state.effect]);
-  uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',video.videoWidth/video.videoHeight); uniform('uViewportAspect',(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
+  uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',source.videoWidth/source.videoHeight); uniform('uViewportAspect',(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
   gl.uniform1i(gl.getUniformLocation(glProgram,'uMirror'),state.camera==='user'?1:0);gl.uniform1i(gl.getUniformLocation(glProgram,'uFlip'),state.flip?1:0);
   if(state.gearVr){gl.viewport(0,0,Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(Math.floor(canvas.width/2),0,canvas.width-Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(0,0,canvas.width,canvas.height);}else gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   state.timing.cycle=performance.now()-t0;
 }
-function drawMaskOverlay(result) {
-  const c=overlayContext; if(!c)return; const rect=overlayCanvas.getBoundingClientRect(); c.clearRect(0,0,overlayCanvas.width,overlayCanvas.height); if(!state.showMask&&!state.overlay)return; c.save(); c.scale(overlayCanvas.width/rect.width,overlayCanvas.height/rect.height);
-  if(state.showMask){const small=maskCanvas;if(small.width!==result.width||small.height!==result.height){small.width=result.width;small.height=result.height;maskImage=maskContext.createImageData(result.width,result.height);}const im=maskImage;for(let i=0;i<result.mask.length;i++){const q=i*4;const v=result.mask[i]?255:0;im.data[q]=v;im.data[q+1]=v;im.data[q+2]=v;im.data[q+3]=255;}maskContext.putImageData(im,0,0);const targetAspect=rect.width/rect.height,sourceAspect=result.width/result.height;let sx=0,sy=0,sw=result.width,sh=result.height;if(sourceAspect>targetAspect){sw=result.height*targetAspect;sx=(result.width-sw)/2;}else{sh=result.width/targetAspect;sy=(result.height-sh)/2;}c.globalAlpha=.7;c.drawImage(small,sx,sy,sw,sh,0,0,rect.width,rect.height);}
-  if(state.overlay && state.lastSignal){c.globalAlpha=.82;c.lineWidth=1;c.strokeStyle='#6ee7bc';c.fillStyle='#6ee7bc';const cw=rect.width/3,ch=rect.height/2;for(let i=0;i<6;i++){const x=(i%3)*cw,y=Math.floor(i/3)*ch;c.strokeRect(x+4,y+4,cw-8,ch-8);c.font='10px monospace';c.fillText(`${String(i+1).padStart(2,'0')} ${Math.round(state.lastSignal.zones[i]*100)}%`,x+10,y+18);}c.globalAlpha=.95;c.lineWidth=2;c.strokeStyle='#b9a1ff';c.fillStyle='#f0eaff';for(const blob of result.blobs){let left=state.camera==='user'?1-blob.right:blob.left;let right=state.camera==='user'?1-blob.left:blob.right;const top=state.flip?1-blob.bottom:blob.top;const bottom=state.flip?1-blob.top:blob.bottom;c.strokeRect(left*rect.width,top*rect.height,(right-left)*rect.width,(bottom-top)*rect.height);c.font='bold 11px monospace';c.fillText(`B${blob.id}`,left*rect.width+4,Math.max(12,top*rect.height-4));}}
-  if(state.overlay){c.globalAlpha=.95;c.strokeStyle='#b9a1ff';c.lineWidth=2;for(const r of [...state.manualRects,...(state.dragRect?[state.dragRect]:[])])c.strokeRect(r.x*rect.width,r.y*rect.height,r.w*rect.width,r.h*rect.height);}
+function calculateCoverCrop(sourceWidth, sourceHeight, viewWidth, viewHeight, out) {
+  const sourceAspect = sourceWidth / sourceHeight, viewAspect = viewWidth / viewHeight;
+  if (sourceAspect > viewAspect) { out[2] = sourceHeight * viewAspect; out[0] = (sourceWidth - out[2]) / 2; out[1] = 0; out[3] = sourceHeight; }
+  else { out[3] = sourceWidth / viewAspect; out[0] = 0; out[1] = (sourceHeight - out[3]) / 2; out[2] = sourceWidth; }
+}
+function mapVideoPoint(x, y, viewWidth, viewHeight, out) {
+  const sourceAspect = video.videoWidth / video.videoHeight, viewAspect = viewWidth / viewHeight;
+  if (sourceAspect > viewAspect) { const visible = viewAspect / sourceAspect; x = (x - (1 - visible) / 2) / visible; }
+  else { const visible = sourceAspect / viewAspect; y = (y - (1 - visible) / 2) / visible; }
+  out[0] = state.camera === 'user' ? 1 - x : x;
+  out[1] = state.flip ? 1 - y : y;
+  return out;
+}
+function prepareBlobViewPoints(blobs, viewWidth, viewHeight) {
+  const count = Math.min(blobs.length, TRAIL_SLOTS);
+  for (let i = 0; i < count; i++) {
+    mapVideoPoint(blobs[i].x, blobs[i].y, viewWidth, viewHeight, mapPointA);
+    blobViewPoints[i * 2] = mapPointA[0]; blobViewPoints[i * 2 + 1] = mapPointA[1];
+  }
+  return count;
+}
+function recordBlobTrails(blobs) {
+  trailSeen.fill(0);
+  for (let i = 0; i < Math.min(blobs.length, TRAIL_SLOTS); i++) {
+    const blob = blobs[i], id = Number.isFinite(blob.id) ? blob.id : i;
+    let slot = -1;
+    for (let j = 0; j < TRAIL_SLOTS; j++) if (trailIds[j] === id) { slot = j; break; }
+    if (slot < 0) {
+      for (let j = 0; j < TRAIL_SLOTS; j++) if (trailIds[j] < 0) { slot = j; break; }
+      if (slot < 0) { for (let j = 0; j < TRAIL_SLOTS; j++) if (!trailSeen[j] && (slot < 0 || trailAge[j] > trailAge[slot])) slot = j; }
+      if (slot < 0) continue;
+      trailIds[slot] = id; trailCursor[slot] = 0; trailLength[slot] = 0;
+    }
+    trailSeen[slot] = 1; trailAge[slot] = 0; trailSpeed[slot] = clamp(blob.speed, 0, 1);
+    const cursor = trailCursor[slot], base = (slot * TRAIL_POINTS + cursor) * 2;
+    trailPoints[base] = blob.x; trailPoints[base + 1] = blob.y;
+    trailCursor[slot] = (cursor + 1) % TRAIL_POINTS;
+    trailLength[slot] = Math.min(TRAIL_POINTS, trailLength[slot] + 1);
+  }
+  for (let i = 0; i < TRAIL_SLOTS; i++) if (!trailSeen[i] && trailIds[i] >= 0) {
+    trailAge[i] = Math.min(255, trailAge[i] + 1);
+    if (trailAge[i] > 30) { trailIds[i] = -1; trailLength[i] = 0; }
+  }
+}
+function drawTrails(c, viewWidth, viewHeight, offsetX) {
+  for (let slot = 0; slot < TRAIL_SLOTS; slot++) {
+    const length = trailLength[slot], age = trailAge[slot];
+    if (length < 2 || age > 30) continue;
+    const start = (trailCursor[slot] - length + TRAIL_POINTS) % TRAIL_POINTS;
+    c.beginPath();
+    for (let i = 0; i < length; i++) {
+      const point = (slot * TRAIL_POINTS + (start + i) % TRAIL_POINTS) * 2;
+      mapVideoPoint(trailPoints[point], trailPoints[point + 1], viewWidth, viewHeight, mapPointA);
+      const x = offsetX + mapPointA[0] * viewWidth, y = mapPointA[1] * viewHeight;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    }
+    c.globalAlpha = Math.max(0, 1 - age / 31) * (.35 + .55 * trailSpeed[slot]);
+    c.strokeStyle = trailSpeed[slot] > .55 ? '#b8f36a' : '#74eaff';
+    c.lineWidth = 1.2 + trailSpeed[slot] * 2.4; c.lineCap = 'round'; c.stroke();
+  }
+  c.globalAlpha = 1;
+}
+function drawWaves(c, blobs, viewWidth, viewHeight, offsetX, now) {
+  const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight), size = Math.min(viewWidth, viewHeight);
+  for (let i = 0; i < count; i++) {
+    const blob = blobs[i], speed = clamp(blob.speed, 0, 1);
+    const x = offsetX + blobViewPoints[i * 2] * viewWidth, y = blobViewPoints[i * 2 + 1] * viewHeight;
+    const phaseBase = now * (.00015 + speed * .00018) + (blob.id || i) * .173;
+    for (let ring = 0; ring < 3; ring++) {
+      const phase = (phaseBase + ring / 3) % 1;
+      const radius = size * (.025 + phase * (.1 + .2 * state.envelopes.density));
+      c.globalAlpha = (.1 + speed * .24) * (1 - phase);
+      c.strokeStyle = '#74eaff'; c.lineWidth = 1 + state.envelopes.energy * 1.4;
+      c.beginPath(); c.arc(x, y, radius, 0, Math.PI * 2); c.stroke();
+    }
+  }
+  c.globalAlpha = 1;
+}
+function deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, out) {
+  let pushX = 0, pushY = 0; const size = Math.min(viewWidth, viewHeight);
+  for (let i = 0; i < count; i++) {
+    const dx = x - blobViewPoints[i * 2] * viewWidth, dy = y - blobViewPoints[i * 2 + 1] * viewHeight;
+    const speed = clamp(blobs[i].speed, 0, 1), radius = size * (.12 + .16 * state.envelopes.density + .06 * speed);
+    const d2 = dx * dx + dy * dy, r2 = radius * radius;
+    if (d2 >= r2) continue;
+    const influence = 1 - d2 / r2, force = influence * influence * (.05 + .16 * speed + .06 * state.envelopes.energy);
+    pushX += (dx - dy * .22) * force; pushY += (dy + dx * .22) * force;
+  }
+  out[0] = x + pushX; out[1] = y + pushY;
+}
+function drawMesh(c, blobs, viewWidth, viewHeight, offsetX) {
+  const count = Math.min(prepareBlobViewPoints(blobs, viewWidth, viewHeight), 8);
+  const spacing = Math.max(34, Math.min(52, Math.min(viewWidth, viewHeight) / 11));
+  c.globalAlpha = .22 + state.envelopes.density * .2; c.strokeStyle = '#ed72ff';
+  c.lineWidth = .7 + state.envelopes.speed * .8;
+  for (let y = 0; y <= viewHeight; y += spacing) {
+    c.beginPath();
+    for (let x = 0; x <= viewWidth; x += spacing) { deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint); if (x === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]); else c.lineTo(offsetX + gridPoint[0], gridPoint[1]); }
+    c.stroke();
+  }
+  for (let x = 0; x <= viewWidth; x += spacing) {
+    c.beginPath();
+    for (let y = 0; y <= viewHeight; y += spacing) { deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint); if (y === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]); else c.lineTo(offsetX + gridPoint[0], gridPoint[1]); }
+    c.stroke();
+  }
+  c.globalAlpha = 1;
+}
+function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
+  if (!source?.videoWidth || !blobs.length) return;
+  c.save(); c.beginPath();
+  for (const blob of blobs) {
+    mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
+    mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
+    const left = Math.min(mapPointA[0], mapPointB[0]), top = Math.min(mapPointA[1], mapPointB[1]);
+    const right = Math.max(mapPointA[0], mapPointB[0]), bottom = Math.max(mapPointA[1], mapPointB[1]);
+    c.rect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
+  }
+  c.clip(); calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+  c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
+  c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+  c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
   c.restore();
+}
+function drawMaskOverlay(result, source = video) {
+  const started = performance.now(), c = overlayContext;
+  if (!c) return;
+  const rect = overlayCanvas.getBoundingClientRect();
+  c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  if (!rect.width || !rect.height) return;
+  c.save(); c.scale(overlayCanvas.width / rect.width, overlayCanvas.height / rect.height);
+  const eyeCount = state.gearVr ? 2 : 1, viewWidth = rect.width / eyeCount, viewHeight = rect.height;
+  if (state.trailEffect) recordBlobTrails(result.blobs);
+  if (state.showMask) {
+    if (maskCanvas.width !== result.width || maskCanvas.height !== result.height) { maskCanvas.width = result.width; maskCanvas.height = result.height; maskImage = maskContext.createImageData(result.width, result.height); }
+    const image = maskImage;
+    for (let i = 0; i < result.mask.length; i++) { const q = i * 4, value = result.mask[i] ? 255 : 0; image.data[q] = value; image.data[q + 1] = value; image.data[q + 2] = value; image.data[q + 3] = 255; }
+    maskContext.putImageData(image, 0, 0);
+  }
+  let windowCost = 0;
+  for (let eye = 0; eye < eyeCount; eye++) {
+    const offsetX = eye * viewWidth;
+    c.save(); c.beginPath(); c.rect(offsetX, 0, viewWidth, viewHeight); c.clip();
+    if (state.showMask) {
+      calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+      c.save(); c.globalAlpha = .7; c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0); c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+      c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight); c.restore();
+    }
+    if (!state.performance.effectsPaused) {
+      if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
+      if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now());
+      if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX);
+    }
+    // A única composição do frame cru cobre as janelas de todos os blobs.
+    if (state.videoWindows) { const windowStarted = performance.now(); drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source); windowCost += performance.now() - windowStarted; }
+    if (state.overlay && state.lastSignal) {
+      const cellW = viewWidth / 3, cellH = viewHeight / 2;
+      c.globalAlpha = .72; c.lineWidth = 1; c.strokeStyle = '#6ee7bc'; c.fillStyle = '#6ee7bc'; c.font = '10px monospace';
+      for (let i = 0; i < 6; i++) { const x = offsetX + (i % 3) * cellW, y = Math.floor(i / 3) * cellH; c.strokeRect(x + 4, y + 4, cellW - 8, cellH - 8); c.fillText(`${String(i + 1).padStart(2, '0')} ${Math.round(state.lastSignal.zones[i] * 100)}%`, x + 10, y + 18); }
+      c.globalAlpha = .95; c.lineWidth = 2; c.strokeStyle = '#b9a1ff'; c.fillStyle = '#f0eaff'; c.font = 'bold 11px monospace';
+      for (const blob of result.blobs) {
+        mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA); mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
+        const left = Math.min(mapPointA[0], mapPointB[0]), top = Math.min(mapPointA[1], mapPointB[1]);
+        const right = Math.max(mapPointA[0], mapPointB[0]), bottom = Math.max(mapPointA[1], mapPointB[1]);
+        c.strokeRect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
+        c.fillText(`B${blob.id}`, offsetX + left * viewWidth + 4, Math.max(12, top * viewHeight - 4));
+      }
+    }
+    if (state.overlay) {
+      c.globalAlpha = .95; c.strokeStyle = '#b9a1ff'; c.lineWidth = 2;
+      for (const r of state.manualRects) c.strokeRect(offsetX + r.x * viewWidth, r.y * viewHeight, r.w * viewWidth, r.h * viewHeight);
+      if (state.dragRect) { const r = state.dragRect; c.strokeRect(offsetX + r.x * viewWidth, r.y * viewHeight, r.w * viewWidth, r.h * viewHeight); }
+    }
+    c.restore();
+  }
+  c.restore(); state.timing.windows = windowCost; state.timing.composition = performance.now() - started;
 }
 function updateHud(raw, applied, result) {
   for(const k of ['energy','density','speed','coherence','ambient']){$(`signal-${k}`).textContent=`${Math.round(state.envelopes[k]*100)}%`;$(`bar-${k}`).style.width=`${state.envelopes[k]*100}%`;}
   document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i];el.querySelector('b').textContent=`${Math.round(v*100)}%`;el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
+  $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
   const rows=[applied.exposure,applied.grow,applied.threshold,applied.dither,applied.speed];
   $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
+}
+function updateReactiveEffectQuality(now) {
+  const perf = state.performance, elapsed = perf.lastFrameAt ? now - perf.lastFrameAt : 0;
+  perf.lastFrameAt = now;
+  const fps = elapsed > 0 ? 1000 / elapsed : deviceProfile.fps;
+  perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
+  const threshold = Math.max(15, Math.min(28, deviceProfile.fps - 2));
+  if (!perf.effectsPaused) {
+    perf.lowFpsFrames = perf.fpsAverage < threshold ? perf.lowFpsFrames + 1 : 0;
+    if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
+  } else {
+    perf.recoveredFrames = perf.fpsAverage >= threshold + 2 ? perf.recoveredFrames + 1 : 0;
+    if (perf.recoveredFrames >= 45) { perf.effectsPaused = false; perf.lowFpsFrames = 0; showToast('Efeitos reativos retomados'); }
+  }
+  const hint = $('effectPerformanceHint');
+  hint.hidden = !perf.effectsPaused;
+  if (perf.effectsPaused) hint.textContent = `Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps · a Janela viva continua ativa.`;
 }
 let frameErrors = 0;
 function frame(now) {
@@ -280,10 +511,11 @@ function frame(now) {
       const started = performance.now();
       state.lastFrame = now;
       try {
-        const result = analyze();
+        const source = captureVideoFrame();
+        const result = analyze(source);
         if (result) {
           const applied = updateSignals(result.raw, result.dt);
-          render(applied); drawMaskOverlay(result); updateHud(result.raw, applied, result);
+          render(applied, source); drawMaskOverlay(result, source); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
       if (state.autoQuality) {
@@ -357,6 +589,13 @@ stage.addEventListener('click',e=>{
   if(e.target===canvas||e.target===overlayCanvas)setUiHidden(false);
 });
 document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>x.classList.toggle('active',x===b));savePreferences();}));
+function bindReactiveToggle(id, key) {
+  $(id).addEventListener('click', event => { state[key] = !state[key]; toggle(event.currentTarget, state[key]); savePreferences(); });
+}
+bindReactiveToggle('blobWindowButton', 'videoWindows');
+bindReactiveToggle('trailEffectButton', 'trailEffect');
+bindReactiveToggle('waveEffectButton', 'waveEffect');
+bindReactiveToggle('meshEffectButton', 'meshEffect');
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(Number(e.target.value));});
 $('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';savePreferences();});

@@ -106,6 +106,15 @@
                 <button type="button" data-effect="dither" class="effect-button">BW dither</button>
               </div>
             </div>
+            <div class="dock-row">
+              <div class="reactive-effects" role="group" aria-label="Efeitos reativos aos blobs">
+                <button type="button" class="pill small effect-toggle active" id="blobWindowButton" aria-pressed="true">Janela viva</button>
+                <button type="button" class="pill small effect-toggle" id="trailEffectButton" aria-pressed="false">Rastro</button>
+                <button type="button" class="pill small effect-toggle" id="waveEffectButton" aria-pressed="false">Ondas</button>
+                <button type="button" class="pill small effect-toggle" id="meshEffectButton" aria-pressed="false">Grade</button>
+              </div>
+            </div>
+            <small class="hint" id="effectPerformanceHint" hidden></small>
             <div class="dock-row slider-row">
               <label for="master"><span>Master</span><b id="masterValue">1,00</b></label>
               <input id="master" type="range" min="0" max="2" step="0.25" value="1">
@@ -166,6 +175,7 @@
             </div>
             <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>
+              <div><span>Composição · janela viva</span><b id="windowCostReadout">—</b></div>
               <div><span>Áudio · vozes · pico</span><b id="audioReadout">—</b></div>
             </div>
             <div class="log-line" id="logLine" aria-live="polite">Avisos aparecem aqui.</div>
