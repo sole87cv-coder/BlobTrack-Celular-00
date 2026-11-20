@@ -15,6 +15,9 @@ O app usa um frame congelado por `captureVideoFrame()` e passa o mesmo canvas a 
 - **Esperado:** limpar a composição antiga imediatamente; só mostrar a nova após haver frame válido (`video.readyState >= 2`).
 - **Causa:** teardown da câmera não invalida/limpa os canvases de apresentação.
 - **Reprodução física:** não executada; o estado congelado é consequência direta do fluxo estático acima.
+- **Correção aplicada após a Fase 0:** `stopMedia()` agora limpa o framebuffer visual e o overlay antes de liberar a câmera; `switchCamera()` passa pelo mesmo caminho antes de abrir o novo stream. A espera por `readyState >= 2` continua protegendo a primeira composição nova.
+- **Teste de regressão:** o helper de limpeza é testado isoladamente nos caminhos WebGL e Canvas 2D; integração verificada estaticamente (`switchCamera → stopMedia → clearVideoComposition`). Teste de troca real de lente ainda depende de aparelho.
+- **Contagem antes/depois:** antes, limpar na troca = 0 chamadas; depois, WebGL = 1 clear do framebuffer + 1 clear do overlay, Canvas 2D = 2 clearRect. FPS não comparável sem câmera.
 
 ### B4 — retomada de visibilidade usa propriedade inexistente
 
@@ -25,6 +28,7 @@ O app usa um frame congelado por `captureVideoFrame()` e passa o mesmo canvas a 
 - **Reprodução por contrato:** diferença entre `visibilityState` e `visibilitystate` verificada estaticamente; ciclo real de background não disponível.
 - **Correção aplicada após a Fase 0:** ambos os listeners agora usam `document.visibilityState`.
 - **Teste antes/depois:** em fixture de documento visível, a expressão antiga retornou `false` (`visibilitystate === undefined`); após a correção, as duas referências usam a propriedade padrão. Verificação estática/regressão executada; ciclo físico de suspender/retomar continua pendente.
+- **Contagem antes/depois:** condição de retorno para documento visível, antes 0/2 listeners correta; depois 2/2 referências corretas. Retomada real de mídia/wake lock precisa de navegador.
 
 ## Catálogo de investigação A–F
 
@@ -85,4 +89,4 @@ O app usa um frame congelado por `captureVideoFrame()` e passa o mesmo canvas a 
 - **Tracking:** `getImageData()` é feito em cada análise. FPS, ms de tracking e custo por 6 blobs não medidos sem câmera e Android mid-range.
 - **Sincronia de imagem:** `frameCanvas` é desenhado uma vez a partir do vídeo e reaproveitado no restante do tick. A cópia de tela ocorre apenas sob demanda.
 
-Nenhum efeito, API pública ou síntese de áudio foi alterado na Fase 0. Nenhuma correção deve ser inferida a partir dos itens marcados como risco sem reprodução/teste comparativo.
+Nenhum efeito, API pública ou síntese de áudio foi alterado na Fase 0. Nenhuma correção deve ser inferida a partir dos itens marcados como risco sem reprodução/teste comparativo. As correções B2 e B4 posteriores não alteram tracking, efeitos nem síntese.

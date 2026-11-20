@@ -1,4 +1,5 @@
 import { BlobTracker } from './blob-tracker.js';
+import { clearVideoComposition } from './video-crop.js';
 const $ = (id) => document.getElementById(id);
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
 const overlayCanvas = $('overlay');
@@ -220,10 +221,10 @@ async function startCamera() {
     requestAnimationFrame(frame); watchAudio();
   } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
 }
-async function stopMedia() { state.active = false; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
+async function stopMedia() { state.active = false; clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
 async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
-async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.active = false; state.camera = state.camera === 'environment' ? 'user' : 'environment'; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); await startCamera(); }
+async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.camera = state.camera === 'environment' ? 'user' : 'environment'; await stopMedia(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
 document.addEventListener('visibilitychange', () => {
