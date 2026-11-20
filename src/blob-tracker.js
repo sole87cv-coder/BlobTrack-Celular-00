@@ -9,6 +9,10 @@ export class BlobTracker {
     this.background = null;
     this.previous = [];
     this.nextId = 1;
+    this.zonePixels = new Uint32Array(6);
+    this.zoneHits = new Uint32Array(6);
+    this.zoneCoverage = new Float64Array(6);
+    this.availableTracks = new Uint8Array(maxBlobs);
   }
 
   reset() {
@@ -68,43 +72,57 @@ export class BlobTracker {
 
     const blobs = this.findComponents(width, height);
     this.assignTracks(blobs, width, height, safeDt);
-    const zonePixels = Array(6).fill(0);
-    const zones = Array(6).fill(0);
+    this.zonePixels.fill(0);
+    this.zoneHits.fill(0);
     for (let y = 0; y < height; y++) {
       const row = Math.min(1, Math.floor(y * 2 / height));
       for (let x = 0; x < width; x++) {
         const zone = row * 3 + Math.min(2, Math.floor(x * 3 / width));
         const index = y * width + x;
-        zonePixels[zone]++;
-        if (this.mask[index]) zones[zone]++;
+        this.zonePixels[zone]++;
+        if (this.mask[index]) this.zoneHits[zone]++;
       }
     }
 
-    const zoneValues = zones.map((value, i) => zonePixels[i] ? value / zonePixels[i] : 0);
-    const occupiedZones = zoneValues.filter(value => value > 0.01).length;
-    const mean = zoneValues.reduce((sum, value) => sum + value, 0) / 6;
-    const variance = zoneValues.reduce((sum, value) => sum + (value - mean) ** 2, 0) / 6;
-    const centroidWeight = blobs.reduce((sum, blob) => sum + blob.pixels, 0);
-    const centroid = centroidWeight ? blobs.reduce((point, blob) => {
-      point.x += blob.x * blob.pixels;
-      point.y += blob.y * blob.pixels;
-      return point;
-    }, { x: 0, y: 0 }) : null;
-    const speed = blobs.length ? blobs.reduce((sum, blob) => sum + blob.speed, 0) / blobs.length : 0;
+    let occupiedZones = 0, meanSum = 0;
+    for (let i = 0; i < 6; i++) {
+      const value = this.zonePixels[i] ? this.zoneHits[i] / this.zonePixels[i] : 0;
+      this.zoneCoverage[i] = value;
+      if (value > 0.01) occupiedZones++;
+      meanSum += value;
+    }
+    const mean = meanSum / 6;
+    let varianceSum = 0;
+    const zoneValues = new Array(6);
+    for (let i = 0; i < 6; i++) {
+      const value = this.zoneCoverage[i];
+      varianceSum += (value - mean) ** 2;
+      zoneValues[i] = Math.min(1, value * 5);
+    }
+    const variance = varianceSum / 6;
+    let centroidWeight = 0, centroidX = 0, centroidY = 0, speedSum = 0;
+    for (const blob of blobs) {
+      centroidWeight += blob.pixels;
+      centroidX += blob.x * blob.pixels;
+      centroidY += blob.y * blob.pixels;
+      speedSum += blob.speed;
+    }
+    const centroid = centroidWeight ? { x: centroidX / centroidWeight, y: centroidY / centroidWeight } : null;
+    const speed = blobs.length ? speedSum / blobs.length : 0;
 
     return {
       width,
       height,
       mask: this.mask,
       blobs,
-      centroid: centroidWeight ? { x: centroid.x / centroidWeight, y: centroid.y / centroidWeight } : null,
+      centroid,
       raw: {
         energy: Math.min(1, changed / count * 5),
         density: Math.min(1, occupiedZones / 6),
         speed,
         coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / (mean + 0.0001))) : 0,
         ambient: lumaSum / count,
-        zones: zoneValues.map(value => Math.min(1, value * 5)),
+        zones: zoneValues,
         blobCount: blobs.length,
       },
     };
@@ -170,11 +188,15 @@ export class BlobTracker {
   }
 
   assignTracks(blobs, width, height, dt) {
-    const available = new Set(this.previous.map((_, index) => index));
+    const previousCount = this.previous.length;
+    if (this.availableTracks.length < previousCount) this.availableTracks = new Uint8Array(previousCount);
+    this.availableTracks.fill(0);
+    this.availableTracks.fill(1, 0, previousCount);
     for (const blob of blobs) {
       let bestIndex = -1;
       let bestDistance = 0.18;
-      for (const index of available) {
+      for (let index = 0; index < previousCount; index++) {
+        if (!this.availableTracks[index]) continue;
         const previous = this.previous[index];
         const distance = Math.hypot(blob.x - previous.x, blob.y - previous.y);
         if (distance < bestDistance) {
@@ -185,7 +207,7 @@ export class BlobTracker {
 
       if (bestIndex >= 0) {
         const previous = this.previous[bestIndex];
-        available.delete(bestIndex);
+        this.availableTracks[bestIndex] = 0;
         blob.id = previous.id;
         blob.speed = Math.min(1, bestDistance / Math.max(dt, 0.02) / 2);
       } else {
@@ -196,6 +218,14 @@ export class BlobTracker {
       blob.width = blob.right - blob.left;
       blob.height = blob.bottom - blob.top;
     }
-    this.previous = blobs.map(blob => ({ id: blob.id, x: blob.x, y: blob.y }));
+    for (let i = 0; i < blobs.length; i++) {
+      const blob = blobs[i];
+      let previous = this.previous[i];
+      if (!previous) this.previous[i] = previous = { id: blob.id, x: blob.x, y: blob.y };
+      previous.id = blob.id;
+      previous.x = blob.x;
+      previous.y = blob.y;
+    }
+    this.previous.length = blobs.length;
   }
 }

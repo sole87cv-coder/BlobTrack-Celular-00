@@ -98,3 +98,14 @@ Nenhum efeito, API pública ou síntese de áudio foi alterado na Fase 0. Nenhum
 - Antes: **0/6 blobs**; comparação com `NaN` sempre falha.
 - Depois: esperado **6/6 blobs**, usando fallback seguro de 0.18.
 - Regressão: cenário válido com threshold 0.18, seis regiões, 90 frames; FPS/custo de aparelho não inferidos dessa fixture.
+
+## Otimização do caminho quente — medição reproduzível
+
+Reutilizei contadores de zonas e slots binários de associação; agregações de zonas, centroide e velocidade agora usam loops diretos em vez de `map/filter/reduce` e `Set`. A correção D7 permanece ativa. O formato retornado pelo tracker não mudou.
+
+| Fixture sintética (6 blobs) | Baseline median / p95 | Otimizado median / p95 | Frames detectando 6 blobs |
+|---|---:|---:|---:|
+| 320×180 | 0.952 / 1.155 ms | 0.927 / 1.097 ms | 1500/1500 em ambas |
+| 480×270 | 2.331 / 2.502 ms | 2.286 / 2.422 ms | 1500/1500 em ambas |
+
+Cada valor é a média de cinco medianas/p95 em lotes de 300 frames no Node deste computador. Teste diferencial adicional: 400 frames, em duas resoluções, produziram máscara, boxes/IDs, centroide e envelopes idênticos ao baseline. Não é resultado de Android e não mede captura de câmera.

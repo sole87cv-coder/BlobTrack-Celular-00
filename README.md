@@ -82,7 +82,7 @@ Checklist rápido: alterne os três timbres com movimento ativo; ligue Eco, Espa
 O rastreador usa mudança de luminância, não profundidade. Um objeto imóvel que passa a integrar o fundo pode deixar de aparecer; iluminação instável pode criar blobs extras. Exposição manual, instalação, tela cheia, Wake Lock e seleção da lente variam por navegador e aparelho. Métricas que o navegador não mede permanecem como `—`.
 ## Benchmark e auditoria
 
-O shell web principal ocupa 109.979 bytes sem compressao nesta revisao, ante 108.433 bytes antes das alteracoes (incluindo `video-crop.js`; aumento de 1.546 bytes, +1,43%). FPS, tempo de rastreio, memoria apos 5 minutos e tempo de boot precisam ser medidos em aparelho real com camera e DevTools; nao publicamos valores estimados como benchmarks.
+O shell web principal ocupa 110.820 bytes sem compressao nesta revisao, ante 108.433 bytes antes das alteracoes (incluindo `video-crop.js`; aumento de 2.387 bytes, +2,20%). FPS, tempo de rastreio, memoria apos 5 minutos e tempo de boot precisam ser medidos em aparelho real com camera e DevTools; nao publicamos valores estimados como benchmarks.
 
 Esta rodada registrou o diagnostico estatico em `AUDITORIA.md`, cacheia uniforms WebGL, reutiliza o array de envelopes das zonas e limita as atualizacoes do painel a 10 Hz sem desacelerar rastreio ou audio. Tambem sincroniza ARIA em tabs/efeitos, comunica falhas de audio/WebGL por toast e registra listeners de interrupcao apenas uma vez por contexto. O cache offline foi versionado para v16. A interface segue em tema escuro e respeita `prefers-reduced-motion`.
 
@@ -91,3 +91,7 @@ Esta rodada registrou o diagnostico estatico em `AUDITORIA.md`, cacheia uniforms
 Quando Janela viva esta ligada, a imagem crua da camera aparece nas janelas dos blobs, enquanto o restante mantem o efeito ativo. Desligue Janela viva no painel Efeito para ver o filtro em toda a imagem.
 
 Ao encerrar ou trocar de camera, as camadas visuais anteriores sao limpas antes do novo stream. A nova composicao so volta quando chega um frame valido.
+
+## Melhorias de estabilidade do rastreio
+
+O tracker valida o limiar antes da segmentacao, reutiliza contadores/scratch de zonas e slots de associacao, e mantém o formato de resultado existente. A regressao sintética comparou 400 frames e obteve resultados idênticos em máscara, caixas, IDs, centroide e envelopes. Em Node desktop com seis formas 10×10, 5 execuções de 300 frames reduziram a mediana de 0,952 para 0,927 ms em 320×180 e de 2,331 para 2,286 ms em 480×270; isso não representa benchmark de Android.
