@@ -5,6 +5,7 @@ Este arquivo acompanha as alteracoes notaveis do BlobTrack Celular-00.
 ## [Unreleased]
 
 ### Corrigido
+- D7: `BlobTracker.update()` agora usa o threshold validado/clampado na segmentação, inclusive para valores não finitos.
 - B4: retomada de câmera/áudio e wake lock ao retornar à aba agora consulta `document.visibilityState` corretamente.
 - B2: composição da câmera anterior é limpa antes de parar ou trocar o stream; novo vídeo só aparece após frame válido.
 - A camada de limpeza está em `src/video-crop.js`, incluída no shell offline v16.

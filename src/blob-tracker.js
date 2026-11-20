@@ -52,7 +52,7 @@ export class BlobTracker {
       const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
       this.luma[i] = value;
       lumaSum += value;
-      const active = this.background && Math.abs(value - this.background[i]) > threshold;
+      const active = this.background && Math.abs(value - this.background[i]) > safeThreshold;
       this.mask[i] = active ? 1 : 0;
       if (active) changed++;
     }

@@ -56,6 +56,7 @@ O app usa um frame congelado por `captureVideoFrame()` e passa o mesmo canvas a 
 | D4 fantasma ao parar | Mover e parar objeto por vários segundos | Pixels ativos não são assimilados enquanto diferem do fundo; tendem a continuar como blob | `blob-tracker.js:55–65` | NÃO REPRODUZIDO ao vivo; código não confirma desaparecimento rápido |
 | D5 mudança de luz | Alterar exposição/luz global abruptamente | Componentes acima de 72% são descartados; mudanças menores ainda podem criar componentes | `blob-tracker.js:118–119` | Risco conhecido; NÃO REPRODUZIDO em cena real |
 | D6 adaptação rápida | Parar objeto sobre fundo previamente aprendido | Fundo atualiza apenas pixels inativos, com taxa fixa 0.006 | `blob-tracker.js:55–65` | Sem evidência de integração rápida de pixels persistentemente ativos |
+| D7 threshold inválido | Calibrar fundo preto; enviar frame com seis regiões claras e `threshold=NaN` | `safeThreshold` é calculado, mas a comparação usava o argumento original, suprimindo todos os blobs | `blob-tracker.js:36`, comparação na linha 55 | BUG reproduzido sinteticamente; corrigido para usar `safeThreshold` |
 | E1 draw por blob | Ativar muitas janelas | Um path retangular composto e um `drawImage` por olho | `app.js:422–434` | Não aplicável: não há `drawImage` por blob |
 | E2 clip por blob | Contar `clip()` com vários blobs | Um `clip()` por olho, após adicionar todas as caixas ao path | `app.js:422–423` | Não aplicável ao código atual |
 | E3 leitura de pixels | Medir frame time do tracker | `getImageData()` ocorre a cada análise; é requisito da segmentação Canvas CPU atual e o contexto usa `willReadFrequently` | `app.js:9`, `blob-tracker.js:45–46` | Custo real não medido; remover exige troca de arquitetura |
@@ -90,3 +91,10 @@ O app usa um frame congelado por `captureVideoFrame()` e passa o mesmo canvas a 
 - **Sincronia de imagem:** `frameCanvas` é desenhado uma vez a partir do vídeo e reaproveitado no restante do tick. A cópia de tela ocorre apenas sob demanda.
 
 Nenhum efeito, API pública ou síntese de áudio foi alterado na Fase 0. Nenhuma correção deve ser inferida a partir dos itens marcados como risco sem reprodução/teste comparativo. As correções B2 e B4 posteriores não alteram tracking, efeitos nem síntese.
+
+## D7 — teste antes/depois
+
+- Fixture: fundo preto 320×180, seis quadrados brancos de 10×10, segundo frame com limiar `NaN`.
+- Antes: **0/6 blobs**; comparação com `NaN` sempre falha.
+- Depois: esperado **6/6 blobs**, usando fallback seguro de 0.18.
+- Regressão: cenário válido com threshold 0.18, seis regiões, 90 frames; FPS/custo de aparelho não inferidos dessa fixture.
