@@ -14,6 +14,7 @@ const state = {
   performance: { average: 0, slowFrames: 0, fastFrames: 0 },
   lastFrame: 0, lastSignalsAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
+  audioEnabled: true, audioSensitivity: 1,
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, tracking: null, cycle: null, bus: null },
 };
@@ -27,6 +28,8 @@ try {
   if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
   if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0,1);
   if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
+  if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
+  if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
 } catch {}
 let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '';
 const maskCanvas = document.createElement('canvas');
@@ -46,7 +49,7 @@ if (channel) {
     if (data?.type === 'claim' && state.claiming && data.id < tabId) state.sessionBlocked = true;
     if (data?.type === 'active' && !state.active) { replied = true; state.sessionBlocked = true; showToast('BlobTrack Celular-00 já está aberto em outra aba'); log('Sessão ativa em outra aba.'); }
     if (data?.type === 'start' && data.id !== tabId) { if (state.sessionReserved && tabId < data.id) return; if (state.claiming && tabId < data.id) return; state.sessionBlocked = true; if(state.active||state.starting) stopSession(); showToast('BlobTrack Celular-00 já está aberto em outra aba'); }
-    if (data?.type === 'stop' && data.id !== tabId) { state.sessionBlocked = false; $('startButton').disabled = false; }
+    if (data?.type === 'stop' && data.id !== tabId) { state.sessionBlocked = false; ['startButton','startButton2'].forEach(id=>{const b=$(id); if(b) b.disabled=false;}); }
   };
   channel.postMessage({ type: 'probe' });
   setTimeout(() => { if (!replied && !state.sessionBlocked) channel.postMessage({ type: 'ready', id: tabId }); }, 180);
@@ -56,9 +59,11 @@ function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode')})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity})); } catch {} }
 
 toggle($('reactButton'),state.reacting);
+toggle($('audioSensitivityButton'),state.audioEnabled);
+$('audioSensitivity').value=String(state.audioSensitivity);$('audioSensitivityValue').textContent=fmt(state.audioSensitivity);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
@@ -167,17 +172,17 @@ async function startCamera() {
     const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode={ideal:state.camera}; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode={ideal:state.camera};stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
     state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
     state.active = true; state.starting = false; state.switching = false;
-    $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
+    $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
     const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
     updateExposureCapability(track); tracker.reset(); state.priorCentroid = null;
     handleAudioInterruption();
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
     requestAnimationFrame(frame); watchAudio();
-  } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
+  } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
 }
 async function stopMedia() { state.active = false; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
-async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
+async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.active = false; state.camera = state.camera === 'environment' ? 'user' : 'environment'; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
@@ -222,7 +227,7 @@ function updateSignals(raw, dt) {
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted });
+  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled });
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -249,10 +254,10 @@ function drawMaskOverlay(result) {
 function updateHud(raw, applied, result) {
   for(const k of ['energy','density','speed','coherence','ambient']){$(`signal-${k}`).textContent=`${Math.round(state.envelopes[k]*100)}%`;$(`bar-${k}`).style.width=`${state.envelopes[k]*100}%`;}
   document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i];el.querySelector('b').textContent=`${Math.round(v*100)}%`;el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
-  $('measureStamp').textContent=`${Math.round(1/Math.max(result.dt,.001))} fps`;
-  const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.camera)} · ${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`; $('busReadout').textContent=`${ms(state.timing.bus)} ms`;
-  const rows=[applied.exposure,applied.grow,applied.threshold,applied.dither,applied.speed];document.querySelectorAll('#gainList b').forEach((el,i)=>el.textContent=fmt(rows[i],2));
-  $('frameInfo').textContent=`${result.width}×${result.height} · ${result.blobs.length} blobs`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
+  const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
+  const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
+  const rows=[applied.exposure,applied.grow,applied.threshold,applied.dither,applied.speed];
+  $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
 }
 let frameErrors = 0;
 function frame(now) {
@@ -289,31 +294,68 @@ function frame(now) {
   }
 }
 
-$('startButton').addEventListener('click', async () => {
+function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
+async function beginSession(button){
   if(state.active||state.starting)return;
-  $('startButton').disabled=true;
+  if(button)button.disabled=true;
   const reserved=await acquireSessionLock();
-  if(!reserved){$('startButton').disabled=false;state.sessionBlocked=true;showToast('BlobTrack Celular-00 já está aberto em outra aba');return;}
-  $('startButton').disabled=false;
+  if(!reserved){resetStartButtons();state.sessionBlocked=true;showToast('BlobTrack Celular-00 já está aberto em outra aba');return;}
+  resetStartButtons();
   const audioPromise=makeAudio();
   try { if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen().catch(()=>{}); } catch {}
   try { if('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(()=>{}); } catch {}
   await audioPromise; if(state.audio?.state==='suspended') await state.audio.resume().catch(()=>{});
-  if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.muted?0:1,t,.12);}
+  if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.audioEnabled&&!state.muted?1:0,t,.12);}
   await startCamera();
-});
+}
+$('startButton').addEventListener('click',e=>beginSession(e.currentTarget));
+$('startButton2').addEventListener('click',e=>beginSession(e.currentTarget));
 $('switchCamera').addEventListener('click',switchCamera);$('exposureButton').addEventListener('click',setManualExposure);$('stopButton').addEventListener('click',stopSession);
+/* Painel deslizante: alça e gesto de arrasto */
+const dock=$('dock');
+function setDock(open){dock.classList.toggle('closed',!open);$('dockHandle').setAttribute('aria-expanded',String(open));$('dockPeek').textContent=open?'▾':'▴';$('dockLabel').textContent=open?'Controles':'Ajustes';}
+$('dockHandle').addEventListener('click',()=>setDock(dock.classList.contains('closed')));
+let dockDragY=null;
+$('dockHandle').addEventListener('touchstart',e=>{dockDragY=e.changedTouches[0].clientY;},{passive:true});
+$('dockHandle').addEventListener('touchend',e=>{if(dockDragY===null)return;const dy=dockDragY-e.changedTouches[0].clientY;dockDragY=null;if(Math.abs(dy)>30)setDock(dy>0);},{passive:true});
+/* Ocultar interface pelo botão flutuante ◌ */
+let uiHidden=false;
+function setUiHidden(on){
+  uiHidden=on;
+  document.body.classList.toggle('ui-hidden',on);
+  setDock(!on&&true);
+  showToast(on?'Interface oculta · toque no palco para voltar':'Interface visível');
+}
+$('hideUiButton').addEventListener('click',()=>setUiHidden(!uiHidden));
+stage.addEventListener('click',()=>{if(uiHidden)setUiHidden(false);});
 document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>x.classList.toggle('active',x===b));savePreferences();}));
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(Number(e.target.value));});
 $('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);savePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);savePreferences();});
-$('masterDown').addEventListener('click',()=>{state.master=clamp(state.master-.25,0,2);$('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);savePreferences();});$('masterUp').addEventListener('click',()=>{state.master=clamp(state.master+.25,0,2);$('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);savePreferences();});
+
 $('reactButton').addEventListener('click',e=>{state.reacting=!state.reacting;toggle(e.currentTarget,state.reacting);savePreferences();});
 $('muteButton').addEventListener('click',e=>{state.muted=!state.muted;toggle(e.currentTarget,state.muted);if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.muted?0:1,t,.12);}state.worklet?.port.postMessage({type:'mute',muted:state.muted});});
+/* ===== Sensibilidade do áudio: liga/desliga + intensidade ===== */
+$('audioSensitivityButton').addEventListener('click',e=>{
+  state.audioEnabled=!state.audioEnabled;
+  toggle(e.currentTarget,state.audioEnabled);
+  e.currentTarget.textContent=state.audioEnabled?'Som · ligado':'Som · desligado';
+  state.worklet?.port.postMessage({type:'audioEnabled',enabled:state.audioEnabled});
+  state.worklet?.port.postMessage({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled});
+  if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.audioEnabled&&!state.muted?1:0,t,.12);}
+  showToast(state.audioEnabled?'Som reativo ligado':'Som desligado · imagem continua');
+  savePreferences();
+});
+$('audioSensitivity').addEventListener('input',e=>{
+  state.audioSensitivity=clamp(Number(e.target.value),0,3);
+  $('audioSensitivityValue').textContent=fmt(state.audioSensitivity);
+  state.worklet?.port.postMessage({type:'sensitivity',value:state.audioSensitivity});
+  savePreferences();
+});
 $('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
-$('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});$('rectangleButton').addEventListener('click',()=>{state.drawingRect=!state.drawingRect;showToast(state.drawingRect?'Arraste no palco para criar o retângulo':'Criação cancelada');});
+$('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});$('rectangleButton').addEventListener('click',e=>{state.drawingRect=!state.drawingRect;toggle(e.currentTarget,state.drawingRect);showToast(state.drawingRect?'Arraste no palco para criar o retângulo':'Criação cancelada');});
 function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;savePreferences();}
 function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
@@ -373,11 +415,11 @@ stage.addEventListener('touchend',e=>{
   else lastTap=now;
 },{passive:true});
 if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
-document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
+document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
 let touchStartY=0;const stage=$('stage');stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas)touchStartY=e.changedTouches[0].clientY;},{passive:true});stage.addEventListener('touchend',e=>{if(e.target!==canvas&&e.target!==overlayCanvas)return;const dy=e.changedTouches[0].clientY-touchStartY;if(!state.drawingRect&&Math.abs(dy)>65)switchCamera();},{passive:true});
 overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
 overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
-overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;}});
+overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;toggle($('rectangleButton'),false);}});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;});
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
 let wakeLock=null;async function acquireWakeLock(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
