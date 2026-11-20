@@ -15,7 +15,7 @@ const state = {
   performance: { average: 0, slowFrames: 0, fastFrames: 0 },
   lastFrame: 0, lastSignalsAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
-  audioEnabled: true, audioSensitivity: 1,
+  audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0,
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, tracking: null, cycle: null, bus: null },
 };
@@ -32,6 +32,9 @@ try {
   if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
   if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
   if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
+  if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
+  if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
+  if (Number.isFinite(saved.audioKey)) state.audioKey = clamp(saved.audioKey,0,11);
 } catch {}
 let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '';
 const maskCanvas = document.createElement('canvas');
@@ -61,11 +64,15 @@ function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey})); } catch {} }
+function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey}); }
 
 toggle($('reactButton'),state.reacting);
 toggle($('audioSensitivityButton'),state.audioEnabled);
 $('audioSensitivity').value=String(state.audioSensitivity);$('audioSensitivityValue').textContent=fmt(state.audioSensitivity);
+$('audioOscillation').value=String(state.audioOscillation);$('audioOscillationValue').textContent=`${Math.round(state.audioOscillation*100)}%`;
+$('audioPitchRange').value=String(state.audioPitchRange);$('audioPitchRangeValue').textContent=`${fmt(state.audioPitchRange,1)} semitons`;
+$('audioKey').value=String(state.audioKey);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
@@ -128,7 +135,8 @@ async function makeAudio() {
     state.worklet = new AudioWorkletNode(state.audio, 'blobtrack-audio', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
     state.audioGain = state.audio.createGain(); state.audioGain.gain.value = 1;
     state.worklet.connect(state.audioGain).connect(state.audio.destination);
-    state.worklet.port.onmessage = ({ data }) => { if (data.type === 'meter') { $('audioReadout').textContent = `WebAudio · ${fmt(data.peak, 3)} pico · ag — · ${data.voices} vozes · ceif — · perd — · ${fmt(data.cost, 2)} ms`; } };
+    state.worklet.port.onmessage = ({ data }) => { if (data.type === 'meter') { $('audioReadout').textContent = `WebAudio · ${fmt(data.peak, 3)} pico · ${data.voices} vozes · ${fmt(data.cost, 2)} ms`; } };
+    sendAudioOptions();
     await state.audio.resume();
   } catch (e) { log(`Áudio indisponível: ${e.message}`); }
 }
@@ -229,7 +237,7 @@ function updateSignals(raw, dt) {
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled });
+  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled, oscillation:state.audioOscillation, pitchRange:state.audioPitchRange, key:state.audioKey });
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -373,6 +381,20 @@ $('audioSensitivity').addEventListener('input',e=>{
   $('audioSensitivityValue').textContent=fmt(state.audioSensitivity);
   state.worklet?.port.postMessage({type:'sensitivity',value:state.audioSensitivity});
   savePreferences();
+});
+$('audioOscillation').addEventListener('input',e=>{
+  state.audioOscillation=clamp(Number(e.target.value),0,1);
+  $('audioOscillationValue').textContent=`${Math.round(state.audioOscillation*100)}%`;
+  sendAudioOptions();savePreferences();
+});
+$('audioPitchRange').addEventListener('input',e=>{
+  state.audioPitchRange=clamp(Number(e.target.value),0,7);
+  $('audioPitchRangeValue').textContent=`${fmt(state.audioPitchRange,1)} semitons`;
+  sendAudioOptions();savePreferences();
+});
+$('audioKey').addEventListener('change',e=>{
+  state.audioKey=clamp(Number(e.target.value),0,11);
+  sendAudioOptions();savePreferences();
 });
 $('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
 $('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});$('rectangleButton').addEventListener('click',e=>{state.drawingRect=!state.drawingRect;toggle(e.currentTarget,state.drawingRect);showToast(state.drawingRect?'Arraste no palco para criar o retângulo':'Criação cancelada');});
