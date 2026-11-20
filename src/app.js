@@ -12,14 +12,15 @@ const frameContext = frameCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
-  active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, worklet: null, audioGain: null,
+  active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
-  lastFrame: 0, lastSignalsAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
+  lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
-  audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0,
+  audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0,
+  audioEffects: { echo: false, space: false, chorus: false },
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, tracking: null, cycle: null, bus: null, composition: null, windows: null },
 };
@@ -43,8 +44,12 @@ try {
   if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
   if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
   if (Number.isFinite(saved.audioKey)) state.audioKey = clamp(saved.audioKey,0,11);
+  if (Number.isFinite(saved.audioTimbre)) state.audioTimbre = clamp(saved.audioTimbre,0,2);
+  if (saved.audioEffects && typeof saved.audioEffects === 'object') {
+    for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
+  }
 } catch {}
-let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '';
+let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '', uniforms = null;
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
@@ -79,8 +84,8 @@ function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect})); } catch {} }
-function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey}); }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect})); } catch {} }
+function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,soundEffects:state.audioEffects}); }
 
 toggle($('reactButton'),state.reacting);
 toggle($('audioSensitivityButton'),state.audioEnabled);
@@ -88,6 +93,10 @@ $('audioSensitivity').value=String(state.audioSensitivity);$('audioSensitivityVa
 $('audioOscillation').value=String(state.audioOscillation);$('audioOscillationValue').textContent=`${Math.round(state.audioOscillation*100)}%`;
 $('audioPitchRange').value=String(state.audioPitchRange);$('audioPitchRangeValue').textContent=`${fmt(state.audioPitchRange,1)} semitons`;
 $('audioKey').value=String(state.audioKey);
+$('audioTimbre').value=String(state.audioTimbre);
+toggle($('audioEchoButton'),state.audioEffects.echo);
+toggle($('audioSpaceButton'),state.audioEffects.space);
+toggle($('audioChorusButton'),state.audioEffects.chorus);
 toggle($('blobWindowButton'),state.videoWindows);
 toggle($('trailEffectButton'),state.trailEffect);
 toggle($('waveEffectButton'),state.waveEffect);
@@ -96,7 +105,7 @@ $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
 $('bias').value=String(state.bias);$('biasValue').textContent=fmt(state.bias);
-document.querySelectorAll('[data-effect]').forEach(b=>b.classList.toggle('active',b.dataset.effect===state.effect));
+document.querySelectorAll('[data-effect]').forEach(b=>toggle(b,b.dataset.effect===state.effect));
 
 const vertexSource = `#version 300 es
 in vec2 aPosition; out vec2 vUv;
@@ -111,11 +120,12 @@ function initRenderer() {
   try {
     glProgram = gl.createProgram(); gl.attachShader(glProgram, shader(gl.VERTEX_SHADER, vertexSource)); gl.attachShader(glProgram, shader(gl.FRAGMENT_SHADER, fragmentSource)); gl.linkProgram(glProgram);
     if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(glProgram));
+    uniforms = Object.fromEntries(['uTexture','uEffect','uThreshold','uBias','uExposure','uGrowth','uSpeed','uTime','uImageAspect','uViewportAspect','uMirror','uFlip'].map(name => [name, gl.getUniformLocation(glProgram, name)]));
     gl.useProgram(glProgram); posBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(glProgram, 'aPosition'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     $('renderInfo').textContent = 'WebGL2 ativo'; return true;
-  } catch (e) { log(`Renderizador: ${e.message}`); $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'WebGL2 indisponível'; return Boolean(fallbackContext); }
+  } catch (e) { log(`Renderizador: ${e.message}`); showToast(fallbackContext ? 'WebGL indisponível · usando modo leve' : 'Renderização indisponível'); $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'WebGL2 indisponível'; return Boolean(fallbackContext); }
 }
 initRenderer();
 
@@ -147,7 +157,7 @@ async function acquireSessionLock() {
 
 async function makeAudio() {
   if (state.audio) return;
-  if (!('AudioWorkletNode' in window) || !window.isSecureContext) { log('Áudio exige navegador compatível e HTTPS.'); return; }
+  if (!('AudioWorkletNode' in window) || !window.isSecureContext) { log('Áudio exige navegador compatível e HTTPS.'); showToast('Áudio precisa de navegador compatível e HTTPS'); return; }
   try {
     state.audio = new AudioContext({ latencyHint: 'interactive' });
     await state.audio.audioWorklet.addModule('./src/audio-processor.js');
@@ -157,7 +167,7 @@ async function makeAudio() {
     state.worklet.port.onmessage = ({ data }) => { if (data.type === 'meter') { $('audioReadout').textContent = `WebAudio · ${fmt(data.peak, 3)} pico · ${data.voices} vozes · ${fmt(data.cost, 2)} ms`; } };
     sendAudioOptions();
     await state.audio.resume();
-  } catch (e) { log(`Áudio indisponível: ${e.message}`); }
+  } catch (e) { log(`Áudio indisponível: ${e.message}`); showToast('Não foi possível iniciar o áudio'); }
 }
 
 // Blindagem de áudio: navegadores móveis suspendem o AudioContext ao bloquear a tela/aba.
@@ -185,7 +195,8 @@ async function watchAudio() {
 }
 
 function handleAudioInterruption() {
-  if (!state.audio) return;
+  if (!state.audio || state.audioHandlersRegistered) return;
+  state.audioHandlersRegistered = true;
   state.audio.addEventListener('statechange', () => { if (state.active && state.audio.state !== 'running') ensureAudioAlive(); });
   state.audio.addEventListener('interrupted', () => ensureAudioAlive());
 }
@@ -260,12 +271,12 @@ function followEnvelope(current, target, dt, attack=.06, decay=.45) { const tau 
 function updateSignals(raw, dt) {
   const e = state.envelopes;
   for (const key of ['energy','density','speed','coherence','ambient']) e[key] = followEnvelope(e[key], raw[key], dt);
-  e.zones = e.zones.map((v,i)=>followEnvelope(v,raw.zones[i],dt,.06,.9));
+  for (let i = 0; i < e.zones.length; i++) e.zones[i] = followEnvelope(e.zones[i],raw.zones[i],dt,.06,.9);
   const m = state.reacting ? state.master : 0;
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled, oscillation:state.audioOscillation, pitchRange:state.audioPitchRange, key:state.audioKey });
+  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled, oscillation:state.audioOscillation, pitchRange:state.audioPitchRange, key:state.audioKey, timbre:state.audioTimbre, soundEffects:state.audioEffects });
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -293,10 +304,9 @@ function render(applied, source = video) {
   gl.useProgram(glProgram); gl.bindTexture(gl.TEXTURE_2D,texture);
   try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source); } catch { return; }
   state.timing.camera = performance.now() - t0;
-  const uniform=(name,val)=>gl.uniform1f(gl.getUniformLocation(glProgram,name),val);
-  gl.uniform1i(gl.getUniformLocation(glProgram,'uTexture'),0); gl.uniform1i(gl.getUniformLocation(glProgram,'uEffect'),({invert:0,threshold:1,dither:2})[state.effect]);
-  uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',source.videoWidth/source.videoHeight); uniform('uViewportAspect',(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
-  gl.uniform1i(gl.getUniformLocation(glProgram,'uMirror'),state.camera==='user'?1:0);gl.uniform1i(gl.getUniformLocation(glProgram,'uFlip'),state.flip?1:0);
+  gl.uniform1i(uniforms.uTexture,0); gl.uniform1i(uniforms.uEffect,({invert:0,threshold:1,dither:2})[state.effect]);
+  gl.uniform1f(uniforms.uThreshold,.5+applied.threshold); gl.uniform1f(uniforms.uBias,state.bias); gl.uniform1f(uniforms.uExposure,applied.exposure); gl.uniform1f(uniforms.uGrowth,applied.grow); gl.uniform1f(uniforms.uSpeed,applied.speed); gl.uniform1f(uniforms.uTime,performance.now()/1000); gl.uniform1f(uniforms.uImageAspect,source.videoWidth/source.videoHeight); gl.uniform1f(uniforms.uViewportAspect,(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
+  gl.uniform1i(uniforms.uMirror,state.camera==='user'?1:0);gl.uniform1i(uniforms.uFlip,state.flip?1:0);
   if(state.gearVr){gl.viewport(0,0,Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(Math.floor(canvas.width/2),0,canvas.width-Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(0,0,canvas.width,canvas.height);}else gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   state.timing.cycle=performance.now()-t0;
 }
@@ -477,6 +487,9 @@ function drawMaskOverlay(result, source = video) {
   c.restore(); state.timing.windows = windowCost; state.timing.composition = performance.now() - started;
 }
 function updateHud(raw, applied, result) {
+  const now = performance.now();
+  if (now - state.lastHudAt < 100) return;
+  state.lastHudAt = now;
   for(const k of ['energy','density','speed','coherence','ambient']){$(`signal-${k}`).textContent=`${Math.round(state.envelopes[k]*100)}%`;$(`bar-${k}`).style.width=`${state.envelopes[k]*100}%`;}
   document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i];el.querySelector('b').textContent=`${Math.round(v*100)}%`;el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
@@ -588,7 +601,7 @@ stage.addEventListener('click',e=>{
   if(!uiHidden)return;
   if(e.target===canvas||e.target===overlayCanvas)setUiHidden(false);
 });
-document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>x.classList.toggle('active',x===b));savePreferences();}));
+document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>toggle(x,x===b));savePreferences();}));
 function bindReactiveToggle(id, key) {
   $(id).addEventListener('click', event => { state[key] = !state[key]; toggle(event.currentTarget, state[key]); savePreferences(); });
 }
@@ -635,6 +648,20 @@ $('audioKey').addEventListener('change',e=>{
   state.audioKey=clamp(Number(e.target.value),0,11);
   sendAudioOptions();savePreferences();
 });
+$('audioTimbre').addEventListener('change',e=>{
+  state.audioTimbre=clamp(Number(e.target.value),0,2);
+  sendAudioOptions();savePreferences();
+});
+function bindAudioEffect(id, key) {
+  $(id).addEventListener('click',event=>{
+    state.audioEffects[key]=!state.audioEffects[key];
+    toggle(event.currentTarget,state.audioEffects[key]);
+    sendAudioOptions();savePreferences();
+  });
+}
+bindAudioEffect('audioEchoButton','echo');
+bindAudioEffect('audioSpaceButton','space');
+bindAudioEffect('audioChorusButton','chorus');
 $('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
 $('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});$('rectangleButton').addEventListener('click',e=>{state.drawingRect=!state.drawingRect;toggle(e.currentTarget,state.drawingRect);showToast(state.drawingRect?'Arraste no palco para criar o retângulo':'Criação cancelada');});
 function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;savePreferences();}
@@ -714,7 +741,7 @@ stage.addEventListener('touchend',e=>{
   } else lastTap=now;
 },{passive:true});
 if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
-document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
+document.querySelectorAll('.tab-button').forEach(b=>{b.setAttribute('aria-pressed',String(b.classList.contains('active')));b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>toggle(x,x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));});});
 let touchStartY=0,touchStartTime=0;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
 stage.addEventListener('touchend',e=>{

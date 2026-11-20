@@ -44,7 +44,7 @@
         <div class="stage-message" id="stageMessage">
           <div class="pulse-icon">◉</div>
           <h1>O movimento vira imagem e som</h1>
-          <p>Ligue a câmera e comece a sessão.</p><button class="primary-button" id="startButton"
+          <p>Ligue a câmera para começar.</p><button class="primary-button" id="startButton"
             type="button">Ligar</button>
         </div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
@@ -72,38 +72,61 @@
 
           <!-- Abas de ajustes finos -->
           <nav class="dock-tabs" aria-label="Ajustes">
-            <button type="button" class="tab-button active" data-panel="panelEffects">Efeito</button>
-            <button type="button" class="tab-button" data-panel="panelAudio">Som</button>
-            <button type="button" class="tab-button" data-panel="panelTracking">Rastreio</button>
-            <button type="button" class="tab-button" data-panel="panelSignals">Medições</button>
+            <button type="button" class="tab-button active" data-panel="panelEffects" aria-pressed="true">Efeito</button>
+            <button type="button" class="tab-button" data-panel="panelAudio" aria-pressed="false">Som</button>
+            <button type="button" class="tab-button" data-panel="panelTracking" aria-pressed="false">Rastreio</button>
+            <button type="button" class="tab-button" data-panel="panelSignals" aria-pressed="false">Medições</button>
           </nav>
 
           <div class="dock-panel" id="panelAudio">
-            <div class="dock-row slider-row">
-              <label for="audioSensitivity"><span>Nível do som</span><b id="audioSensitivityValue">1,00</b></label>
-              <input id="audioSensitivity" type="range" min="0" max="3" step="0.05" value="1">
-              <label for="audioOscillation"><span>Oscilação</span><b id="audioOscillationValue">40%</b></label>
-              <input id="audioOscillation" type="range" min="0" max="1" step="0.01" value="0.4">
-              <label for="audioPitchRange"><span>Variação de altura</span><b id="audioPitchRangeValue">2,0 semitons</b></label>
-              <input id="audioPitchRange" type="range" min="0" max="7" step="0.5" value="2">
-              <label for="audioKey"><span>Tom base</span>
+            <div class="audio-params-grid">
+              <div class="audio-param">
+                <label for="audioSensitivity"><span>Nível do som</span><b id="audioSensitivityValue">1,00</b></label>
+                <input id="audioSensitivity" type="range" min="0" max="3" step="0.05" value="1">
+              </div>
+              <div class="audio-param">
+                <label for="audioOscillation"><span>Oscilação</span><b id="audioOscillationValue">40%</b></label>
+                <input id="audioOscillation" type="range" min="0" max="1" step="0.01" value="0.4">
+              </div>
+              <div class="audio-param">
+                <label for="audioPitchRange"><span>Variação de altura</span><b id="audioPitchRangeValue">2,0 semitons</b></label>
+                <input id="audioPitchRange" type="range" min="0" max="7" step="0.5" value="2">
+              </div>
+              <div class="audio-param audio-select-param">
+                <label for="audioKey"><span>Tom base</span>
                 <select id="audioKey" class="audio-select">
                   <option value="0">Dó (C)</option><option value="2">Ré (D)</option>
                   <option value="4">Mi (E)</option><option value="5">Fá (F)</option>
                   <option value="7">Sol (G)</option><option value="9">Lá (A)</option>
                   <option value="10">Si♭ (B♭)</option><option value="11">Si (B)</option>
                 </select>
-              </label>
+                </label>
+              </div>
+              <div class="audio-param audio-select-param">
+                <label for="audioTimbre"><span>Timbre</span>
+                <select id="audioTimbre" class="audio-select">
+                  <option value="0">Suave</option><option value="1">Sino</option><option value="2">Pulsante</option>
+                </select>
+                </label>
+              </div>
             </div>
-            <small class="hint">A velocidade dos blobs conduz as oscilações; as seis zonas tocam uma escala pentatônica.</small>
+            <div class="audio-effect-block">
+              <span class="audio-section-title">Efeitos de áudio</span>
+              <div class="audio-effect-grid" role="group" aria-label="Efeitos de áudio">
+                <button type="button" class="pill small audio-effect-button" id="audioEchoButton" aria-pressed="false">Eco</button>
+                <button type="button" class="pill small audio-effect-button" id="audioSpaceButton" aria-pressed="false">Espaço</button>
+                <button type="button" class="pill small audio-effect-button" id="audioChorusButton" aria-pressed="false">Chorus</button>
+              </div>
+            </div>
+            <small class="hint">Os blobs conduzem a altura e a oscilação. Combine um timbre e ligue os efeitos ao seu gosto.</small>
           </div>
 
           <div class="dock-panel active" id="panelEffects">
             <div class="dock-row">
               <div class="effect-row" role="group" aria-label="Efeito visual">
-                <button type="button" data-effect="invert" class="effect-button active">Invert</button>
-                <button type="button" data-effect="threshold" class="effect-button">BW umbral</button>
-                <button type="button" data-effect="dither" class="effect-button">BW dither</button>
+                <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Invert</button>
+                <button type="button" data-effect="threshold" class="effect-button" aria-pressed="false">BW umbral</button>
+                <button type="button" data-effect="dither" class="effect-button" aria-pressed="false">BW dither</button>
               </div>
             </div>
             <div class="dock-row">
@@ -166,12 +189,12 @@
                     id="bar-ambient"></u></i></div>
             </div>
             <div class="zone-grid" id="zoneGrid" aria-label="Atividade nas seis zonas">
-              <div class="zone" data-zone="0"><span>01</span><b>—</b></div>
-              <div class="zone" data-zone="1"><span>02</span><b>—</b></div>
-              <div class="zone" data-zone="2"><span>03</span><b>—</b></div>
-              <div class="zone" data-zone="3"><span>04</span><b>—</b></div>
-              <div class="zone" data-zone="4"><span>05</span><b>—</b></div>
-              <div class="zone" data-zone="5"><span>06</span><b>—</b></div>
+              <div class="zone" data-zone="0" aria-label="Zona 1"><span>01</span><b>—</b></div>
+              <div class="zone" data-zone="1" aria-label="Zona 2"><span>02</span><b>—</b></div>
+              <div class="zone" data-zone="2" aria-label="Zona 3"><span>03</span><b>—</b></div>
+              <div class="zone" data-zone="3" aria-label="Zona 4"><span>04</span><b>—</b></div>
+              <div class="zone" data-zone="4" aria-label="Zona 5"><span>05</span><b>—</b></div>
+              <div class="zone" data-zone="5" aria-label="Zona 6"><span>06</span><b>—</b></div>
             </div>
             <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>

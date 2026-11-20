@@ -58,6 +58,16 @@ No painel **Efeito**, os filtros base (Invert, BW umbral e BW dither) podem ser 
 
 O painel de medições mostra o custo da composição das janelas. Se a taxa de quadros ficar abaixo do limite adaptado ao perfil do celular, Rastro, Ondas e Grade são pausados; a Janela viva continua ativa. Os efeitos voltam quando o desempenho se estabiliza.
 
+## Timbres e efeitos de áudio
+
+No painel **Som**, selecione os timbres **Suave**, **Sino** e **Pulsante** para alterar a textura das notas por zona. Os botões independentes **Eco**, **Espaço** e **Chorus** podem ser combinados durante a sessão; timbre e efeitos ficam salvos no dispositivo. O processamento usa buffers de atraso reutilizados no AudioWorklet, sem alocações por bloco de áudio.
+
+### Controles de timbre e efeitos de áudio
+
+No painel **Som**, escolha **Suave**, **Sino** ou **Pulsante** para mudar a cor das notas das zonas sem alterar o rastreio. **Eco**, **Espaço** e **Chorus** são botões independentes; podem ser combinados, desligados durante a sessão e ficam salvos no dispositivo. Os buffers de atraso são reutilizados dentro do AudioWorklet.
+
+Checklist rápido: alterne os três timbres com movimento ativo; ligue Eco, Espaço e Chorus um por vez e depois combinados; confirme que Mudo e Som desligado continuam silenciando a saída; encerre e reinicie para verificar as preferências.
+
 ### Checklist manual dos efeitos
 
 1. No painel Efeito, teste Rastro, Ondas e Grade separadamente e em conjunto; mova o objeto para conferir a resposta à posição e à velocidade.
@@ -70,3 +80,12 @@ O painel de medições mostra o custo da composição das janelas. Se a taxa de 
 ## Limites conhecidos
 
 O rastreador usa mudança de luminância, não profundidade. Um objeto imóvel que passa a integrar o fundo pode deixar de aparecer; iluminação instável pode criar blobs extras. Exposição manual, instalação, tela cheia, Wake Lock e seleção da lente variam por navegador e aparelho. Métricas que o navegador não mede permanecem como `—`.
+## Benchmark e auditoria
+
+O shell web principal ocupa 109.466 bytes sem compressao nesta revisao, ante 108.433 bytes antes das alteracoes (HTML, CSS, app, tracker, AudioWorklet e service worker; aumento de 1.033 bytes). FPS, tempo de rastreio, memoria apos 5 minutos e tempo de boot precisam ser medidos em aparelho real com camera e DevTools; nao publicamos valores estimados como benchmarks.
+
+Esta rodada registrou o diagnostico estatico em `AUDITORIA.md`, cacheia uniforms WebGL, reutiliza o array de envelopes das zonas e limita as atualizacoes do painel a 10 Hz sem desacelerar rastreio ou audio. Tambem sincroniza ARIA em tabs/efeitos, comunica falhas de audio/WebGL por toast e registra listeners de interrupcao apenas uma vez por contexto. O cache offline foi versionado para v15. A interface segue em tema escuro e respeita `prefers-reduced-motion`.
+
+## Regra video-dentro-dos-blobs
+
+Quando Janela viva esta ligada, a imagem crua da camera aparece nas janelas dos blobs, enquanto o restante mantem o efeito ativo. Desligue Janela viva no painel Efeito para ver o filtro em toda a imagem.
