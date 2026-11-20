@@ -22,6 +22,7 @@
         <video id="camera" playsinline muted aria-hidden="true"></video>
         <canvas id="visual" aria-label="Imagem processada ao vivo"></canvas>
         <canvas id="overlay" aria-hidden="true"></canvas>
+        <button class="gear-vr-exit" id="gearVrExit" type="button" hidden>Sair do Gear VR</button>
         <canvas id="analysis" aria-hidden="true"></canvas>
         <div class="stage-shade"></div>
 
@@ -103,7 +104,9 @@
               <button class="pill small" id="maskButton" type="button" aria-pressed="false">Ver binarizada</button>
               <button class="pill small" id="captureButton" type="button">Capturar</button>
               <button class="pill small" id="focusButton" type="button" aria-pressed="false">Modo palco</button>
+              <button class="pill small" id="gearVrButton" type="button" aria-pressed="false">Gear VR · SM‑R323</button>
             </div>
+            <small class="hint gear-vr-hint">Imagem lado a lado para o visor Gear VR. Ative e coloque o celular no visor.</small>
           </div>
 
           <div class="dock-panel" id="panelTracking">

@@ -251,6 +251,18 @@ input[type=range] { width:100%;height:40px;margin:0;accent-color:var(--mint);tou
 }
 .toast.show { opacity:1;transform:translate(-50%,0) }
 
+/* Gear VR: uma imagem para cada lente do SM-R323 */
+.gear-vr-exit {
+  position:absolute;z-index:6;top:max(12px,var(--safe-top));left:50%;transform:translateX(-50%);
+  min-height:42px;padding:0 16px;border:1px solid #ffffff30;border-radius:22px;
+  background:#0d1219c9;color:#eaf4f1;font-size:12px;font-weight:600;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)
+}
+body.gear-vr .float-bar,body.gear-vr .stage-pill,body.gear-vr .dock,body.gear-vr .stage-bottom,body.gear-vr .stage-message,body.gear-vr .stage-shade { display:none!important }
+body.gear-vr .gear-vr-exit:not([hidden]) { display:block!important }
+body.gear-vr canvas#overlay { display:none }
+.gear-vr-hint { flex:1 0 100%;padding:2px 4px }
+
 /* Modo palco (duplo toque / botão Modo palco): esconde tudo */
 body.focus-mode .float-bar,
 body.focus-mode .stage-pill,

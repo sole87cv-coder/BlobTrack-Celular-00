@@ -10,7 +10,7 @@ const ctx = analysisCanvas.getContext('2d', { willReadFrequently: true });
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, worklet: null, audioGain: null,
-  effect: 'invert', flip: false, overlay: true, showMask: false, reacting: true, muted: false,
+  effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { average: 0, slowFrames: 0, fastFrames: 0 },
   lastFrame: 0, lastSignalsAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
@@ -31,6 +31,7 @@ try {
   if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
   if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
   if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
+  if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
 } catch {}
 let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '';
 const maskCanvas = document.createElement('canvas');
@@ -60,7 +61,7 @@ function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr})); } catch {} }
 
 toggle($('reactButton'),state.reacting);
 toggle($('audioSensitivityButton'),state.audioEnabled);
@@ -236,14 +237,16 @@ function render(applied) {
   if (!video.videoWidth) return;
   state.timing.camera = state.timing.camera ?? null;
   const t0 = performance.now(); resize();
-  if (!gl || !glProgram) { if(fallbackContext){fallbackContext.save();fallbackContext.filter=state.effect==='invert'?'invert(1)':state.effect==='threshold'?'grayscale(1) contrast(8)':'grayscale(1) contrast(2)';fallbackContext.translate(state.camera==='user'?canvas.width:0,state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,0,0,canvas.width,canvas.height);fallbackContext.restore();} state.timing.camera=performance.now()-t0; state.timing.cycle=performance.now()-t0; return; }
+  if (!gl || !glProgram) { if(fallbackContext){fallbackContext.save();fallbackContext.filter=state.effect==='invert'?'invert(1)':state.effect==='threshold'?'grayscale(1) contrast(8)':'grayscale(1) contrast(2)';if(state.gearVr){const half=canvas.width/2;for(let eye=0;eye<2;eye++){const x=Math.floor(eye*half),w=Math.ceil((eye+1)*half)-x;fallbackContext.save();fallbackContext.beginPath();fallbackContext.rect(x,0,w,canvas.height);fallbackContext.clip();fallbackContext.translate(x+(state.camera==='user'?w:0),state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,x,0,w,canvas.height);fallbackContext.restore();}}else{fallbackContext.translate(state.camera==='user'?canvas.width:0,state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,0,0,canvas.width,canvas.height);}fallbackContext.restore();} state.timing.camera=performance.now()-t0; state.timing.cycle=performance.now()-t0; return; }
   gl.useProgram(glProgram); gl.bindTexture(gl.TEXTURE_2D,texture);
   try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video); } catch { return; }
   state.timing.camera = performance.now() - t0;
   const uniform=(name,val)=>gl.uniform1f(gl.getUniformLocation(glProgram,name),val);
   gl.uniform1i(gl.getUniformLocation(glProgram,'uTexture'),0); gl.uniform1i(gl.getUniformLocation(glProgram,'uEffect'),({invert:0,threshold:1,dither:2})[state.effect]);
-  uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',video.videoWidth/video.videoHeight); uniform('uViewportAspect',canvas.width/canvas.height);
-  gl.uniform1i(gl.getUniformLocation(glProgram,'uMirror'),state.camera==='user'?1:0);gl.uniform1i(gl.getUniformLocation(glProgram,'uFlip'),state.flip?1:0); gl.drawArrays(gl.TRIANGLE_STRIP,0,4); state.timing.cycle=performance.now()-t0;
+  uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',video.videoWidth/video.videoHeight); uniform('uViewportAspect',(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
+  gl.uniform1i(gl.getUniformLocation(glProgram,'uMirror'),state.camera==='user'?1:0);gl.uniform1i(gl.getUniformLocation(glProgram,'uFlip'),state.flip?1:0);
+  if(state.gearVr){gl.viewport(0,0,Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(Math.floor(canvas.width/2),0,canvas.width-Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(0,0,canvas.width,canvas.height);}else gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+  state.timing.cycle=performance.now()-t0;
 }
 function drawMaskOverlay(result) {
   const c=overlayContext; if(!c)return; const rect=overlayCanvas.getBoundingClientRect(); c.clearRect(0,0,overlayCanvas.width,overlayCanvas.height); if(!state.showMask&&!state.overlay)return; c.save(); c.scale(overlayCanvas.width/rect.width,overlayCanvas.height/rect.height);
@@ -328,6 +331,19 @@ function setUiHidden(on){
   showToast(on?'Interface oculta · toque no palco para voltar':'Interface visível');
 }
 $('hideUiButton').addEventListener('click',()=>setUiHidden(!uiHidden));
+function setGearVr(on, persist=true){
+  state.gearVr=on;
+  document.body.classList.toggle('gear-vr',on);
+  $('gearVrButton').classList.toggle('active',on);
+  $('gearVrButton').setAttribute('aria-pressed',String(on));
+  $('gearVrExit').hidden=!on;
+  if(on){state.overlay=false;state.showMask=false;toggle($('overlayButton'),false);toggle($('maskButton'),false);if(persist)enterFullscreen('landscape');showToast('Gear VR ativo · imagem lado a lado');}
+  else {if(persist&&isFullscreen())exitFullscreen();showToast('Visualização normal');}
+  if(persist)savePreferences();
+}
+$('gearVrButton').addEventListener('click',()=>setGearVr(!state.gearVr));
+$('gearVrExit').addEventListener('click',()=>setGearVr(false));
+if(state.gearVr)setGearVr(true,false);
 stage.addEventListener('click',e=>{
   if(!uiHidden)return;
   if(e.target===canvas||e.target===overlayCanvas)setUiHidden(false);
@@ -370,12 +386,12 @@ function isFullscreen(){return Boolean(document.fullscreenElement||document.webk
 async function exitFullscreen(){
   try{ if(document.exitFullscreen) await document.exitFullscreen(); else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch{}
 }
-async function enterFullscreen(){
+async function enterFullscreen(orientation='portrait'){
   try{
     const el=document.documentElement;
     if(el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
     else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
-    if(screen.orientation?.lock) screen.orientation.lock('portrait').catch(()=>{});
+    if(screen.orientation?.lock) screen.orientation.lock(orientation).catch(()=>{});
   }catch{ showToast('Tela cheia não suportada aqui'); }
 }
 async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : await enterFullscreen(); }
