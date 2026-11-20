@@ -323,11 +323,14 @@ let uiHidden=false;
 function setUiHidden(on){
   uiHidden=on;
   document.body.classList.toggle('ui-hidden',on);
-  setDock(!on&&true);
+  if(!on)setDock(true);
   showToast(on?'Interface oculta · toque no palco para voltar':'Interface visível');
 }
 $('hideUiButton').addEventListener('click',()=>setUiHidden(!uiHidden));
-stage.addEventListener('click',()=>{if(uiHidden)setUiHidden(false);});
+stage.addEventListener('click',e=>{
+  if(!uiHidden)return;
+  if(e.target===canvas||e.target===overlayCanvas)setUiHidden(false);
+});
 document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>x.classList.toggle('active',x===b));savePreferences();}));
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(Number(e.target.value));});
@@ -416,7 +419,14 @@ stage.addEventListener('touchend',e=>{
 },{passive:true});
 if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
 document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
-let touchStartY=0;const stage=$('stage');stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas)touchStartY=e.changedTouches[0].clientY;},{passive:true});stage.addEventListener('touchend',e=>{if(e.target!==canvas&&e.target!==overlayCanvas)return;const dy=e.changedTouches[0].clientY-touchStartY;if(!state.drawingRect&&Math.abs(dy)>65)switchCamera();},{passive:true});
+let touchStartY=0,touchStartTime=0;const stage=$('stage');
+stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
+stage.addEventListener('touchend',e=>{
+  if(e.target!==canvas&&e.target!==overlayCanvas)return;
+  if(uiHidden){setUiHidden(false);return;}
+  const dy=e.changedTouches[0].clientY-touchStartY;
+  if(!state.drawingRect&&Math.abs(dy)>65&&Date.now()-touchStartTime<600)switchCamera();
+},{passive:true});
 overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
 overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
 overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;toggle($('rectangleButton'),false);}});

@@ -281,6 +281,15 @@ body.focus-mode .focus-hint::after,body.ui-hidden .focus-hint::after { content:'
   .stage-pill { top:calc(70px + var(--safe-top)) }
 }
 
+/* ===== Modo palco / UI oculta: dock não bloqueia o palco quando fechado ===== */
+.dock.closed { pointer-events:none }
+.dock.closed .dock-handle { pointer-events:auto }
+
+/* Pílula do palco pode ficar larga demais: quebra em telas estreitas */
+@media (max-width:380px) {
+  .stage-pill { max-width:92%;flex-wrap:wrap;justify-content:center }
+}
+
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior:auto!important;transition:none!important }
 }
