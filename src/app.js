@@ -2,6 +2,7 @@ import { BlobTracker } from './blob-tracker.js';
 const $ = (id) => document.getElementById(id);
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
 const overlayCanvas = $('overlay');
+const stage = $('stage');
 const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPreference: 'high-performance' });
 const fallbackContext = gl ? null : canvas.getContext('2d', { alpha: false });
 const overlayContext = overlayCanvas.getContext('2d');
@@ -419,7 +420,7 @@ stage.addEventListener('touchend',e=>{
 },{passive:true});
 if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
 document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
-let touchStartY=0,touchStartTime=0;const stage=$('stage');
+let touchStartY=0,touchStartTime=0;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
 stage.addEventListener('touchend',e=>{
   if(e.target!==canvas&&e.target!==overlayCanvas)return;
