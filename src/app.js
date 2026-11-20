@@ -112,16 +112,16 @@ const vertexSource = `#version 300 es
 in vec2 aPosition; out vec2 vUv;
 void main(){ vUv=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }`;
 const fragmentSource = `#version 300 es
-precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; in vec2 vUv; out vec4 outColor;
+precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; uniform bool uFit; in vec2 vUv; out vec4 outColor;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-void main(){vec2 uv=vUv;if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror)uv.x=1.0-uv.x;if(uFlip)uv.y=1.0-uv.y;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy*0.75));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
+void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror)uv.x=1.0-uv.x;if(uFlip)uv.y=1.0-uv.y;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy*0.75));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
 function shader(type, source) { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function initRenderer() {
   if (!gl) { $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'Renderização indisponível'; return Boolean(fallbackContext); }
   try {
     glProgram = gl.createProgram(); gl.attachShader(glProgram, shader(gl.VERTEX_SHADER, vertexSource)); gl.attachShader(glProgram, shader(gl.FRAGMENT_SHADER, fragmentSource)); gl.linkProgram(glProgram);
     if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(glProgram));
-    uniforms = Object.fromEntries(['uTexture','uEffect','uThreshold','uBias','uExposure','uGrowth','uSpeed','uTime','uImageAspect','uViewportAspect','uMirror','uFlip'].map(name => [name, gl.getUniformLocation(glProgram, name)]));
+    uniforms = Object.fromEntries(['uTexture','uEffect','uThreshold','uBias','uExposure','uGrowth','uSpeed','uTime','uImageAspect','uViewportAspect','uMirror','uFlip','uFit'].map(name => [name, gl.getUniformLocation(glProgram, name)]));
     gl.useProgram(glProgram); posBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(glProgram, 'aPosition'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
@@ -294,8 +294,8 @@ function render(applied, source = video) {
         fallbackContext.save(); fallbackContext.beginPath(); fallbackContext.rect(x, 0, width, canvas.height); fallbackContext.clip();
         fallbackContext.translate(x + (state.camera === 'user' ? width : 0), state.flip ? canvas.height : 0);
         fallbackContext.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-        calculateCoverCrop(source.videoWidth, source.videoHeight, width, canvas.height, cropRect);
-        fallbackContext.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, width, canvas.height);
+        if (state.gearVr) drawContainedSource(fallbackContext, source, width, canvas.height);
+        else { calculateCoverCrop(source.videoWidth, source.videoHeight, width, canvas.height, cropRect); fallbackContext.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, width, canvas.height); }
         fallbackContext.restore();
       }
       fallbackContext.restore();
@@ -307,7 +307,7 @@ function render(applied, source = video) {
   state.timing.camera = performance.now() - t0;
   gl.uniform1i(uniforms.uTexture,0); gl.uniform1i(uniforms.uEffect,({invert:0,threshold:1,dither:2})[state.effect]);
   gl.uniform1f(uniforms.uThreshold,.5+applied.threshold); gl.uniform1f(uniforms.uBias,state.bias); gl.uniform1f(uniforms.uExposure,applied.exposure); gl.uniform1f(uniforms.uGrowth,applied.grow); gl.uniform1f(uniforms.uSpeed,applied.speed); gl.uniform1f(uniforms.uTime,performance.now()/1000); gl.uniform1f(uniforms.uImageAspect,source.videoWidth/source.videoHeight); gl.uniform1f(uniforms.uViewportAspect,(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
-  gl.uniform1i(uniforms.uMirror,state.camera==='user'?1:0);gl.uniform1i(uniforms.uFlip,state.flip?1:0);
+  gl.uniform1i(uniforms.uMirror,state.camera==='user'?1:0);gl.uniform1i(uniforms.uFlip,state.flip?1:0);gl.uniform1i(uniforms.uFit,state.gearVr?1:0);
   if(state.gearVr){gl.viewport(0,0,Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(Math.floor(canvas.width/2),0,canvas.width-Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(0,0,canvas.width,canvas.height);}else gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   state.timing.cycle=performance.now()-t0;
 }
@@ -316,9 +316,23 @@ function calculateCoverCrop(sourceWidth, sourceHeight, viewWidth, viewHeight, ou
   if (sourceAspect > viewAspect) { out[2] = sourceHeight * viewAspect; out[0] = (sourceWidth - out[2]) / 2; out[1] = 0; out[3] = sourceHeight; }
   else { out[3] = sourceWidth / viewAspect; out[0] = 0; out[1] = (sourceHeight - out[3]) / 2; out[2] = sourceWidth; }
 }
+function calculateContainRect(sourceWidth, sourceHeight, viewWidth, viewHeight, out) {
+  const scale = Math.min(viewWidth / sourceWidth, viewHeight / sourceHeight);
+  out[2] = sourceWidth * scale; out[3] = sourceHeight * scale;
+  out[0] = (viewWidth - out[2]) / 2; out[1] = (viewHeight - out[3]) / 2;
+}
+function drawContainedSource(c, source, viewWidth, viewHeight, offsetX = 0) {
+  calculateContainRect(source.videoWidth || source.width, source.videoHeight || source.height, viewWidth, viewHeight, cropRect);
+  c.drawImage(source, 0, 0, source.videoWidth || source.width, source.videoHeight || source.height,
+    offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+}
 function mapVideoPoint(x, y, viewWidth, viewHeight, out) {
   const sourceAspect = video.videoWidth / video.videoHeight, viewAspect = viewWidth / viewHeight;
-  if (sourceAspect > viewAspect) { const visible = viewAspect / sourceAspect; x = (x - (1 - visible) / 2) / visible; }
+  if (state.gearVr) {
+    calculateContainRect(video.videoWidth, video.videoHeight, viewWidth, viewHeight, cropRect);
+    x = (cropRect[0] + x * cropRect[2]) / viewWidth;
+    y = (cropRect[1] + y * cropRect[3]) / viewHeight;
+  } else if (sourceAspect > viewAspect) { const visible = viewAspect / sourceAspect; x = (x - (1 - visible) / 2) / visible; }
   else { const visible = sourceAspect / viewAspect; y = (y - (1 - visible) / 2) / visible; }
   out[0] = state.camera === 'user' ? 1 - x : x;
   out[1] = state.flip ? 1 - y : y;
@@ -428,7 +442,15 @@ function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
     const right = Math.max(mapPointA[0], mapPointB[0]), bottom = Math.max(mapPointA[1], mapPointB[1]);
     c.rect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
   }
-  c.clip(); calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+  c.clip();
+  if (state.gearVr) {
+    calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+    c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
+    c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+    c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+    c.restore(); return;
+  }
+  calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
   c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
   c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
   c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
@@ -453,10 +475,17 @@ function drawMaskOverlay(result, source = video) {
   for (let eye = 0; eye < eyeCount; eye++) {
     const offsetX = eye * viewWidth;
     c.save(); c.beginPath(); c.rect(offsetX, 0, viewWidth, viewHeight); c.clip();
+    if (state.gearVr && source.videoWidth && source.videoHeight) {
+      calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+      c.beginPath(); c.rect(offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]); c.clip();
+    }
     if (state.showMask) {
-      calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+      if (state.gearVr) calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+      else calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
       c.save(); c.globalAlpha = .7; c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0); c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-      c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight); c.restore();
+      if (state.gearVr) c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+      else c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+      c.restore();
     }
     if (!state.performance.effectsPaused) {
       if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
