@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#090b10">
+  <title>BlobTrack · Teste de Diagnóstico</title>
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:#090b10; color:#e8ecf4; min-height:100vh; display:flex; flex-direction:column; align-items:center; }
+    h1 { font-size:1.05rem; margin:14px 0 4px; }
+    p.sub { margin:0 0 10px; font-size:.8rem; color:#9aa7b8; }
+    .stage { position:relative; width:min(96vw,720px); aspect-ratio:4/3; background:#05070a; border-radius:12px; overflow:hidden; }
+    canvas { position:absolute; inset:0; width:100%; height:100%; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin:12px 8px; }
+    button { font:inherit; padding:10px 16px; border-radius:10px; border:1px solid #2b3546; background:#141a23; color:#e8ecf4; cursor:pointer; }
+    button.primary { background:#1d5c46; border-color:#2f8f6b; }
+    button:disabled { opacity:.45; cursor:default; }
+    .diag { width:min(96vw,720px); margin:0 8px 24px; font-size:.82rem; }
+    .diag table { width:100%; border-collapse:collapse; }
+    .diag td { padding:6px 8px; border-bottom:1px solid #1b2230; }
+    .diag td:last-child { text-align:right; font-variant-numeric:tabular-nums; color:#6ee7bc; }
+    .ok { color:#6ee7bc; } .warn { color:#f0c674; } .bad { color:#ff7b7b; }
+    .zones { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:10px; }
+    .zones div { padding:8px 10px; border-radius:8px; background:#141a23; font-variant-numeric:tabular-nums; }
+    .zones b { display:block; font-size:.95rem; color:#6ee7bc; }
+    .zones span { font-size:.7rem; color:#9aa7b8; }
+  </style>
+</head>
+<body>
+  <h1>BlobTrack · Teste de Diagnóstico</h1>
+  <p class="sub">Página isolada: valida blob tracking + áudio reativo sem tocar no app principal.</p>
+  <div class="stage">
+    <canvas id="view"></canvas>
+  </div>
+  <div class="row">
+    <button class="primary" id="startBtn">Iniciar sessão</button>
+    <button id="audioBtn" disabled>Áudio: desligado</button>
+    <button id="stopBtn" disabled>Encerrar</button>
+  </div>
+  <div class="diag">
+    <table>
+      <tr><td>Contexto seguro (HTTPS)</td><td id="d-secure">—</td></tr>
+      <tr><td>getUserMedia</td><td id="d-gum">—</td></tr>
+      <tr><td>AudioWorklet</td><td id="d-worklet">—</td></tr>
+      <tr><td>Câmera</td><td id="d-cam">—</td></tr>
+      <tr><td>FPS do ciclo</td><td id="d-fps">—</td></tr>
+      <tr><td>Custo de rastreio</td><td id="d-track">—</td></tr>
+      <tr><td>Blobs ativos</td><td id="d-blobs">—</td></tr>
+      <tr><td>Energia / envelopes</td><td id="d-energy">—</td></tr>
+      <tr><td>Áudio (vozes · pico)</td><td id="d-audio">—</td></tr>
+    </table>
+    <div class="zones" id="zones"></div>
+  </div>
+  <script type="module" src="./teste.js"></script>
+</body>
+</html>

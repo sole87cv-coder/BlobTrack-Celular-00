@@ -30,8 +30,12 @@ export class BlobTracker {
   }
 
   update(video, context, canvas, trackingWidth, threshold, dt) {
-    const width = Math.max(1, Math.min(Math.round(trackingWidth), video.videoWidth || trackingWidth));
-    const height = Math.max(1, Math.round(width * (video.videoHeight || 1) / (video.videoWidth || 1)));
+    // Blindagem: ignora quadros sem dimensão válida (vídeo ainda não pronto).
+    if (!video.videoWidth || !video.videoHeight || context === null || context === undefined) return null;
+    const safeDt = Math.min(1, Math.max(0.001, Number.isFinite(dt) ? dt : 0.04));
+    const safeThreshold = Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0.18));
+    const width = Math.max(1, Math.min(Math.round(trackingWidth) || 320, video.videoWidth));
+    const height = Math.max(1, Math.round(width * video.videoHeight / video.videoWidth));
     this.resize(width, height);
     if (canvas.width !== width || canvas.height !== height) {
       canvas.width = width;
@@ -63,7 +67,7 @@ export class BlobTracker {
     }
 
     const blobs = this.findComponents(width, height);
-    this.assignTracks(blobs, width, height, dt);
+    this.assignTracks(blobs, width, height, safeDt);
     const zonePixels = Array(6).fill(0);
     const zones = Array(6).fill(0);
     for (let y = 0; y < height; y++) {

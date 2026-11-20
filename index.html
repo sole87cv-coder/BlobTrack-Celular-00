@@ -15,6 +15,8 @@
     <header class="topbar">
       <div class="brand"><span class="brand-mark" aria-hidden="true">●</span><div><strong>BlobTrack</strong><small>Celular-00</small></div></div>
       <div class="status" aria-live="polite"><i id="statusLight"></i><span id="statusText">Pronto para ligar</span></div>
+      <button class="icon-button" id="shareButton" type="button" aria-label="Compartilhar" hidden>⇪</button>
+      <button class="icon-button" id="fullscreenButton" type="button" aria-label="Tela cheia">⛶</button>
       <button class="icon-button" id="installButton" type="button" aria-label="Instalar aplicativo" hidden>＋</button>
     </header>
 
@@ -28,6 +30,7 @@
         <div class="stage-top"><span class="live-pill"><i></i> AO VIVO</span><span id="cameraLabel">Câmera aguardando</span></div>
         <div class="stage-message" id="stageMessage"><div class="pulse-icon">◉</div><h1>O movimento vira imagem e som</h1><p>Ligue a câmera e comece a sessão.</p><button class="primary-button" id="startButton" type="button">Ligar</button></div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="blobReadout">0 blobs</span><span id="renderInfo">WebGL2</span></div>
+        <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
       </section>
 
@@ -89,6 +92,7 @@
             <button class="toggle-button" id="reseedButton" type="button">Reseed</button>
             <button class="toggle-button" id="rectangleButton" type="button">Novo retângulo</button>
             <button class="toggle-button" id="captureButton" type="button">Capturar</button>
+            <button class="toggle-button" id="focusButton" type="button" aria-pressed="false">Modo palco</button>
           </div>
           <div class="button-row tracking-buttons"><button class="control-button" id="trackDown" type="button">Tracking −</button><button class="control-button" id="trackUp" type="button">Tracking +</button></div>
         </div>

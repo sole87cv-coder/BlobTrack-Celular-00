@@ -10,14 +10,18 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
   }
   process(_inputs, outputs) {
     const output = outputs[0]?.[0]; if (!output) return true;
-    const s = this.signals, target = this.muted ? 0 : this.master;
+    const s = this.signals || { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: [0,0,0,0,0,0] }, target = this.muted ? 0 : Math.min(2, Math.max(0, Number.isFinite(this.master) ? this.master : 1));
+    if (!s.zones || s.zones.length !== 6) s.zones = [0,0,0,0,0,0];
     const ramp = 1 - Math.exp(-128 / (sampleRate * .12));
-    let peak = 0, voices = 0;
+    let peak = 0;
+    let voices = 0;
+    for (let z = 0; z < 6; z++) if (s.zones[z] * (.10 + .07*s.energy) > .01) voices++;
+    const processStart = Date.now();
     for (let i = 0; i < output.length; i++) {
       this.gain += (target - this.gain) * ramp;
       let sample = .12 * s.ambient * Math.sin(this.phase[6]); this.phase[6] += 2*Math.PI*55/sampleRate;
       for (let z = 0; z < 6; z++) {
-        const amp = s.zones[z] * (.10 + .07*s.energy); if (amp > .01) voices++;
+        const amp = s.zones[z] * (.10 + .07*s.energy);
         const col = z%3, row = Math.floor(z/3), semitone = [0,3,7][col] + (1-row)*12;
         const hz = 220*Math.pow(2,(semitone-9)/12); this.phase[z] += 2*Math.PI*hz/sampleRate; if(this.phase[z]>Math.PI*2)this.phase[z]-=Math.PI*2;
         sample += amp * (Math.sin(this.phase[z])*.65 + Math.sin(this.phase[z]*2)*.12);
@@ -26,7 +30,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       sample *= this.gain; output[i] = Math.tanh(sample); peak = Math.max(peak,Math.abs(output[i]));
     }
     this.peak = Math.max(this.peak*.96,peak); this.meterFrames += output.length;
-    if(this.meterFrames >= sampleRate*.12){this.port.postMessage({type:'meter',peak:this.peak,voices:Math.min(6,Math.round(voices/output.length*128)),cost:null});this.meterFrames=0;}
+    if(this.meterFrames >= sampleRate*.12){this.port.postMessage({type:'meter',peak:this.peak,voices:Math.min(6,voices),cost:Math.max(0,Date.now()-processStart)});this.meterFrames=0;}
     return true;
   }
 }

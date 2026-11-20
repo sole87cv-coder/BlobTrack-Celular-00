@@ -620,3 +620,48 @@ input[type=range] {
     font-size:8px
   }
 }
+
+/* ===== Modo palco: prioriza o efeito visual, oculta interface ===== */
+body.focus-mode .topbar,
+body.focus-mode .mobile-tabs,
+body.focus-mode .panel,
+body.focus-mode .stage-top,
+body.focus-mode .stage-bottom {
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .25s
+}
+body.focus-mode .topbar,
+body.focus-mode .mobile-tabs,
+body.focus-mode .panel {
+  visibility:hidden
+}
+body.focus-mode .stage-shade {
+  opacity:0
+}
+body.focus-mode .stage-bottom {
+  opacity:0
+}
+.focus-hint {
+  position:absolute;
+  z-index:5;
+  left:50%;
+  bottom:10px;
+  transform:translateX(-50%);
+  padding:5px 10px;
+  border-radius:10px;
+  background:rgba(9,11,16,.55);
+  color:#9aa7b8;
+  font-size:10px;
+  letter-spacing:.04em;
+  opacity:0;
+  transition:opacity .3s;
+  pointer-events:none
+}
+body.focus-mode .focus-hint {
+  opacity:1
+}
+/* Gesto de duplo toque no palco alterna o modo palco */
+.stage {
+  touch-action:manipulation
+}

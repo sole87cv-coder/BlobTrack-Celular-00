@@ -35,6 +35,7 @@ let maskImage = null;
 const tracker = new BlobTracker();
 let releaseSessionLock = null;
 
+const tabId = Math.random().toString(36).slice(2);
 // One tab owns capture and audio. An existing active session answers the probe.
 const channel = ('BroadcastChannel' in window) ? new BroadcastChannel('blobtrack-celular-00-session') : null;
 if (channel) {
@@ -50,13 +51,12 @@ if (channel) {
   channel.postMessage({ type: 'probe' });
   setTimeout(() => { if (!replied && !state.sessionBlocked) channel.postMessage({ type: 'ready', id: tabId }); }, 180);
 }
-const tabId = Math.random().toString(36).slice(2);
 
 function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode')})); } catch {} }
 
 toggle($('reactButton'),state.reacting);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
@@ -71,7 +71,7 @@ void main(){ vUv=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }`;
 const fragmentSource = `#version 300 es
 precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; in vec2 vUv; out vec4 outColor;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-void main(){vec2 uv=vUv;if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror)uv.x=1.0-uv.x;if(uFlip)uv.y=1.0-uv.y;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy)+floor(uTime*8.0));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
+void main(){vec2 uv=vUv;if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror)uv.x=1.0-uv.x;if(uFlip)uv.y=1.0-uv.y;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy*0.75));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
 function shader(type, source) { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function initRenderer() {
   if (!gl) { $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'Renderização indisponível'; return Boolean(fallbackContext); }
@@ -126,6 +126,36 @@ async function makeAudio() {
   } catch (e) { log(`Áudio indisponível: ${e.message}`); }
 }
 
+// Blindagem de áudio: navegadores móveis suspendem o AudioContext ao bloquear a tela/aba.
+// Retomada automática e recriação do worklet se o contexto ficar indisponível.
+async function ensureAudioAlive() {
+  if (!state.active) return;
+  try {
+    if (!state.audio) { await makeAudio(); return; }
+    if (state.audio.state === 'suspended' || state.audio.state === 'interrupted') {
+      await state.audio.resume();
+      if (state.audioGain && state.audio) {
+        const t = state.audio.currentTime;
+        state.audioGain.gain.cancelScheduledValues(t);
+        state.audioGain.gain.setTargetAtTime(state.muted ? 0 : 1, t, .12);
+      }
+    }
+  } catch (e) { log(`Áudio: retomada falhou (${e.message})`); }
+}
+
+async function watchAudio() {
+  while (state.active) {
+    await ensureAudioAlive();
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+function handleAudioInterruption() {
+  if (!state.audio) return;
+  state.audio.addEventListener('statechange', () => { if (state.active && state.audio.state !== 'running') ensureAudioAlive(); });
+  state.audio.addEventListener('interrupted', () => ensureAudioAlive());
+}
+
 function cameraScore(label,facing){const name=(label||'').toLocaleLowerCase();const front=/front|user|frontal|selfie|frente/.test(name),rear=/back|rear|environment|traseir|principal|facing back/.test(name);if(facing==='user')return front?100:rear?-100:0;if(front)return-100;let score=rear?20:0;if(/main|primary|principal|wide|camera 0|camera2 0/.test(name))score+=12;if(/ultra|tele|macro|zoom/.test(name))score-=100;return score;}
 async function refreshCameraChoices(){if(!navigator.mediaDevices?.enumerateDevices)return;try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');for(const facing of ['user','environment']){const pick=devices.map(device=>({device,score:cameraScore(device.label,facing)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score)[0];if(pick)state.cameraIds[facing]=pick.device.deviceId;}}catch{}}
 async function startCamera() {
@@ -135,20 +165,30 @@ async function startCamera() {
   state.starting = true; setStatus('Aguardando câmera'); log('Aguardando permissão da câmera no navegador.'); channel?.postMessage({ type: 'start', id: tabId });
   try {
     const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode={ideal:state.camera}; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode={ideal:state.camera};stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
-    state.stream = stream; video.srcObject = stream; await video.play();
+    state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
     state.active = true; state.starting = false; state.switching = false;
-    $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; setStatus('Sessão ativa', true);
+    $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
     const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
     updateExposureCapability(track); tracker.reset(); state.priorCentroid = null;
+    handleAudioInterruption();
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
-    requestAnimationFrame(frame);
+    requestAnimationFrame(frame); watchAudio();
   } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
 }
 async function stopMedia() { state.active = false; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
-async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
+async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.active = false; state.camera = state.camera === 'environment' ? 'user' : 'environment'; state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
+// Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilitystate === 'visible' && state.active) {
+    const track = state.stream?.getVideoTracks()[0];
+    if (!track || track.readyState === 'ended') { startCamera().catch(() => {}); return; }
+    if (video.readyState < 2) video.play().catch(() => {});
+    ensureAudioAlive();
+  }
+});
 async function setManualExposure() { const track = state.stream?.getVideoTracks()[0]; if (!track) return; const caps = track.getCapabilities?.() || {}; if (!Array.isArray(caps.exposureMode) || !caps.exposureMode.includes('manual')) return; try { const settings = track.getSettings?.() || {}; const range = caps.exposureTime; const current = settings.exposureTime ?? range?.min; await track.applyConstraints({ advanced: [{ exposureMode: 'manual', exposureTime: clamp(current, range?.min ?? 0, range?.max ?? 1) }] }); showToast('Exposição manual aplicada'); } catch (e) { log(`Exposição: ${e.message}`); } }
 
 function resize() {
@@ -168,12 +208,12 @@ function analyze() {
   const dt = state.lastSignalsAt ? Math.max(0.001, (t0 - state.lastSignalsAt) / 1000) : 1 / deviceProfile.fps;
   state.lastSignalsAt = t0;
   const result = tracker.update(video, ctx, analysisCanvas, state.trackingWidth, state.threshold, dt);
+  if (!result) return null;
   state.timing.tracking = performance.now() - t0;
   state.timing.camera = null;
   return { ...result, dt };
 }
 function followEnvelope(current, target, dt, attack=.06, decay=.45) { const tau = target > current ? attack : decay; return current + (target - current) * (1 - Math.exp(-dt / tau)); }
-function zoneValuesForDensity(zones, totals) { let occupied=0; for(let i=0;i<6;i++) if(totals[i] && zones[i]/totals[i] > 0) occupied++; return occupied/6; }
 function updateSignals(raw, dt) {
   const e = state.envelopes;
   for (const key of ['energy','density','speed','coherence','ambient']) e[key] = followEnvelope(e[key], raw[key], dt);
@@ -181,15 +221,19 @@ function updateSignals(raw, dt) {
   const m = state.reacting ? state.master : 0;
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
+  const t0 = performance.now();
   state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted });
+  state.timing.bus = performance.now() - t0;
   return applied;
 }
 function render(applied) {
   if (!video.videoWidth) return;
+  state.timing.camera = state.timing.camera ?? null;
   const t0 = performance.now(); resize();
-  if (!gl || !glProgram) { if(fallbackContext){fallbackContext.save();fallbackContext.filter=state.effect==='invert'?'invert(1)':state.effect==='threshold'?'grayscale(1) contrast(8)':'grayscale(1) contrast(2)';fallbackContext.translate(state.camera==='user'?canvas.width:0,state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,0,0,canvas.width,canvas.height);fallbackContext.restore();} state.timing.cycle=performance.now()-t0; return; }
+  if (!gl || !glProgram) { if(fallbackContext){fallbackContext.save();fallbackContext.filter=state.effect==='invert'?'invert(1)':state.effect==='threshold'?'grayscale(1) contrast(8)':'grayscale(1) contrast(2)';fallbackContext.translate(state.camera==='user'?canvas.width:0,state.flip?canvas.height:0);fallbackContext.scale(state.camera==='user'?-1:1,state.flip?-1:1);fallbackContext.drawImage(video,0,0,canvas.width,canvas.height);fallbackContext.restore();} state.timing.camera=performance.now()-t0; state.timing.cycle=performance.now()-t0; return; }
   gl.useProgram(glProgram); gl.bindTexture(gl.TEXTURE_2D,texture);
   try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video); } catch { return; }
+  state.timing.camera = performance.now() - t0;
   const uniform=(name,val)=>gl.uniform1f(gl.getUniformLocation(glProgram,name),val);
   gl.uniform1i(gl.getUniformLocation(glProgram,'uTexture'),0); gl.uniform1i(gl.getUniformLocation(glProgram,'uEffect'),({invert:0,threshold:1,dither:2})[state.effect]);
   uniform('uThreshold',.5+applied.threshold); uniform('uBias',state.bias); uniform('uExposure',applied.exposure); uniform('uGrowth',applied.grow); uniform('uSpeed',applied.speed); uniform('uTime',performance.now()/1000); uniform('uImageAspect',video.videoWidth/video.videoHeight); uniform('uViewportAspect',canvas.width/canvas.height);
@@ -210,26 +254,39 @@ function updateHud(raw, applied, result) {
   const rows=[applied.exposure,applied.grow,applied.threshold,applied.dither,applied.speed];document.querySelectorAll('#gainList b').forEach((el,i)=>el.textContent=fmt(rows[i],2));
   $('frameInfo').textContent=`${result.width}×${result.height} · ${result.blobs.length} blobs`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
 }
+let frameErrors = 0;
 function frame(now) {
   if (!state.active) return;
-  const interval = 1000 / deviceProfile.fps;
-  if (video.readyState >= 2 && now - state.lastFrame >= interval) {
-    const started = performance.now();
-    state.lastFrame = now;
-    const result = analyze();
-    const applied = updateSignals(result.raw, result.dt);
-    render(applied); drawMaskOverlay(result); updateHud(result.raw, applied, result);
-    if (state.autoQuality) {
-      const perf = state.performance, cost = performance.now() - started;
-      perf.average = perf.average ? perf.average * 0.9 + cost * 0.1 : cost;
-      const budget = interval * 0.7;
-      perf.slowFrames = perf.average > budget ? perf.slowFrames + 1 : 0;
-      perf.fastFrames = perf.average < budget * 0.42 ? perf.fastFrames + 1 : 0;
-      if (perf.slowFrames >= 12 && state.trackingWidth > 160) { setTrackingWidth(Math.max(160, state.trackingWidth - 80)); perf.slowFrames = perf.fastFrames = 0; }
-      else if (perf.fastFrames >= 180 && state.trackingWidth < deviceProfile.maxWidth) { setTrackingWidth(Math.min(deviceProfile.maxWidth, state.trackingWidth + 80)); perf.fastFrames = 0; }
+  try {
+    const interval = 1000 / deviceProfile.fps;
+    if (video.readyState >= 2 && now - state.lastFrame >= interval) {
+      const started = performance.now();
+      state.lastFrame = now;
+      try {
+        const result = analyze();
+        if (result) {
+          const applied = updateSignals(result.raw, result.dt);
+          render(applied); drawMaskOverlay(result); updateHud(result.raw, applied, result);
+        }
+      } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
+      if (state.autoQuality) {
+        const perf = state.performance, cost = performance.now() - started;
+        perf.average = perf.average ? perf.average * 0.9 + cost * 0.1 : cost;
+        const budget = interval * 0.7;
+        perf.slowFrames = perf.average > budget ? perf.slowFrames + 1 : 0;
+        perf.fastFrames = perf.average < budget * 0.42 ? perf.fastFrames + 1 : 0;
+        if (perf.slowFrames >= 12 && state.trackingWidth > 160) { setTrackingWidth(Math.max(160, state.trackingWidth - 80)); perf.slowFrames = perf.fastFrames = 0; }
+        else if (perf.fastFrames >= 180 && state.trackingWidth < deviceProfile.maxWidth) { setTrackingWidth(Math.min(deviceProfile.maxWidth, state.trackingWidth + 80)); perf.fastFrames = 0; }
+      }
     }
+    requestAnimationFrame(frame);
+  } catch (e) {
+    frameErrors++;
+    if (frameErrors <= 5) log(`Ciclo: ${e.message}`);
+    // Blindagem: mesmo com erro no agendamento, tenta continuar; se persistir, encerra com aviso.
+    if (frameErrors < 120) requestAnimationFrame(frame);
+    else { showToast('Sessão encerrada por erro repetido'); log(`Ciclo interrompido: ${e.message}`); stopSession(); }
   }
-  requestAnimationFrame(frame);
 }
 
 $('startButton').addEventListener('click', async () => {
@@ -261,6 +318,61 @@ function setTrackingWidth(value){const next=Math.round(clamp(value,160,devicePro
 function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});
+
+/* ===== Tela cheia ===== */
+async function toggleFullscreen(){
+  try {
+    if (!document.fullscreenElement && !(document).webkitFullscreenElement) {
+      const el = document.documentElement;
+      await (el.requestFullscreen?.({navigationUI:'hide'}) ?? el.webkitRequestFullscreen?.());
+      if (screen.orientation?.lock) screen.orientation.lock('portrait').catch(()=>{});
+    } else {
+      await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
+    }
+  } catch (e) { showToast('Tela cheia não suportada aqui'); }
+}
+$('fullscreenButton').addEventListener('click',toggleFullscreen);
+document.addEventListener('fullscreenchange',()=>$('fullscreenButton').textContent=document.fullscreenElement?'⤡':'⛶');
+
+/* ===== Compartilhar (captura do palco via Web Share API) ===== */
+async function shareStage(){
+  if(!canvas.width){showToast('Ligue a sessão primeiro');return;}
+  try{
+    const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);
+    const blob=await new Promise(r=>shot.toBlob(r,'image/png'));
+    const file=new File([blob],`blobtrack-${Date.now()}.png`,{type:'image/png'});
+    if(navigator.canShare?.({files:[file]})) await navigator.share({files:[file],title:'BlobTrack'});
+    else {
+      const a=document.createElement('a');a.download=file.name;a.href=URL.createObjectURL(blob);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+      showToast('Navegador sem compartilhamento · imagem salva');
+    }
+  }catch(e){if(e.name!=='AbortError')showToast(`Compartilhar: ${e.message}`);}
+}
+$('shareButton').addEventListener('click',shareStage);
+
+/* ===== Modo palco: prioriza o efeito visual, oculta a interface ===== */
+let focusMode=false;
+function setFocusMode(on){
+  focusMode=on;
+  document.body.classList.toggle('focus-mode',on);
+  $('focusButton')?.classList.toggle('active',on);
+  $('focusButton')?.setAttribute('aria-pressed',String(on));
+  $('focusHint').hidden=!on;
+  if(on){
+    if(!document.fullscreenElement)toggleFullscreen().catch(()=>{});
+    state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
+  }
+  savePreferences();
+}
+$('focusButton').addEventListener('click',()=>setFocusMode(!focusMode));
+let lastTap=0;
+stage.addEventListener('touchend',e=>{
+  if(e.target!==canvas&&e.target!==overlayCanvas)return;
+  const now=Date.now();
+  if(now-lastTap<320){setFocusMode(!focusMode);lastTap=0;}
+  else lastTap=now;
+},{passive:true});
+if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
 document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));
 let touchStartY=0;const stage=$('stage');stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas)touchStartY=e.changedTouches[0].clientY;},{passive:true});stage.addEventListener('touchend',e=>{if(e.target!==canvas&&e.target!==overlayCanvas)return;const dy=e.changedTouches[0].clientY-touchStartY;if(!state.drawingRect&&Math.abs(dy)>65)switchCamera();},{passive:true});
 overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
@@ -268,4 +380,8 @@ overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const
 overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;}});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;});
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
+let wakeLock=null;async function acquireWakeLock(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
+async function releaseWakeLock(){try{await wakeLock?.release();}catch{}wakeLock=null;}
+document.addEventListener('visibilitychange',()=>{if(document.visibilitystate==='visible'&&state.active)acquireWakeLock();else releaseWakeLock();});
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&state.active)acquireWakeLock();});
 
