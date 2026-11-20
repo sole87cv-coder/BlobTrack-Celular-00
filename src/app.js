@@ -365,20 +365,30 @@ function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').cl
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});
 
-/* ===== Tela cheia ===== */
-async function toggleFullscreen(){
-  try {
-    if (!document.fullscreenElement && !(document).webkitFullscreenElement) {
-      const el = document.documentElement;
-      await (el.requestFullscreen?.({navigationUI:'hide'}) ?? el.webkitRequestFullscreen?.());
-      if (screen.orientation?.lock) screen.orientation.lock('portrait').catch(()=>{});
-    } else {
-      await (document.exitFullscreen?.() ?? document.webkitExitFullscreen?.());
-    }
-  } catch (e) { showToast('Tela cheia não suportada aqui'); }
+/* ===== Tela cheia: entrar e SAIR de qualquer jeito ===== */
+function isFullscreen(){return Boolean(document.fullscreenElement||document.webkitFullscreenElement);}
+async function exitFullscreen(){
+  try{ if(document.exitFullscreen) await document.exitFullscreen(); else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch{}
 }
+async function enterFullscreen(){
+  try{
+    const el=document.documentElement;
+    if(el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
+    else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    if(screen.orientation?.lock) screen.orientation.lock('portrait').catch(()=>{});
+  }catch{ showToast('Tela cheia não suportada aqui'); }
+}
+async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : await enterFullscreen(); }
 $('fullscreenButton').addEventListener('click',toggleFullscreen);
-document.addEventListener('fullscreenchange',()=>$('fullscreenButton').textContent=document.fullscreenElement?'⤡':'⛶');
+document.addEventListener('fullscreenchange',()=>{
+  const on=isFullscreen();
+  $('fullscreenButton').textContent=on?'⤢':'⛶';
+  $('fullscreenButton').setAttribute('aria-label',on?'Sair da tela cheia':'Tela cheia');
+});
+document.addEventListener('webkitfullscreenchange',()=>$('fullscreenButton').textContent=isFullscreen()?'⤢':'⛶');
+/* Esc / gesto de volta do sistema: sempre reflete o estado */
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&isFullscreen())exitFullscreen();});
+window.addEventListener('resize',()=>{ if(!isFullscreen()) $('fullscreenButton').textContent='⛶'; });
 
 /* ===== Compartilhar (captura do palco via Web Share API) ===== */
 async function shareStage(){
@@ -404,9 +414,14 @@ function setFocusMode(on){
   $('focusButton')?.classList.toggle('active',on);
   $('focusButton')?.setAttribute('aria-pressed',String(on));
   $('focusHint').hidden=!on;
+  $('focusHint').textContent=on?'Duplo toque para voltar':'Duplo toque para o modo palco';
   if(on){
-    if(!document.fullscreenElement)toggleFullscreen().catch(()=>{});
+    if(!isFullscreen())enterFullscreen().catch(()=>{});
     state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
+  } else {
+    // Sair do modo palco também sai da tela cheia (facilita voltar)
+    if(isFullscreen())exitFullscreen().catch(()=>{});
+    state.overlay=true;$('overlayButton')?.classList.add('active');$('overlayButton')?.setAttribute('aria-pressed','true');
   }
   savePreferences();
 }
@@ -415,8 +430,11 @@ let lastTap=0;
 stage.addEventListener('touchend',e=>{
   if(e.target!==canvas&&e.target!==overlayCanvas)return;
   const now=Date.now();
-  if(now-lastTap<320){setFocusMode(!focusMode);lastTap=0;}
-  else lastTap=now;
+  if(now-lastTap<320){
+    lastTap=0;
+    if(uiHidden)setUiHidden(false);
+    else setFocusMode(!focusMode);
+  } else lastTap=now;
 },{passive:true});
 if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
 document.querySelectorAll('.tab-button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>x.classList.toggle('active',x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));}));

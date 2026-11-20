@@ -1,8 +1,12 @@
 <!doctype html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#090b10">
   <meta name="description" content="Instrumento audiovisual ao vivo, feito para celular.">
   <title>BlobTrack Celular-00</title>
@@ -10,6 +14,7 @@
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./src/app.css">
 </head>
+
 <body>
   <main class="app-shell" id="appShell">
     <section class="workspace" aria-label="Instrumento">
@@ -32,9 +37,15 @@
           </div>
         </header>
 
-        <div class="stage-pill"><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0 blobs</span><span id="renderInfo">WebGL2</span></div>
+        <div class="stage-pill"><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0
+            blobs</span><span id="renderInfo">WebGL2</span></div>
 
-        <div class="stage-message" id="stageMessage"><div class="pulse-icon">◉</div><h1>O movimento vira imagem e som</h1><p>Ligue a câmera e comece a sessão.</p><button class="primary-button" id="startButton" type="button">Ligar</button></div>
+        <div class="stage-message" id="stageMessage">
+          <div class="pulse-icon">◉</div>
+          <h1>O movimento vira imagem e som</h1>
+          <p>Ligue a câmera e comece a sessão.</p><button class="primary-button" id="startButton"
+            type="button">Ligar</button>
+        </div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -42,7 +53,8 @@
 
       <!-- Painel inferior deslizante: arraste a alça ou toque no botão ○ -->
       <section class="dock" id="dock" aria-label="Controles">
-        <button class="dock-handle" id="dockHandle" type="button" aria-expanded="true" aria-label="Mostrar ou ocultar controles">
+        <button class="dock-handle" id="dockHandle" type="button" aria-expanded="true"
+          aria-label="Mostrar ou ocultar controles">
           <i></i><span id="dockLabel">Controles</span><em id="dockPeek">▾</em>
         </button>
 
@@ -59,7 +71,8 @@
 
           <!-- Sensibilidade do áudio -->
           <div class="dock-row slider-row" data-acc="som">
-            <label for="audioSensitivity"><span>Sensibilidade do som</span><b id="audioSensitivityValue">1,00</b></label>
+            <label for="audioSensitivity"><span>Sensibilidade do som</span><b
+                id="audioSensitivityValue">1,00</b></label>
             <input id="audioSensitivity" type="range" min="0" max="3" step="0.05" value="1">
           </div>
 
@@ -101,7 +114,8 @@
               <input id="trackingWidth" type="range" min="160" max="640" step="80" value="320">
             </div>
             <div class="dock-row wrap">
-              <button class="pill small auto-quality active" id="autoQualityButton" type="button" aria-pressed="true">Auto</button>
+              <button class="pill small auto-quality active" id="autoQualityButton" type="button"
+                aria-pressed="true">Auto</button>
               <button class="pill small" id="backgroundButton" type="button">Fundo</button>
               <button class="pill small" id="reseedButton" type="button">Reseed</button>
               <button class="pill small" id="rectangleButton" type="button">Retângulo</button>
@@ -114,15 +128,24 @@
 
           <div class="dock-panel" id="panelSignals">
             <div class="signal-grid">
-              <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i></div>
-              <div class="signal-card"><span>Densidade</span><b id="signal-density">—</b><i><u id="bar-density"></u></i></div>
-              <div class="signal-card"><span>Velocidade</span><b id="signal-speed">—</b><i><u id="bar-speed"></u></i></div>
-              <div class="signal-card"><span>Coerência</span><b id="signal-coherence">—</b><i><u id="bar-coherence"></u></i></div>
-              <div class="signal-card wide"><span>Nível ambiente</span><b id="signal-ambient">—</b><i><u id="bar-ambient"></u></i></div>
+              <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i>
+              </div>
+              <div class="signal-card"><span>Densidade</span><b id="signal-density">—</b><i><u id="bar-density"></u></i>
+              </div>
+              <div class="signal-card"><span>Velocidade</span><b id="signal-speed">—</b><i><u id="bar-speed"></u></i>
+              </div>
+              <div class="signal-card"><span>Coerência</span><b id="signal-coherence">—</b><i><u
+                    id="bar-coherence"></u></i></div>
+              <div class="signal-card wide"><span>Nível ambiente</span><b id="signal-ambient">—</b><i><u
+                    id="bar-ambient"></u></i></div>
             </div>
             <div class="zone-grid" id="zoneGrid" aria-label="Atividade nas seis zonas">
-              <div class="zone" data-zone="0"><span>01</span><b>—</b></div><div class="zone" data-zone="1"><span>02</span><b>—</b></div><div class="zone" data-zone="2"><span>03</span><b>—</b></div>
-              <div class="zone" data-zone="3"><span>04</span><b>—</b></div><div class="zone" data-zone="4"><span>05</span><b>—</b></div><div class="zone" data-zone="5"><span>06</span><b>—</b></div>
+              <div class="zone" data-zone="0"><span>01</span><b>—</b></div>
+              <div class="zone" data-zone="1"><span>02</span><b>—</b></div>
+              <div class="zone" data-zone="2"><span>03</span><b>—</b></div>
+              <div class="zone" data-zone="3"><span>04</span><b>—</b></div>
+              <div class="zone" data-zone="4"><span>05</span><b>—</b></div>
+              <div class="zone" data-zone="5"><span>06</span><b>—</b></div>
             </div>
             <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>
@@ -136,4 +159,5 @@
   </main>
   <script type="module" src="./src/app.js"></script>
 </body>
+
 </html>
