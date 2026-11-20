@@ -227,7 +227,7 @@ async function switchCamera() { if (!state.active || state.switching) return; st
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilitystate === 'visible' && state.active) {
+  if (document.visibilityState === 'visible' && state.active) {
     const track = state.stream?.getVideoTracks()[0];
     if (!track || track.readyState === 'ended') { startCamera().catch(() => {}); return; }
     if (video.readyState < 2) video.play().catch(() => {});
@@ -757,6 +757,6 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installProm
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
 let wakeLock=null;async function acquireWakeLock(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
 async function releaseWakeLock(){try{await wakeLock?.release();}catch{}wakeLock=null;}
-document.addEventListener('visibilitychange',()=>{if(document.visibilitystate==='visible'&&state.active)acquireWakeLock();else releaseWakeLock();});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.active)acquireWakeLock();else releaseWakeLock();});
 document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&state.active)acquireWakeLock();});
 
