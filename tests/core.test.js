@@ -263,7 +263,10 @@ test('service worker precaches all runtime assets', async () => {
 test('visibility lifecycle checks use the standard document property', async () => {
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.equal(app.includes('document.visibilitystate'), false);
-  assert.equal([...app.matchAll(/document\.visibilityState\s*===\s*'visible'/g)].length, 2);
+  assert.equal([...app.matchAll(/document\.visibilityState\s*(?:===|!==)\s*'visible'/g)].length, 2);
+  assert.ok(app.includes("document.visibilityState === 'hidden'"));
+  assert.ok(app.includes('recorder.pause()'));
+  assert.ok(app.includes('recorder.resume()'));
 });
 
 test('recorder selects the first browser-supported MIME and matching extension', () => {

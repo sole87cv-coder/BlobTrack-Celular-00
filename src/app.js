@@ -248,6 +248,15 @@ async function startCamera() {
     state.active = true; state.starting = false; state.switching = false;
     $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
     const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
+    track.addEventListener('ended', () => {
+      if (!state.active || state.switching) return;
+      log('Câmera desconectada; tentando reconectar.');
+      showToast('Câmera desconectada · reconectando');
+      recoverCameraStream().catch(error => {
+        log(`Câmera: reconexão falhou (${error.message})`);
+        showToast('Não foi possível reconectar a câmera');
+      });
+    }, { once: true });
     updateExposureCapability(track); tracker.reset(); state.priorCentroid = null;
     handleAudioInterruption();
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
@@ -268,7 +277,29 @@ async function switchCamera() { if (!state.active || state.switching) return; st
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.active) {
+  if (document.visibilityState === 'hidden') {
+    if (recordingSnapshot.state === 'recording') {
+      try {
+        if (!recorder.pause()) throw new Error('A gravação não pôde ser pausada.');
+      } catch (error) {
+        log(`Gravação: pausa em segundo plano falhou (${error.message})`);
+        showToast('Gravação encerrada ao ir para segundo plano');
+        void stopRecording();
+      }
+    }
+    return;
+  }
+  if (document.visibilityState !== 'visible') return;
+  if (recordingSnapshot.state === 'paused') {
+    try {
+      if (!recorder.resume()) throw new Error('A gravação não pôde ser retomada.');
+    } catch (error) {
+      log(`Gravação: retomada falhou (${error.message})`);
+      showToast('Gravação encerrada ao voltar');
+      void stopRecording();
+    }
+  }
+  if (state.active) {
     const track = state.stream?.getVideoTracks()[0];
     if (!track || track.readyState === 'ended') { recoverCameraStream().catch(() => {}); return; }
     if (video.readyState < 2) video.play().catch(() => {});
@@ -713,7 +744,6 @@ async function startRecording() {
   if (!recordingContext) { showToast('Composição de gravação indisponível neste navegador'); return; }
   resize();
   if (!canvas.width || !canvas.height) { showToast('Palco indisponível para gravação'); return; }
-  releasePendingRecording();
   const size = recordingCanvasSize(canvas.width, canvas.height);
   recordingCanvas.width = size.width;
   recordingCanvas.height = size.height;
@@ -724,6 +754,8 @@ async function startRecording() {
     const longEdge = Math.max(recordingCanvas.width, recordingCanvas.height);
     const videoBitsPerSecond = longEdge >= 1920 ? 8_000_000 : longEdge >= 1280 ? 4_000_000 : Math.max(1_000_000, Math.round(longEdge / 1280 * 4_000_000));
     const recordInfo = recorder.start({ audioStream: destination?.stream || null, videoBitsPerSecond });
+    releasePendingRecording();
+    updateRecordingControls(recordingSnapshot);
     const audioNotice = recordInfo.includesAudio ? '' : ' · áudio indisponível';
     showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · até ${deviceProfile.fps} fps${audioNotice}`);
   } catch (error) {
