@@ -15,7 +15,7 @@ const frameContext = frameCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
-  active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
+  active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null, recordAudioDestination: null,
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
@@ -171,6 +171,25 @@ async function makeAudio() {
     sendAudioOptions();
     await state.audio.resume();
   } catch (e) { log(`Áudio indisponível: ${e.message}`); showToast('Não foi possível iniciar o áudio'); }
+}
+
+function connectRecordingAudio() {
+  if (!state.audio || !state.audioGain || typeof state.audio.createMediaStreamDestination !== 'function') return null;
+  if (state.recordAudioDestination) return state.recordAudioDestination;
+  const destination = state.audio.createMediaStreamDestination();
+  state.audioGain.connect(destination);
+  state.recordAudioDestination = destination;
+  return destination;
+}
+
+function disconnectRecordingAudio(destination = state.recordAudioDestination) {
+  if (!destination) return;
+  try {
+    state.audioGain?.disconnect(destination);
+  } finally {
+    for (const track of destination.stream.getAudioTracks()) track.stop();
+    if (state.recordAudioDestination === destination) state.recordAudioDestination = null;
+  }
 }
 
 // Blindagem de áudio: navegadores móveis suspendem o AudioContext ao bloquear a tela/aba.
