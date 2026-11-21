@@ -50,6 +50,10 @@ Para testar no celular pela rede, use um túnel HTTPS ou publique em um host HTT
 ## APK de teste Android
 
 O módulo `android/` gera uma versão debug offline. O APK está em `dist/BlobTrack-Celular-00-debug.apk`; consulte `android/README.md` para instalar ou recompilar.
+
+## Uso no iPhone
+
+Abra a URL HTTPS do projeto diretamente no Safari, permita o acesso à câmera e toque em **Iniciar sessão**. O botão **＋** mostra como adicionar o app à Tela de Início; no iPhone essa ação é feita pelo menu **Compartilhar** do Safari. A versão instalada abre em modo de app. Inicie a sessão pelo botão do app para liberar câmera e áudio.
 ## Efeitos visuais reativos
 
 No painel **Efeito**, os filtros base (Invert, BW umbral e BW dither) podem ser combinados com três camadas reativas: **Rastro** guarda posições recentes de cada blob; **Ondas** emite círculos que variam com velocidade e densidade; **Grade** deforma uma malha ao redor dos blobs. As camadas podem ser ligadas separadamente e seguem o flip e o recorte da câmera.

@@ -1,6 +1,8 @@
 import { BlobTracker } from './blob-tracker.js';
 import { clearVideoComposition } from './video-crop.js';
 const $ = (id) => document.getElementById(id);
+const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandaloneApp = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
 const overlayCanvas = $('overlay');
 const stage = $('stage');
@@ -14,7 +16,7 @@ Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.widt
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
-  effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false,
+  effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
@@ -221,6 +223,12 @@ async function startCamera() {
     requestAnimationFrame(frame); watchAudio();
   } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
 }
+async function recoverCameraStream() {
+  if (state.cameraRecovering || state.switching) return;
+  state.cameraRecovering = true;
+  try { await stopMedia(); await startCamera(); }
+  finally { state.cameraRecovering = false; }
+}
 async function stopMedia() { state.active = false; clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
 async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
@@ -230,7 +238,7 @@ function updateExposureCapability(track) { const caps = track.getCapabilities?.(
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && state.active) {
     const track = state.stream?.getVideoTracks()[0];
-    if (!track || track.readyState === 'ended') { startCamera().catch(() => {}); return; }
+    if (!track || track.readyState === 'ended') { recoverCameraStream().catch(() => {}); return; }
     if (video.readyState < 2) video.play().catch(() => {});
     ensureAudioAlive();
   }
@@ -709,8 +717,9 @@ async function enterFullscreen(orientation='portrait'){
     const el=document.documentElement;
     if(el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
     else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
+    else { showToast(isAppleMobile && !isStandaloneApp ? 'No Safari do iPhone, use Compartilhar → Adicionar à Tela de Início para abrir em tela cheia.' : 'Tela cheia não suportada neste navegador'); return; }
     if(screen.orientation?.lock) screen.orientation.lock(orientation).catch(()=>{});
-  }catch{ showToast('Tela cheia não suportada aqui'); }
+  }catch{ showToast(isAppleMobile && !isStandaloneApp ? 'No iPhone, adicione o BlobTrack à Tela de Início para abrir sem as barras do Safari.' : 'Tela cheia não suportada aqui'); }
 }
 async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : await enterFullscreen(); }
 $('fullscreenButton').addEventListener('click',toggleFullscreen);
@@ -783,7 +792,9 @@ stage.addEventListener('touchend',e=>{
 overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
 overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
 overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;toggle($('rectangleButton'),false);}});
-window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(!installPrompt)return;installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;});
+if(isAppleMobile && !isStandaloneApp){$('installButton').hidden=false;$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
+if(isAppleMobile && isStandaloneApp)$('fullscreenButton').hidden=true;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;return;}if(isAppleMobile&&!isStandaloneApp)showToast('No Safari: Compartilhar → Adicionar à Tela de Início.');});
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
 let wakeLock=null;async function acquireWakeLock(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
 async function releaseWakeLock(){try{await wakeLock?.release();}catch{}wakeLock=null;}
