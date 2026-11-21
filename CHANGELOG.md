@@ -1,5 +1,47 @@
 # Changelog — BlobTrack Celular-00
 
+## 2026-11-21 — Ação inicial sem sobreposição
+
+### Ajustado
+- O início ganhou um cartão translúcido e responsivo; em celulares ele respeita o espaço livre acima do dock, em paisagem fica compacto, e no desktop evita a área do painel lateral.
+- O botão “Ligar” permanece totalmente visível entre a barra superior e os controles.
+- Cache do service worker atualizado para `v24`.
+
+### Validação
+- Browser preview: 320×480 e 320×569 em retrato, 641×391 em paisagem, 1441×900 em desktop e retrato com safe area simulada; em todos, o botão ficou fora da área do dock. Cache local `v24`: 14 assets disponíveis.
+- APK debug recompilado; assinatura, alinhamento e paridade dos 15 assets Android com as fontes validados.
+- APK atual instalado e aberto no AVD Pixel 6/API 35; a inspeção offline detalhada do Cache Storage v24 permanece pendente.
+- Câmera/gravação real e verificação do cache `v24` no AVD ainda pendentes.
+
+## 2026-11-21 — Menu translúcido e gravação rápida
+
+### Aprimorado
+- Dock e barra flutuante ganharam acabamento translúcido com desfoque, realces suaves em verde/azul/violeta e fallback legível sem suporte a `backdrop-filter`.
+- A ação para iniciar/parar gravação e o botão para salvar agora ficam na faixa principal em todas as abas; o atalho de gravação permanece fixo ao rolar ações horizontalmente, e os estados gravando/pausado têm indicação visual própria.
+- O cache do service worker passou para `v23` para publicar a interface atualizada.
+
+### Validação
+- `npm test`: 20/20 aprovados.
+- Preview em navegador conferido em retrato (390×844), paisagem (844×390) e desktop (1440×900); a ação de gravação permaneceu visível também durante a rolagem horizontal. Câmera e gravação reais não foram exercitadas.
+- APK debug recompilado com os assets atualizados; cache `v23` ainda precisa de verificação offline no AVD.
+
+## 2026-11-21 — Robustez das preferências e compartilhamento
+
+### Corrigido
+- Preferências locais inválidas ou inacessíveis não interrompem mais a inicialização nem a restauração do modo palco.
+- A captura do palco verifica se `navigator.share` existe antes de chamar a API e usa o download como fallback.
+- Removidos estado e trechos de código sem uso identificados na revisão estática.
+- WebView verifica suporte antes de configurar Service Worker; regras de backup mantêm os dados fora de backups Android.
+- Removida a declaração explícita de orientação não necessária; mantido AndroidX WebKit 1.12.1 para preservar minSdk 23.
+
+### Validação
+- `npm test`: 20/20 aprovados; incluídos casos de JSON inválido, valor não objeto, storage indisponível e paridade de assets Android.
+- Cache do service worker atualizado para `v22`; a lista não duplica a URL do diretório.
+- APK Android passa a empacotar todos os arquivos usados pelo shell offline, incluindo a página de diagnóstico e seu script.
+- Inventário inicial: nenhum arquivo rastreado faltante ou não rastreado; arquivos de runtime e ícone referenciados.
+- Build Android concluída; lint sem erros e com dois avisos justificados.
+- AVD Pixel 6/API 35 confirmou ativação do cache v22 e 14 assets disponíveis no Cache Storage com rede simulada offline.
+
 ## 2026-11-20 — Gravação manual de sessão
 
 ### Adicionado
@@ -36,4 +78,4 @@
 - Localizações de uniforms WebGL cacheadas; atualização do painel de medições limitada a 10 Hz.
 - Buffers do tracker e envelopes das zonas reutilizados em caminhos quentes.
 - Estados ARIA de tabs, filtros e toggles sincronizados; falhas de áudio/renderização têm feedback na interface.
-- Service worker inclui os módulos necessários ao app offline e usa o cache `blobtrack-celular-00-v20`.
+- Service worker inclui os módulos necessários ao app offline e usa o cache `blobtrack-celular-00-v24`.

@@ -3,6 +3,7 @@ import { createRecorder, recordingExtension } from './recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
 import { exportRecording } from './recording-export.js';
 import { clearVideoComposition } from './video-crop.js';
+import { loadPreferences } from './preferences.js';
 const $ = (id) => document.getElementById(id);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandaloneApp = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
@@ -42,30 +43,28 @@ let pendingRecording = null;
 let recordingEffect = state.effect;
 const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : 0));
 const fmt = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—';
-try {
-  const saved = JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences') || '{}');
-  if (typeof saved.reacting === 'boolean') state.reacting = saved.reacting;
-  if (typeof saved.effect === 'string' && ['invert','threshold','dither'].includes(saved.effect)) state.effect = saved.effect;
-  if (Number.isFinite(saved.master)) state.master = clamp(saved.master,0,2);
-  if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
-  if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0,1);
-  if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
-  if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
-  if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
-  if (typeof saved.videoWindows === 'boolean') state.videoWindows = saved.videoWindows;
-  if (typeof saved.trailEffect === 'boolean') state.trailEffect = saved.trailEffect;
-  if (typeof saved.waveEffect === 'boolean') state.waveEffect = saved.waveEffect;
-  if (typeof saved.meshEffect === 'boolean') state.meshEffect = saved.meshEffect;
-  if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
-  if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
-  if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
-  if (Number.isFinite(saved.audioKey)) state.audioKey = clamp(saved.audioKey,0,11);
-  if (Number.isFinite(saved.audioTimbre)) state.audioTimbre = clamp(saved.audioTimbre,0,2);
-  if (saved.audioEffects && typeof saved.audioEffects === 'object') {
-    for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
-  }
-} catch {}
-let toastTimer, installPrompt, glProgram, texture, posBuffer, lastViewport = '', uniforms = null;
+const saved = loadPreferences();
+if (typeof saved.reacting === 'boolean') state.reacting = saved.reacting;
+if (typeof saved.effect === 'string' && ['invert','threshold','dither'].includes(saved.effect)) state.effect = saved.effect;
+if (Number.isFinite(saved.master)) state.master = clamp(saved.master,0,2);
+if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
+if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0,1);
+if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
+if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
+if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
+if (typeof saved.videoWindows === 'boolean') state.videoWindows = saved.videoWindows;
+if (typeof saved.trailEffect === 'boolean') state.trailEffect = saved.trailEffect;
+if (typeof saved.waveEffect === 'boolean') state.waveEffect = saved.waveEffect;
+if (typeof saved.meshEffect === 'boolean') state.meshEffect = saved.meshEffect;
+if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
+if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
+if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
+if (Number.isFinite(saved.audioKey)) state.audioKey = clamp(saved.audioKey,0,11);
+if (Number.isFinite(saved.audioTimbre)) state.audioTimbre = clamp(saved.audioTimbre,0,2);
+if (saved.audioEffects && typeof saved.audioEffects === 'object') {
+  for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
+}
+let toastTimer, installPrompt, glProgram, texture, posBuffer, uniforms = null;
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
@@ -315,11 +314,9 @@ function resize() {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (overlayCanvas.width !== w || overlayCanvas.height !== h) { overlayCanvas.width = w; overlayCanvas.height = h; }
   if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
-  lastViewport = `${innerWidth}x${innerHeight}:${state.trackingWidth}`;
 }
 new ResizeObserver(resize).observe(canvas);
 window.addEventListener('orientationchange', () => requestAnimationFrame(resize), { passive: true });
-function prepareAnalysis() { resize(); }
 
 // One immutable camera snapshot feeds tracking, the main render and raw blob windows.
 function captureVideoFrame() {
@@ -602,7 +599,6 @@ function updateHud(raw, applied, result) {
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
   $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
-  const rows=[applied.exposure,applied.grow,applied.threshold,applied.dither,applied.speed];
   $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
 }
 function updateReactiveEffectQuality(now) {
@@ -940,7 +936,7 @@ async function shareStage(){
     const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);
     const blob=await new Promise(r=>shot.toBlob(r,'image/png'));
     const file=new File([blob],`blobtrack-${Date.now()}.png`,{type:'image/png'});
-    if(navigator.canShare?.({files:[file]})) await navigator.share({files:[file],title:'BlobTrack'});
+    if(typeof navigator.share==='function'&&navigator.canShare?.({files:[file]})) await navigator.share({files:[file],title:'BlobTrack'});
     else {
       const a=document.createElement('a');a.download=file.name;a.href=URL.createObjectURL(blob);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);
       showToast('Navegador sem compartilhamento · imagem salva');
@@ -979,7 +975,7 @@ stage.addEventListener('touchend',e=>{
     else setFocusMode(!focusMode);
   } else lastTap=now;
 },{passive:true});
-if(JSON.parse(localStorage.getItem('blobtrack-celular-00-preferences')||'{}').focusMode)setFocusMode(true);
+if(saved.focusMode)setFocusMode(true);
 document.querySelectorAll('.tab-button').forEach(b=>{b.setAttribute('aria-pressed',String(b.classList.contains('active')));b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>toggle(x,x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));});});
 let touchStartY=0,touchStartTime=0;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});

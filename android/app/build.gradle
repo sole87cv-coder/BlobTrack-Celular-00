@@ -26,6 +26,8 @@ def webRoot = file("../..")
 tasks.register("syncBlobTrackWeb", Sync) {
   from(webRoot) {
     include "index.html"
+    include "teste.html"
+    include "teste.js"
     include "manifest.webmanifest"
     include "sw.js"
     include "src/**"

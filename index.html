@@ -54,10 +54,12 @@
             blobs</span><span id="renderInfo">WebGL2</span></div>
 
         <div class="stage-message" id="stageMessage">
-          <div class="pulse-icon">◉</div>
-          <h1>O movimento vira imagem e som</h1>
-          <p>Ligue a câmera para começar.</p><button class="primary-button" id="startButton"
-            type="button">Ligar</button>
+          <div class="stage-welcome">
+            <div class="pulse-icon">◉</div>
+            <h1>O movimento vira imagem e som</h1>
+            <p>Ligue a câmera para começar.</p>
+            <button class="primary-button" id="startButton" type="button">Ligar</button>
+          </div>
         </div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
@@ -74,6 +76,10 @@
         <div class="dock-body" id="dockBody">
           <!-- Linha principal: ações diretas -->
           <div class="dock-row dock-actions">
+            <button class="pill record-dock-button" id="recordButtonPanel" type="button" aria-label="Iniciar gravação"
+              aria-pressed="false" title="Gravar o palco">Gravar vídeo</button>
+            <button class="pill record-save-dock-button" id="recordSaveButtonPanel" type="button"
+              aria-label="Salvar ou compartilhar gravação" title="Salvar ou compartilhar gravação" hidden>Salvar gravação</button>
             <button class="pill primary" id="startButton2" type="button" hidden>Ligar</button>
             <button class="pill" id="audioSensitivityButton" type="button" aria-pressed="true">Som · ligado</button>
             <button class="pill" id="muteButton" type="button" aria-pressed="false">Mudo</button>
@@ -134,12 +140,6 @@
           </div>
 
           <div class="dock-panel active" id="panelEffects">
-            <div class="dock-row">
-              <button class="pill primary" id="recordButtonPanel" type="button" aria-label="Iniciar gravação"
-                aria-pressed="false" title="Gravar o palco">Gravar vídeo</button>
-              <button class="pill" id="recordSaveButtonPanel" type="button" aria-label="Salvar ou compartilhar gravação"
-                title="Salvar ou compartilhar gravação" hidden>Salvar gravação</button>
-            </div>
             <div class="dock-row">
               <div class="effect-row" role="group" aria-label="Efeito visual">
                 <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Invert</button>

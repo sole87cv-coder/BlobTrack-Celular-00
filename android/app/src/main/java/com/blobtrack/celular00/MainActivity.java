@@ -18,6 +18,7 @@ import android.webkit.WebView;
 import androidx.webkit.ServiceWorkerClientCompat;
 import androidx.webkit.ServiceWorkerControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
+import androidx.webkit.WebViewFeature;
 import androidx.webkit.WebViewClientCompat;
 
 public final class MainActivity extends Activity {
@@ -60,14 +61,16 @@ public final class MainActivity extends Activity {
         return !isAppOrigin(request.getUrl());
       }
     });
-    ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
-      new ServiceWorkerClientCompat() {
-        @Override
-        public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
-          return assetLoader.shouldInterceptRequest(request.getUrl());
+    if (WebViewFeature.isFeatureSupported(WebViewFeature.SERVICE_WORKER_BASIC_USAGE)) {
+      ServiceWorkerControllerCompat.getInstance().setServiceWorkerClient(
+        new ServiceWorkerClientCompat() {
+          @Override
+          public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
+            return assetLoader.shouldInterceptRequest(request.getUrl());
+          }
         }
-      }
-    );
+      );
+    }
 
     webView.setWebChromeClient(new WebChromeClient() {
       @Override

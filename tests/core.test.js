@@ -6,6 +6,7 @@ import { createRecorder, recordingExtension, selectRecordingMimeType } from '../
 import { drawRecordingFrame, recordingCanvasSize } from '../src/recording-canvas.js';
 import { exportRecording } from '../src/recording-export.js';
 import { clearVideoComposition } from '../src/video-crop.js';
+import { loadPreferences } from '../src/preferences.js';
 
 const projectRoot = new URL('../', import.meta.url);
 const supportedMime = 'video/webm;codecs=vp8,opus';
@@ -160,6 +161,14 @@ function addSixBlobs(pixels, width = 320) {
 test('tracker skips frames until camera dimensions are available', () => {
   const tracker = new BlobTracker();
   assert.equal(tracker.update({ videoWidth: 0, videoHeight: 180 }, {}, {}, 320, 0.18, 0.04), null);
+});
+
+test('preferences safely fall back for malformed, non-object, or inaccessible storage', () => {
+  assert.deepEqual(loadPreferences(() => '{'), {});
+  assert.deepEqual(loadPreferences(() => 'null'), {});
+  assert.deepEqual(loadPreferences(() => '[]'), {});
+  assert.deepEqual(loadPreferences(() => '{"focusMode":true}'), { focusMode: true });
+  assert.deepEqual(loadPreferences(() => { throw new Error('Storage unavailable'); }), {});
 });
 
 test('tracker uses a safe threshold and preserves blob IDs across frames', () => {
@@ -363,6 +372,7 @@ test('service worker precaches all runtime assets', async () => {
   const shellMatch = serviceWorker.match(/const SHELL = \[(.*?)\];/s);
   assert.ok(shellMatch, 'service worker shell list exists');
   const shell = [...shellMatch[1].matchAll(/'([^']+)'/g)].map(([, asset]) => asset);
+  assert.ok(!shell.includes('./'), 'shell does not cache a duplicate directory URL');
   const requiredAssets = [
     './index.html',
     './src/app.css',
@@ -373,6 +383,7 @@ test('service worker precaches all runtime assets', async () => {
     './src/recorder.js',
     './src/recording-canvas.js',
     './src/recording-export.js',
+    './src/preferences.js',
     './manifest.webmanifest',
     './icons/icon.svg',
   ];
@@ -380,6 +391,23 @@ test('service worker precaches all runtime assets', async () => {
   for (const asset of requiredAssets) {
     assert.ok(shell.includes(asset), `${asset} is precached`);
     await readFile(new URL(asset.replace(/^\.\//, ''), projectRoot));
+  }
+});
+
+test('Android asset packaging includes every service-worker shell asset', async () => {
+  const serviceWorker = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+  const shellMatch = serviceWorker.match(/const SHELL = \[(.*?)\];/s);
+  assert.ok(shellMatch, 'service worker shell list exists');
+  const shell = [...shellMatch[1].matchAll(/'([^']+)'/g)].map(([, asset]) => asset);
+  const buildFile = await readFile(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+  const patterns = [...buildFile.matchAll(/include "([^"]+)"/g)].map(([, pattern]) => pattern);
+
+  for (const asset of shell) {
+    const relativeAsset = asset.replace(/^\.\//, '');
+    const packaged = patterns.some(pattern => pattern.endsWith('/**')
+      ? relativeAsset.startsWith(pattern.slice(0, -2))
+      : relativeAsset === pattern);
+    assert.ok(packaged, `${asset} is included in Android assets`);
   }
 });
 

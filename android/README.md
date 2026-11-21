@@ -1,6 +1,6 @@
 # APK Android — BlobTrack Celular-00
 
-O módulo Android hospeda os assets web por `WebViewAssetLoader` em uma origem HTTPS local. A câmera só é concedida após a permissão do Android e a solicitação de captura do WebView. A síntese de áudio continua sendo feita pelo AudioWorklet.
+O módulo Android hospeda os assets web por `WebViewAssetLoader` em uma origem HTTPS local. A câmera só é concedida após a permissão do Android e a solicitação de captura do WebView. A síntese de áudio continua sendo feita pelo AudioWorklet. Os dados do app ficam excluídos de backup em nuvem e transferência entre dispositivos.
 
 ## Compilar
 
@@ -32,7 +32,7 @@ Confirme a autorização da chave RSA no telefone. Abra **BlobTrack Celular-00**
 
 Para validar gravação: inicie uma sessão, toque em **Gravar vídeo**, aguarde alguns segundos, pare e use **Salvar gravação**. O app grava o palco processado e o áudio sintetizado, sem usar o microfone; formato e extensão dependem do `MediaRecorder` disponível no WebView. A gravação pausa em segundo plano e retoma quando o app volta. Replay não está incluído.
 
-Para validar instalação/execução, o primeiro comando precisa listar o serial do dispositivo com estado `device`; uma lista vazia não valida hardware. A revisão de 20/11/2026 não encontrou dispositivo conectado nem emulador instalado, então a validação em aparelho permanece pendente.
+Para validar instalação/execução, o primeiro comando precisa listar o serial do dispositivo com estado `device`; uma lista vazia não valida hardware. Em 21/11/2026, foi criado o AVD `BlobTrackCacheV22_API35` (Pixel 6, API 35, imagem Google APIs x86_64) em `android/.local-build/avd`. Nele, o cache v22 foi ativado e os 14 assets foram recuperados com a rede simulada offline. O AVD não substitui validação de câmera e desempenho em telefone físico.
 
 ## Diagnóstico
 
