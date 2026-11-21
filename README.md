@@ -1,101 +1,71 @@
 # BlobTrack Celular-00
 
-Aplicativo audiovisual PWA mobile-first. A câmera detecta regiões de movimento conectadas (blobs); os envelopes resultantes alimentam o palco visual e o som no mesmo ciclo de processamento.
+Aplicativo audiovisual mobile-first. A câmera detecta regiões de movimento conectadas (blobs); os sinais rastreados alimentam o palco visual e a síntese de áudio.
 
-## Definições
+## Recursos
 
-- **Blob**: grupo de pixels de movimento conectado no quadro da câmera. Cada grupo recebe uma caixa, um centro e um identificador que pode persistir entre quadros próximos.
-- **Rastreio**: comparação de luminância entre o quadro atual e o fundo aprendido. A imagem é reduzida antes da análise para controlar o custo em celulares.
-- **Sinais**: energia, densidade, velocidade dos blobs, coerência entre zonas e nível ambiente.
-- **Envelope compartilhado**: suavização temporal dos sinais usada no mesmo ciclo para imagem e áudio.
-- **Câmeras**: começa pela traseira principal escolhida pelo navegador; o controle alterna para a câmera frontal. Os nomes e a disponibilidade variam conforme aparelho e navegador.
-- **Qualidade automática**: estima um perfil inicial pelo hardware disponível e ajusta a resolução conforme o tempo de processamento observado.
+- Segmentação por diferença de luminância, caixas e IDs persistentes dos blobs.
+- Filtros visuais Invert, BW umbral e BW dither; camadas Rastro, Ondas e Grade.
+- Janelas de vídeo ao vivo recortadas pela união dos blobs, captura e compartilhamento.
+- Áudio via AudioWorklet, com timbres Suave, Sino e Pulsante e efeitos Eco, Espaço e Chorus.
+- Gravação manual do palco composto com áudio sintetizado, pausa em segundo plano e exportação conforme o suporte do navegador.
+- Qualidade adaptativa, alternância de câmeras, modo palco e visualização Gear VR.
+- PWA instalável com shell offline e APK Android debug baseado em WebView.
 
-## Arquivos e manutenção
+O tracker detecta movimento, não profundidade. Um objeto parado pode ser incorporado ao fundo; iluminação instável pode criar blobs extras.
 
-- `index.html`: entrada do app e estrutura da interface.
-- `src/app.js`: câmera, renderização, áudio, controles e ciclo principal.
-- `src/blob-tracker.js`: fundo, segmentação, componentes conectados e IDs dos blobs.
-- `src/audio-processor.js`: síntese e medição no AudioWorklet.
-- `src/app.css`: layout adaptativo, áreas de toque, safe areas e contraste.
-- `manifest.webmanifest`: nome, orientação, tela cheia e ícone instalável.
-- `sw.js`: cache offline da casca e dos módulos do app.
-- ndroid/: APK de teste offline com WebView Android e permissão de câmera.
-- `icons/icon.svg`: ícone PWA.
+## Código
 
-Mantenha a análise em baixa resolução, reutilize buffers e suspenda o processamento ao encerrar a sessão. Ao adicionar um arquivo carregado em runtime, inclua-o na lista `SHELL` do service worker e aumente a versão do cache. O histórico Git ainda pode conter versões antigas do projeto; o diretório de trabalho atual deve conter somente os arquivos do app móvel.
+- `index.html`: interface e metadados PWA.
+- `src/app.js`: câmera, ciclo da sessão, renderização e controles.
+- `src/blob-tracker.js`: fundo, segmentação, componentes conectados e IDs.
+- `src/audio-processor.js`: síntese e efeitos no AudioWorklet.
+- `src/recorder.js`, `src/recording-canvas.js` e `src/recording-export.js`: MediaRecorder, composição fixa do palco e exportação.
+- `src/video-crop.js`: limpeza da composição ao parar/trocar a câmera.
+- `src/app.css`: layout responsivo e apresentação.
+- `sw.js`: shell offline. Ao adicionar um arquivo carregado em runtime, inclua-o em `SHELL` e incremente a versão do cache.
+- `teste.html` e `teste.js`: diagnóstico manual de câmera, rastreio e áudio.
+- `tests/core.test.js`: regressões automatizadas sem câmera ou dependências externas.
+- `android/`: WebView offline e script de build do APK.
 
-## Teste do índice no laptop
+## Desenvolvimento local
 
-O laptop serve apenas como ambiente de desenvolvimento. Abra um terminal dentro da pasta do projeto e execute:
+Abra um terminal PowerShell na raiz e execute:
 
 ```powershell
 python -m http.server 8000
 ```
 
-Abra `http://localhost:8000`; o navegador trata localhost como contexto seguro para câmera, áudio e AudioWorklet. O `index.html` inicia o app sem instalação. Toque em **Iniciar sessão** para pedir a câmera.
+Abra `http://localhost:8000` e toque em **Iniciar sessão**. Câmera e áudio exigem HTTPS ou `localhost`; `file://` não é suportado.
 
-Para testar no celular pela rede, use um túnel HTTPS ou publique em um host HTTPS. Não abra via `file://`: câmera e áudio exigem contexto seguro.
+## Testes automatizados
 
-## Verificação manual
+Requer Node.js 20 ou mais recente; não há dependências npm externas.
 
-1. Abra o índice em localhost no laptop e inicie a sessão; confira imagem, áudio e console do navegador.
-2. Alterne entre a câmera frontal e a traseira principal.
-3. Mova um objeto no quadro; confira caixas e IDs dos blobs, seis zonas e sinais.
-4. Toque nos efeitos, sensibilidade, qualidade automática/manual, mudo, flip, máscara e captura.
-5. Gire a tela; a interface deve redimensionar sem reiniciar câmera ou áudio.
-6. Abra outra aba e tente iniciar; apenas uma sessão deve usar a câmera/áudio.
-7. Após a primeira carga online, recarregue sem rede para conferir a casca em cache.
+```powershell
+npm test
+```
 
-## APK de teste Android
+A suíte cobre threshold inválido, detecção e persistência de IDs, limpeza WebGL/Canvas 2D, composição e limite de resolução, MIME/estados/limites do MediaRecorder, exportação, assets offline e ciclo de visibilidade. Os testes usam frames e APIs sintéticos: não substituem validação com câmera e aparelho.
 
-O módulo `android/` gera uma versão debug offline. O APK está em `dist/BlobTrack-Celular-00-debug.apk`; consulte `android/README.md` para instalar ou recompilar.
+## PWA e instalação em celular
 
-## Uso no iPhone
+Publique em um host HTTPS ou abra a URL local por HTTPS no celular. No iPhone, use Safari e **Compartilhar → Adicionar à Tela de Início**. Permissões, tela cheia, Wake Lock e seleção de lente variam por sistema e navegador.
 
-Abra a URL HTTPS do projeto diretamente no Safari, permita o acesso à câmera e toque em **Iniciar sessão**. O botão **＋** mostra como adicionar o app à Tela de Início; no iPhone essa ação é feita pelo menu **Compartilhar** do Safari. A versão instalada abre em modo de app. Inicie a sessão pelo botão do app para liberar câmera e áudio.
-## Efeitos visuais reativos
+Checklist manual: iniciar/parar; permissões concedidas/negadas; câmera frontal/traseira; rotação; filtros e camadas; janela viva e captura; áudio/mudo; gravar/parar/salvar/compartilhar; suspensão/retomada durante gravação; abrir uma segunda aba; recarregar offline após a primeira carga online. A gravação não usa microfone. Replay não está incluído.
 
-No painel **Efeito**, os filtros base (Invert, BW umbral e BW dither) podem ser combinados com três camadas reativas: **Rastro** guarda posições recentes de cada blob; **Ondas** emite círculos que variam com velocidade e densidade; **Grade** deforma uma malha ao redor dos blobs. As camadas podem ser ligadas separadamente e seguem o flip e o recorte da câmera.
+## APK Android debug
 
-**Janela viva** vem ligada por padrão. O vídeo cru da câmera é composto uma única vez, recortado pela união das caixas dos blobs, acima do filtro e das camadas reativas. O contorno e os rótulos continuam visíveis quando Overlay está ligado. Capturar e compartilhar usam essa composição final. A opção é lembrada no dispositivo.
+Na pasta `android`, execute:
 
-O painel de medições mostra o custo da composição das janelas. Se a taxa de quadros ficar abaixo do limite adaptado ao perfil do celular, Rastro, Ondas e Grade são pausados; a Janela viva continua ativa. Os efeitos voltam quando o desempenho se estabiliza.
+```powershell
+.\build-apk.ps1
+```
 
-## Timbres e efeitos de áudio
+O script compila e copia o APK para `dist/BlobTrack-Celular-00-debug.apk`. O arquivo em `dist/` é rastreado pelo Git e será atualizado pelo build. É um APK debug, não destinado à publicação na Play Store. Requisitos e instalação USB estão em [`android/README.md`](android/README.md).
 
-No painel **Som**, selecione os timbres **Suave**, **Sino** e **Pulsante** para alterar a textura das notas por zona. Os botões independentes **Eco**, **Espaço** e **Chorus** podem ser combinados durante a sessão; timbre e efeitos ficam salvos no dispositivo. O processamento usa buffers de atraso reutilizados no AudioWorklet, sem alocações por bloco de áudio.
+## Medições e validação
 
-### Controles de timbre e efeitos de áudio
+O shell pré-cacheado pelo service worker `v20` ocupa **166.381 bytes sem compressão** nesta revisão (incluindo os módulos de gravação). Esse tamanho não é um benchmark de rede.
 
-No painel **Som**, escolha **Suave**, **Sino** ou **Pulsante** para mudar a cor das notas das zonas sem alterar o rastreio. **Eco**, **Espaço** e **Chorus** são botões independentes; podem ser combinados, desligados durante a sessão e ficam salvos no dispositivo. Os buffers de atraso são reutilizados dentro do AudioWorklet.
-
-Checklist rápido: alterne os três timbres com movimento ativo; ligue Eco, Espaço e Chorus um por vez e depois combinados; confirme que Mudo e Som desligado continuam silenciando a saída; encerre e reinicie para verificar as preferências.
-
-### Checklist manual dos efeitos
-
-1. No painel Efeito, teste Rastro, Ondas e Grade separadamente e em conjunto; mova o objeto para conferir a resposta à posição e à velocidade.
-2. Com Janela viva ligada, alterne Invert, BW umbral e BW dither: dentro das caixas deve aparecer a imagem crua; fora delas, o filtro.
-3. Compare flip ligado/desligado, máscara e câmera frontal; confira o alinhamento dos recortes e efeitos.
-4. Capture e compartilhe uma imagem; confira se o resultado inclui filtro, efeitos e janelas cruas. Desligue Janela viva, recarregue e confirme que a preferência foi salva.
-5. Teste o Gear VR SM-R323 e gire o telefone; as duas vistas devem manter a composição sem reiniciar a sessão.
-6. Deixe o app sob carga para conferir a pausa automática dos efeitos reativos e o custo da composição no painel de medições.
-
-## Limites conhecidos
-
-O rastreador usa mudança de luminância, não profundidade. Um objeto imóvel que passa a integrar o fundo pode deixar de aparecer; iluminação instável pode criar blobs extras. Exposição manual, instalação, tela cheia, Wake Lock e seleção da lente variam por navegador e aparelho. Métricas que o navegador não mede permanecem como `—`.
-## Benchmark e auditoria
-
-O shell web principal ocupa 110.820 bytes sem compressao nesta revisao, ante 108.433 bytes antes das alteracoes (incluindo `video-crop.js`; aumento de 2.387 bytes, +2,20%). FPS, tempo de rastreio, memoria apos 5 minutos e tempo de boot precisam ser medidos em aparelho real com camera e DevTools; nao publicamos valores estimados como benchmarks.
-
-Esta rodada registrou o diagnostico estatico em `AUDITORIA.md`, cacheia uniforms WebGL, reutiliza o array de envelopes das zonas e limita as atualizacoes do painel a 10 Hz sem desacelerar rastreio ou audio. Tambem sincroniza ARIA em tabs/efeitos, comunica falhas de audio/WebGL por toast e registra listeners de interrupcao apenas uma vez por contexto. O cache offline foi versionado para v16. A interface segue em tema escuro e respeita `prefers-reduced-motion`.
-
-## Regra video-dentro-dos-blobs
-
-Quando Janela viva esta ligada, a imagem crua da camera aparece nas janelas dos blobs, enquanto o restante mantem o efeito ativo. Desligue Janela viva no painel Efeito para ver o filtro em toda a imagem.
-
-Ao encerrar ou trocar de camera, as camadas visuais anteriores sao limpas antes do novo stream. A nova composicao so volta quando chega um frame valido.
-
-## Melhorias de estabilidade do rastreio
-
-O tracker valida o limiar antes da segmentacao, reutiliza contadores/scratch de zonas e slots de associacao, e mantém o formato de resultado existente. A regressao sintética comparou 400 frames e obteve resultados idênticos em máscara, caixas, IDs, centroide e envelopes. Em Node desktop com seis formas 10×10, 5 execuções de 300 frames reduziram a mediana de 0,952 para 0,927 ms em 320×180 e de 2,331 para 2,286 ms em 480×270; isso não representa benchmark de Android.
+O smoke test desktop confirmou WebGL2, layout paisagem sem sobreposição do botão REC e gravação sintética de vídeo. Isso não valida câmera/áudio físicos, reprodução ou compartilhamento em aparelho. FPS, latência, memória e retomada em background ainda exigem aparelho real. Consulte [`AUDITORIA.md`](AUDITORIA.md) e [`BUGS-CROP.md`](BUGS-CROP.md) para resultados e pendências.

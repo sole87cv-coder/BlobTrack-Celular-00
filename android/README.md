@@ -1,8 +1,8 @@
-# BlobTrack Celular-00 · APK Android
+# APK Android — BlobTrack Celular-00
 
-Este módulo gera um APK debug offline. A interface e o motor continuam em HTML/JS; o WebView inclui os arquivos do projeto no pacote. A camada Android só abre os assets por uma origem HTTPS local e concede a permissão de câmera após a confirmação do sistema.
+O módulo Android hospeda os assets web por `WebViewAssetLoader` em uma origem HTTPS local. A câmera só é concedida após a permissão do Android e a solicitação de captura do WebView. A síntese de áudio continua sendo feita pelo AudioWorklet.
 
-## Gerar
+## Compilar
 
 Na pasta `android`, execute no PowerShell:
 
@@ -10,16 +10,33 @@ Na pasta `android`, execute no PowerShell:
 .\build-apk.ps1
 ```
 
-O APK sai em `dist/BlobTrack-Celular-00-debug.apk` (também fica em `app/build/outputs/apk/debug/app-debug.apk`). Ele é assinado com a chave debug e serve para instalação de teste; não é uma versão de publicação na Play Store.
+O script compila `:app:assembleDebug` e copia o APK para:
 
-## Instalar no Android
+- `app/build/outputs/apk/debug/app-debug.apk`
+- `..\dist\BlobTrack-Celular-00-debug.apk`
 
-Copie o APK para o telefone e abra-o para instalar. Se o Android solicitar, permita a instalação de apps pelo navegador ou gerenciador de arquivos usado para abrir o APK. Ao iniciar o app, toque em **Ligar** e conceda a permissão de câmera.
+O APK de `dist/` é rastreado pelo Git; recompilar atualiza esse artefato. A variante debug é assinada com chave debug e não deve ser publicada na Play Store.
 
-Com depuração USB ativada e telefone conectado, também é possível instalar pelo computador:
+O script usa JDK 17, Android SDK 35 e Gradle 8.9 em `.local-build`. Não é necessário instalar Gradle globalmente. `android/local.properties` é gerado localmente e não deve ser versionado.
+
+## Instalar e validar por USB
+
+Ative as opções de desenvolvedor e a depuração USB no telefone. Conecte-o e, na pasta `android`, execute:
 
 ```powershell
-.\.local-build\android-sdk\platform-tools\adb.exe install -r .\app\build\outputs\apk\debug\app-debug.apk
+.\.local-build\android-sdk\platform-tools\adb.exe devices -l
+.\.local-build\android-sdk\platform-tools\adb.exe install -r ..\dist\BlobTrack-Celular-00-debug.apk
 ```
 
-O app não precisa de internet para carregar a interface. A compilação requer JDK 17, Android SDK 35 e Gradle 8.9, instalados pelo script em `.local-build`. O pacote contém a câmera Android e WebView; o som é sintetizado pelo AudioWorklet do app.
+Confirme a autorização da chave RSA no telefone. Abra **BlobTrack Celular-00**, toque em **Iniciar sessão** e conceda a permissão de câmera. Teste iniciar/parar, troca de câmera, rotação, tela bloqueada/retomada, áudio, gravação e recarga sem rede.
+
+Para validar gravação: inicie uma sessão, toque em **Gravar vídeo**, aguarde alguns segundos, pare e use **Salvar gravação**. O app grava o palco processado e o áudio sintetizado, sem usar o microfone; formato e extensão dependem do `MediaRecorder` disponível no WebView. A gravação pausa em segundo plano e retoma quando o app volta. Replay não está incluído.
+
+Para validar instalação/execução, o primeiro comando precisa listar o serial do dispositivo com estado `device`; uma lista vazia não valida hardware. A revisão de 20/11/2026 não encontrou dispositivo conectado nem emulador instalado, então a validação em aparelho permanece pendente.
+
+## Diagnóstico
+
+- Build falhou: verifique a mensagem do Gradle e a presença de `android/.local-build/jdk-17`, `android-sdk/platforms/android-35` e `gradle-8.9`.
+- Câmera não abre: confirme permissão Android e solicitação do WebView; reinstale ou revogue/conceda a permissão novamente.
+- Tela aparece, mas sem atualizações offline: confirme que `sw.js` pré-cacheia cada arquivo carregado em runtime e que sua versão foi incrementada.
+- ADB não lista telefone: confirme depuração USB, cabo de dados e aprovação RSA; rode `adb devices -l` novamente.

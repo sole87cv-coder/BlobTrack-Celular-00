@@ -1,6 +1,7 @@
 import { BlobTracker } from './blob-tracker.js';
 import { createRecorder, recordingExtension } from './recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
+import { exportRecording } from './recording-export.js';
 import { clearVideoComposition } from './video-crop.js';
 const $ = (id) => document.getElementById(id);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -723,16 +724,18 @@ function recordingFileName(result) {
   const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
   return `blobtrack-${recordingEffect}-${stamp}.${result.extension || recordingExtension(result.mimeType)}`;
 }
-function savePendingRecording() {
+async function savePendingRecording() {
   if (!pendingRecording) return;
+  const filename = recordingFileName(pendingRecording);
   try {
-    const url = pendingRecording.url || URL.createObjectURL(pendingRecording.blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = recordingFileName(pendingRecording);
-    link.click();
-    if (!pendingRecording.url) setTimeout(() => URL.revokeObjectURL(url), 4000);
-    showToast('Arquivo de gravação salvo');
+    const method = await exportRecording(pendingRecording, {
+      filename,
+      onError: (operation, error) => log(`Gravação: ${operation} falhou (${error.message}); tentando alternativa.`),
+    });
+    if (method === 'shared') showToast('Gravação compartilhada');
+    else if (method === 'saved') showToast('Arquivo de gravação salvo');
+    else if (method === 'downloaded') showToast('Download da gravação iniciado');
+    else showToast('Salvamento cancelado');
   } catch (error) {
     log(`Gravação: falha ao salvar (${error.message})`);
     showToast('Não foi possível salvar a gravação');

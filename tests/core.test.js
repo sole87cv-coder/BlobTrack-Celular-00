@@ -4,6 +4,7 @@ import test from 'node:test';
 import { BlobTracker } from '../src/blob-tracker.js';
 import { createRecorder, recordingExtension, selectRecordingMimeType } from '../src/recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from '../src/recording-canvas.js';
+import { exportRecording } from '../src/recording-export.js';
 import { clearVideoComposition } from '../src/video-crop.js';
 
 const projectRoot = new URL('../', import.meta.url);
@@ -75,6 +76,23 @@ class FakeMediaRecorder {
 
   emitChunk(value) {
     this.ondataavailable?.({ data: new Blob([value], { type: this.mimeType }) });
+  }
+}
+
+class FallbackMediaRecorder extends FakeMediaRecorder {
+  static supportedTypes = new Set(['video/webm;codecs=vp9,opus', supportedMime]);
+
+  static isTypeSupported(type) {
+    return this.supportedTypes.has(type);
+  }
+
+  constructor(stream, options) {
+    if (options.mimeType === 'video/webm;codecs=vp9,opus') {
+      const error = new Error('Codec indisponível');
+      error.name = 'NotSupportedError';
+      throw error;
+    }
+    super(stream, options);
   }
 }
 
@@ -238,6 +256,108 @@ test('recording composition letterboxes, shades, and layers the overlay last', (
   assert.deepEqual(calls.at(-1), ['restore']);
 });
 
+test('recording export prefers file sharing and respects user cancellation', async () => {
+  const operations = [];
+  class FakeFile {
+    constructor(parts, name, options) {
+      this.parts = parts;
+      this.name = name;
+      this.type = options.type;
+    }
+  }
+  const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
+  const filename = 'blobtrack-invert-20260101-120000.webm';
+  const shared = await exportRecording(result, {
+    filename,
+    FileClass: FakeFile,
+    navigatorObject: {
+      canShare: ({ files }) => files[0].name === filename,
+      share: async ({ files }) => operations.push(['share', files[0].name]),
+    },
+    windowObject: {},
+    documentObject: {},
+  });
+  assert.equal(shared, 'shared');
+  assert.deepEqual(operations, [['share', filename]]);
+
+  const cancelled = await exportRecording(result, {
+    filename,
+    FileClass: FakeFile,
+    navigatorObject: {
+      canShare: () => true,
+      share: async () => { throw Object.assign(new Error('Cancelado'), { name: 'AbortError' }); },
+    },
+    windowObject: { showSaveFilePicker: () => { throw new Error('Não deve abrir'); } },
+    documentObject: {},
+  });
+  assert.equal(cancelled, 'cancelled');
+});
+
+test('recording export uses the file picker and falls back to download', async () => {
+  const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
+  const filename = 'blobtrack-invert-20260101-120000.webm';
+  const operations = [];
+  const pickerResult = await exportRecording(result, {
+    filename,
+    navigatorObject: {},
+    windowObject: {
+      showSaveFilePicker: async options => {
+        operations.push(['picker', options.suggestedName, options.types[0].accept['video/webm'][0]]);
+        return { createWritable: async () => ({
+          write: async blob => operations.push(['write', blob.size]),
+          close: async () => operations.push(['close']),
+        }) };
+      },
+    },
+    documentObject: {},
+  });
+  assert.equal(pickerResult, 'saved');
+  assert.deepEqual(operations.map(([action]) => action), ['picker', 'write', 'close']);
+
+  const downloadEvents = [];
+  const downloadResult = await exportRecording(result, {
+    filename,
+    navigatorObject: {},
+    windowObject: {},
+    URLClass: {
+      createObjectURL: blob => { downloadEvents.push(['create', blob.size]); return 'blob:recording'; },
+      revokeObjectURL: url => downloadEvents.push(['revoke', url]),
+    },
+    setTimeoutFn: callback => { downloadEvents.push(['timer']); callback(); },
+    documentObject: {
+      createElement: tag => ({
+        set href(value) { downloadEvents.push(['href', value]); },
+        set download(value) { downloadEvents.push(['filename', value]); },
+        click: () => downloadEvents.push(['click']),
+      }),
+    },
+  });
+  assert.equal(downloadResult, 'downloaded');
+  assert.deepEqual(downloadEvents.map(([action]) => action), ['create', 'href', 'filename', 'click', 'timer', 'revoke']);
+});
+
+test('recording export reports a file-picker failure before downloading', async () => {
+  const errors = [];
+  let clicked = false;
+  const method = await exportRecording({
+    blob: new Blob(['video']),
+    mimeType: supportedMime,
+    extension: 'webm',
+  }, {
+    filename: 'blobtrack-invert-20260101-120000.webm',
+    navigatorObject: {},
+    windowObject: { showSaveFilePicker: async () => { throw new Error('Picker indisponível'); } },
+    documentObject: { createElement: () => ({ click: () => { clicked = true; } }) },
+    URLClass: { createObjectURL: () => 'blob:recording', revokeObjectURL() {} },
+    setTimeoutFn() {},
+    onError: (operation, error) => errors.push([operation, error.message]),
+  });
+
+  assert.equal(method, 'downloaded');
+  assert.equal(clicked, true);
+  assert.deepEqual(errors, [['seletor de arquivo', 'Picker indisponível']]);
+});
+
 test('service worker precaches all runtime assets', async () => {
   const serviceWorker = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
   const shellMatch = serviceWorker.match(/const SHELL = \[(.*?)\];/s);
@@ -250,6 +370,9 @@ test('service worker precaches all runtime assets', async () => {
     './src/blob-tracker.js',
     './src/video-crop.js',
     './src/audio-processor.js',
+    './src/recorder.js',
+    './src/recording-canvas.js',
+    './src/recording-export.js',
     './manifest.webmanifest',
     './icons/icon.svg',
   ];
@@ -275,6 +398,17 @@ test('recorder selects the first browser-supported MIME and matching extension',
   assert.equal(recordingExtension('video/mp4;codecs=avc1'), 'mp4');
   assert.equal(recordingExtension(supportedMime), 'webm');
   assert.equal(selectRecordingMimeType({ isTypeSupported: () => false }), null);
+});
+
+test('recorder falls back when a supported MIME is rejected by its constructor', async () => {
+  const fixture = createRecorderFixture({ MediaRecorderClass: FallbackMediaRecorder });
+
+  const startInfo = fixture.recorder.start();
+
+  assert.equal(selectRecordingMimeType(FallbackMediaRecorder), 'video/webm;codecs=vp9,opus');
+  assert.equal(startInfo.mimeType, supportedMime);
+  assert.equal(fixture.activeMediaRecorder.mimeType, supportedMime);
+  await fixture.recorder.stop();
 });
 
 test('recorder combines the canvas with a cloned audio track and excludes paused time', async () => {

@@ -10,9 +10,13 @@ const DEFAULT_MAX_DURATION_MS = 10 * 60 * 1000;
 const DEFAULT_MAX_BYTES = 350 * 1024 * 1024;
 const MEMORY_LIMIT_BYTES = 500 * 1024 * 1024;
 
-export function selectRecordingMimeType(MediaRecorderClass = globalThis.MediaRecorder) {
+function supportedRecordingMimeTypes(MediaRecorderClass) {
   if (typeof MediaRecorderClass !== 'function' || typeof MediaRecorderClass.isTypeSupported !== 'function') return null;
-  return MIME_TYPES.find(type => MediaRecorderClass.isTypeSupported(type)) || null;
+  return MIME_TYPES.filter(type => MediaRecorderClass.isTypeSupported(type));
+}
+
+export function selectRecordingMimeType(MediaRecorderClass = globalThis.MediaRecorder) {
+  return supportedRecordingMimeTypes(MediaRecorderClass)?.[0] || null;
 }
 
 export function recordingExtension(mimeType) {
@@ -225,7 +229,8 @@ export function createRecorder({
     lastResult = null;
 
     try {
-      mimeType = selectRecordingMimeType(MediaRecorderClass);
+      const supportedTypes = supportedRecordingMimeTypes(MediaRecorderClass);
+      if (!supportedTypes?.length) throw new Error('Gravação não suportada neste navegador.');
       canvasStream = canvas.captureStream(fps);
       videoTracks = canvasStream.getVideoTracks();
       if (!videoTracks.length) throw new Error('O canvas não forneceu faixa de vídeo.');
@@ -241,9 +246,20 @@ export function createRecorder({
       }
       mediaStream = new MediaStreamClass(tracks);
 
-      const options = { mimeType, audioBitsPerSecond };
+      const options = { audioBitsPerSecond };
       if (Number.isFinite(videoBitsPerSecond) && videoBitsPerSecond > 0) options.videoBitsPerSecond = videoBitsPerSecond;
-      recorder = new MediaRecorderClass(mediaStream, options);
+      let constructionError = null;
+      for (const type of supportedTypes) {
+        try {
+          recorder = new MediaRecorderClass(mediaStream, { ...options, mimeType: type });
+          mimeType = recorder.mimeType || type;
+          break;
+        } catch (error) {
+          if (!['NotSupportedError', 'TypeError'].includes(error.name)) throw error;
+          constructionError = error;
+        }
+      }
+      if (!recorder) throw constructionError || new Error('Não foi possível iniciar um formato de gravação compatível.');
       recorder.ondataavailable = onDataAvailable;
       recorder.onerror = onRecorderError;
       recorder.onstop = finish;

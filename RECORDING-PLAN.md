@@ -1,5 +1,12 @@
 # Gravação de sessão — BlobTrack Celular-00
 
+## Estado da implementação
+
+- Decisões aprovadas: gravação manual primeiro; MIME/contêiner escolhidos pelo suporte real do navegador; Replay adiado.
+- Fases 0–5 concluídas em commits separados: `2260d7a`, `63484c9`, `1400af3`, `d60b3f0`, `4cfdd55` e `2afe710`.
+- Fase 6 validada: exportação por compartilhamento/seletor/download, cache PWA `v20`, documentação e APK; a recarga offline e a matriz física seguem pendentes.
+- Cada fase foi registrada em commit próprio; o commit da Fase 6 acompanha esta revisão.
+
 ## Fase 0 — auditoria somente leitura
 
 Mapeamento feito em 20/11/2026. Nesta fase, somente este plano foi criado; nenhum arquivo de runtime, Android, manifesto, síntese ou captura estática foi alterado.
@@ -33,11 +40,11 @@ Se o contexto/nó de áudio não estiver disponível, a gravação pode continua
 9. **Troca de câmera.** Como o recorder lê o canvas composto, a troca do stream não reinicia a gravação. Durante o intervalo sem frame novo, conservar o último frame composto; retomar quando a câmera entregar imagem.
 10. **UI mínima.** Adicionar botão de gravação à barra flutuante e ação sincronizada em `panelEffects`, mais indicador/timer fora do canvas. Estados e ARIA devem refletir idle/recording/paused/stopping. `captureButton` e seus IDs existentes permanecem inalterados.
 
-### Replay: decisão pendente
+### Replay: decisão aprovada — adiado
 
 O pedido chama Replay de opcional e desligado por padrão, mas a fase 5 e o checklist também pedem o buffer circular. Não recomendo concatenar simplesmente os últimos chunks de 1 segundo de um único `MediaRecorder`: chunks arbitrários podem depender do cabeçalho, timestamps e keyframe inicial do container; o Blob final pode não abrir ou começar corrompido.
 
-Proposta segura: entregar primeiro gravação manual, sem Replay. Para um replay confiável de 15/30/60 s será necessário um muxer com suporte e testes por container, ou uma arquitetura baseada em WebCodecs com remuxing, adicionando custo, dependência e restrições (especialmente iOS/WebView). Essa escolha precisa ser aprovada antes da fase 5.
+Decisão aprovada: entregar primeiro gravação manual, sem Replay. Para um replay confiável de 15/30/60 s será necessário um muxer com suporte e testes por container, ou uma arquitetura baseada em WebCodecs com remuxing, adicionando custo, dependência e restrições (especialmente iOS/WebView). Replay continua fora do escopo atual.
 
 ## Plano das fases 1–6
 
@@ -59,11 +66,6 @@ Cada fase de implementação terá validação própria e commit separado, confo
 - **Critério de desempenho:** comparar FPS antes/depois no mesmo aparelho; diferença máxima solicitada de 3 fps. Sem aparelho mid-range e sessão de câmera não é possível declarar esse critério atendido.
 - **Limite deste ambiente:** não há telefone ADB conectado nem emulador instalado; gravação de câmera, share sheet e reprodução física não foram testados. Todos esses itens continuarão explicitamente pendentes até haver dispositivos disponíveis.
 
-## Aprovação necessária
+## Aprovação registrada
 
-Antes de iniciar a Fase 1, aprovar este mapeamento e decidir:
-
-1. Entregar primeiro gravação manual e deixar Replay para uma fase posterior (recomendado), ou incluir muxer/WebCodecs agora.
-2. Aceitar formatos validados por suporte real do navegador, sem garantia universal em todos os players/apps.
-
-Não houve alteração de runtime nesta Fase 0.
+O usuário aprovou gravação manual primeiro e compatibilidade baseada nos formatos que o navegador suportar. A Fase 0 foi somente auditoria e plano; a implementação começou após essa aprovação.
