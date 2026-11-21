@@ -265,7 +265,7 @@ export function createRecorder({
         const memoryUsage = getMemoryUsage();
         if (Number.isFinite(memoryUsage) && memoryUsage > MEMORY_LIMIT_BYTES) void stop('memory-limit');
       }, 250);
-      return { mimeType, extension: recordingExtension(mimeType) };
+      return { mimeType, extension: recordingExtension(mimeType), includesAudio: clonedAudioTracks.length > 0 };
     } catch (error) {
       cleanup();
       throw error;

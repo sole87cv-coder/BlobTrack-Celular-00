@@ -1,4 +1,5 @@
 import { BlobTracker } from './blob-tracker.js';
+import { createRecorder, recordingExtension } from './recorder.js';
 import { clearVideoComposition } from './video-crop.js';
 const $ = (id) => document.getElementById(id);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -12,6 +13,8 @@ const overlayContext = overlayCanvas.getContext('2d');
 const ctx = analysisCanvas.getContext('2d', { willReadFrequently: true });
 const frameCanvas = document.createElement('canvas');
 const frameContext = frameCanvas.getContext('2d', { alpha: false });
+const recordingCanvas = document.createElement('canvas');
+const recordingContext = recordingCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
@@ -27,6 +30,14 @@ const state = {
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, tracking: null, cycle: null, bus: null, composition: null, windows: null },
 };
+const recorder = createRecorder({
+  canvas: recordingCanvas,
+  fps: deviceProfile.fps,
+  getAudioStream: () => state.recordAudioDestination?.stream || null,
+});
+let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
+let pendingRecording = null;
+let recordingEffect = state.effect;
 const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : 0));
 const fmt = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—';
 try {
@@ -239,6 +250,7 @@ async function startCamera() {
     updateExposureCapability(track); tracker.reset(); state.priorCentroid = null;
     handleAudioInterruption();
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
+    updateRecordingControls(recordingSnapshot);
     requestAnimationFrame(frame); watchAudio();
   } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
 }
@@ -248,9 +260,9 @@ async function recoverCameraStream() {
   try { await stopMedia(); await startCamera(); }
   finally { state.cameraRecovering = false; }
 }
-async function stopMedia() { state.active = false; clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
+async function stopMedia() { state.active = false; updateRecordingControls(recordingSnapshot); clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
-async function stopSession() { await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
+async function stopSession() { if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.camera = state.camera === 'environment' ? 'user' : 'environment'; await stopMedia(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
@@ -543,6 +555,12 @@ function drawMaskOverlay(result, source = video) {
   }
   c.restore(); state.timing.windows = windowCost; state.timing.composition = performance.now() - started;
 }
+function drawRecordingComposite(force = false) {
+  if (!recordingContext || (!force && recordingSnapshot.state !== 'recording') || !recordingCanvas.width || !recordingCanvas.height) return;
+  recordingContext.clearRect(0, 0, recordingCanvas.width, recordingCanvas.height);
+  recordingContext.drawImage(canvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+  recordingContext.drawImage(overlayCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+}
 function updateHud(raw, applied, result) {
   const now = performance.now();
   if (now - state.lastHudAt < 100) return;
@@ -585,7 +603,7 @@ function frame(now) {
         const result = analyze(source);
         if (result) {
           const applied = updateSignals(result.raw, result.dt);
-          render(applied, source); drawMaskOverlay(result, source); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
+          render(applied, source); drawMaskOverlay(result, source); drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
       if (state.autoQuality) {
@@ -608,6 +626,131 @@ function frame(now) {
   }
 }
 
+function formatRecordingTime(durationMs) {
+  const totalSeconds = Math.floor(durationMs / 1000);
+  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
+function updateRecordingControls(snapshot) {
+  const previousState = recordingSnapshot.state;
+  recordingSnapshot = snapshot;
+  if (previousState !== 'idle' && snapshot.state === 'idle') {
+    try { disconnectRecordingAudio(); }
+    catch (error) { log(`Gravação: falha ao liberar saída de áudio (${error.message})`); }
+    if (snapshot.result) {
+      pendingRecording = snapshot.result;
+      const duration = formatRecordingTime(snapshot.result.durationMs);
+      const size = (snapshot.result.bytes / (1024 * 1024)).toFixed(1);
+      if (snapshot.result.reason === 'max-duration') showToast(`Limite de 10 min · gravado ${duration} · ${size} MB`);
+      else if (snapshot.result.reason === 'max-bytes') showToast(`Limite de tamanho · gravado ${duration} · ${size} MB`);
+      else if (snapshot.result.reason === 'memory-limit') showToast(`Memória alta · gravação encerrada em ${duration}`);
+      else showToast(`Gravado · ${duration} · ${size} MB · use Salvar`);
+    }
+  }
+  const supported = recorder.isSupported();
+  const recording = snapshot.state !== 'idle';
+  const label = snapshot.state === 'stopping' ? 'Finalizando gravação' : recording ? 'Parar gravação' : 'Iniciar gravação';
+  const title = !supported ? 'Gravação não suportada neste navegador.'
+    : !recording && !state.active ? 'Inicie a sessão para gravar o palco.'
+      : label;
+  const disabled = !supported || (!recording && !state.active) || snapshot.state === 'stopping';
+  for (const id of ['recordButton', 'recordButtonPanel']) {
+    const button = $(id);
+    button.disabled = disabled;
+    button.title = title;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(recording));
+    button.classList.toggle('recording', snapshot.state === 'recording');
+    button.classList.toggle('paused', snapshot.state === 'paused');
+  }
+  const icon = $('recordButton').querySelector('.record-button-icon');
+  icon.textContent = recording ? '●' : '○';
+  const time = formatRecordingTime(snapshot.durationMs);
+  $('recordButtonTime').textContent = time;
+  $('recordButtonTime').hidden = !recording;
+  $('recordButtonPanel').textContent = recording ? label : 'Gravar vídeo';
+
+  const indicator = $('recordIndicator');
+  indicator.hidden = !recording;
+  indicator.classList.toggle('paused', snapshot.state === 'paused');
+  indicator.setAttribute('aria-label', label);
+  indicator.setAttribute('aria-pressed', String(recording));
+  indicator.title = label;
+  $('recordIndicatorLabel').textContent = snapshot.state === 'paused' ? 'PAUSADO' : snapshot.state === 'stopping' ? 'FINALIZANDO' : 'REC';
+  $('recordIndicatorTime').textContent = time;
+
+  const hasResult = Boolean(pendingRecording);
+  $('recordSaveButton').hidden = !hasResult;
+  $('recordSaveButtonPanel').hidden = !hasResult;
+}
+function releasePendingRecording() {
+  if (pendingRecording?.url) URL.revokeObjectURL(pendingRecording.url);
+  pendingRecording = null;
+}
+function recordingFileName(result) {
+  const date = new Date();
+  const pad = value => String(value).padStart(2, '0');
+  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+  return `blobtrack-${recordingEffect}-${stamp}.${result.extension || recordingExtension(result.mimeType)}`;
+}
+function savePendingRecording() {
+  if (!pendingRecording) return;
+  try {
+    const url = pendingRecording.url || URL.createObjectURL(pendingRecording.blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = recordingFileName(pendingRecording);
+    link.click();
+    if (!pendingRecording.url) setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast('Arquivo de gravação salvo');
+  } catch (error) {
+    log(`Gravação: falha ao salvar (${error.message})`);
+    showToast('Não foi possível salvar a gravação');
+  }
+}
+async function startRecording() {
+  if (!state.active) { showToast('Inicie a sessão antes de gravar'); return; }
+  if (!recorder.isSupported()) { showToast('Gravação não suportada neste navegador'); return; }
+  resize();
+  if (!canvas.width || !canvas.height) { showToast('Palco indisponível para gravação'); return; }
+  releasePendingRecording();
+  recordingCanvas.width = canvas.width;
+  recordingCanvas.height = canvas.height;
+  drawRecordingComposite(true);
+  recordingEffect = state.effect;
+  try {
+    const destination = connectRecordingAudio();
+    const longEdge = Math.max(recordingCanvas.width, recordingCanvas.height);
+    const videoBitsPerSecond = longEdge >= 1920 ? 8_000_000 : longEdge >= 1280 ? 4_000_000 : Math.max(1_000_000, Math.round(longEdge / 1280 * 4_000_000));
+    const recordInfo = recorder.start({ audioStream: destination?.stream || null, videoBitsPerSecond });
+    if (!recordInfo.includesAudio) showToast('Gravando somente vídeo · áudio indisponível');
+  } catch (error) {
+    try { disconnectRecordingAudio(); }
+    catch (cleanupError) { log(`Gravação: falha ao liberar saída de áudio (${cleanupError.message})`); }
+    log(`Gravação: ${error.message}`);
+    showToast(`Não foi possível iniciar a gravação: ${error.message}`);
+  }
+}
+async function stopRecording() {
+  if (recordingSnapshot.state === 'idle' || recordingSnapshot.state === 'stopping') return;
+  try { await recorder.stop('user'); }
+  catch (error) {
+    try { disconnectRecordingAudio(); }
+    catch (cleanupError) { log(`Gravação: falha ao liberar saída de áudio (${cleanupError.message})`); }
+    log(`Gravação: ${error.message}`);
+    showToast('A gravação foi encerrada com erro');
+  }
+}
+async function toggleRecording() {
+  if (recordingSnapshot.state === 'idle') await startRecording();
+  else await stopRecording();
+}
+recorder.onState(updateRecordingControls);
+recorder.onError(error => {
+  log(`Gravação: ${error.message}`);
+  showToast('Erro durante a gravação');
+});
+['recordButton', 'recordButtonPanel', 'recordIndicator'].forEach(id => $(id).addEventListener('click', toggleRecording));
+['recordSaveButton', 'recordSaveButtonPanel'].forEach(id => $(id).addEventListener('click', savePendingRecording));
 function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
 async function beginSession(button){
   if(state.active||state.starting)return;

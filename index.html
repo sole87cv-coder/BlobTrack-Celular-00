@@ -32,11 +32,23 @@
           <div class="status" aria-live="polite"><i id="statusLight"></i><span id="statusText">Pronto</span></div>
           <div class="float-actions">
             <button class="chip-button" id="shareButton" type="button" aria-label="Compartilhar" hidden>⇪</button>
+            <button class="chip-button record-button" id="recordButton" type="button"
+              aria-label="Iniciar gravação" aria-pressed="false" title="Gravar o palco">
+              <span class="record-button-icon" aria-hidden="true">○</span><span class="record-button-time" id="recordButtonTime" hidden>00:00</span>
+            </button>
+            <button class="chip-button record-save-button" id="recordSaveButton" type="button"
+              aria-label="Salvar ou compartilhar gravação" title="Salvar ou compartilhar gravação" hidden>↓</button>
             <button class="chip-button" id="fullscreenButton" type="button" aria-label="Tela cheia">⛶</button>
             <button class="chip-button" id="hideUiButton" type="button" aria-label="Ocultar controles">◌</button>
             <button class="chip-button" id="installButton" type="button" aria-label="Instalar" hidden>＋</button>
           </div>
         </header>
+
+        <button class="record-indicator" id="recordIndicator" type="button" aria-label="Parar gravação"
+          aria-pressed="true" title="Parar gravação" hidden>
+          <span class="record-dot" aria-hidden="true"></span><span id="recordIndicatorLabel">REC</span>
+          <span class="record-indicator-time" id="recordIndicatorTime">00:00</span>
+        </button>
 
         <div class="stage-pill"><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0
             blobs</span><span id="renderInfo">WebGL2</span></div>
@@ -122,6 +134,12 @@
           </div>
 
           <div class="dock-panel active" id="panelEffects">
+            <div class="dock-row">
+              <button class="pill primary" id="recordButtonPanel" type="button" aria-label="Iniciar gravação"
+                aria-pressed="false" title="Gravar o palco">Gravar vídeo</button>
+              <button class="pill" id="recordSaveButtonPanel" type="button" aria-label="Salvar ou compartilhar gravação"
+                title="Salvar ou compartilhar gravação" hidden>Salvar gravação</button>
+            </div>
             <div class="dock-row">
               <div class="effect-row" role="group" aria-label="Efeito visual">
                 <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Invert</button>

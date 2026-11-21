@@ -365,6 +365,7 @@ body.focus-mode .focus-hint::after,body.ui-hidden .focus-hint::after { content:'
     transform:none!important;
     padding-bottom:0
   }
+  .float-bar,.record-indicator { right:calc(min(320px,26vw) + 22px) }
   .dock.closed { transform:translateY(0)!important;opacity:.4 }
   .dock-body { max-height:none }
   .stage-pill { top:calc(70px + var(--safe-top)) }
@@ -384,6 +385,25 @@ body.focus-mode .focus-hint::after,body.ui-hidden .focus-hint::after { content:'
   .stage-pill { max-width:92%;flex-wrap:wrap;justify-content:center }
 }
 
+.record-button { display:flex;gap:5px;padding:0 8px }
+.record-button-icon { color:var(--mint);font-size:17px;line-height:1 }
+.record-button-time,.record-indicator-time { font:10px 'DM Mono',monospace;font-variant-numeric:tabular-nums }
+.record-button[aria-pressed="true"] { border-color:#ff7b7b70;background:#351a20 }
+.record-button[aria-pressed="true"] .record-button-icon { color:#ff7b7b;animation:record-pulse 1.2s ease-in-out infinite }
+.record-save-button { color:var(--mint) }
+.record-indicator {
+  position:absolute;z-index:7;top:max(12px,var(--safe-top));right:12px;
+  display:flex;align-items:center;gap:7px;min-height:36px;padding:0 11px;
+  border:1px solid #ffffff24;border-radius:20px;background:#0d1219d9;
+  color:#f0f4f7;font:700 10px 'DM Mono',monospace;letter-spacing:.08em;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)
+}
+.record-dot { width:8px;height:8px;border-radius:50%;background:#ff7b7b;animation:record-pulse 1.2s ease-in-out infinite }
+.record-indicator.paused .record-dot { background:#ffc66e;animation:none }
+.record-indicator.paused { color:#ffc66e }
+@keyframes record-pulse { 50% { opacity:.6 } }
+
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior:auto!important;transition:none!important }
+  .record-button[aria-pressed="true"] .record-button-icon,.record-dot { animation:none }
 }

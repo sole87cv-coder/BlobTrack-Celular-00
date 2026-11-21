@@ -247,7 +247,8 @@ test('recorder combines the canvas with a cloned audio track and excludes paused
   const states = [];
   fixture.recorder.onState(snapshot => states.push(snapshot.state));
 
-  fixture.recorder.start({ maxDurationMs: 5000, maxBytes: 1024 });
+  const startInfo = fixture.recorder.start({ maxDurationMs: 5000, maxBytes: 1024 });
+  assert.equal(startInfo.includesAudio, true);
   assert.equal(fixture.activeMediaRecorder.timeslice, 1000);
   assert.equal(fixture.activeMediaRecorder.stream.getVideoTracks().length, 1);
   assert.equal(fixture.activeMediaRecorder.stream.getAudioTracks().length, 1);
