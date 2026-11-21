@@ -1,5 +1,6 @@
 import { BlobTracker } from './blob-tracker.js';
 import { createRecorder, recordingExtension } from './recorder.js';
+import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
 import { clearVideoComposition } from './video-crop.js';
 const $ = (id) => document.getElementById(id);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -557,9 +558,8 @@ function drawMaskOverlay(result, source = video) {
 }
 function drawRecordingComposite(force = false) {
   if (!recordingContext || (!force && recordingSnapshot.state !== 'recording') || !recordingCanvas.width || !recordingCanvas.height) return;
-  recordingContext.clearRect(0, 0, recordingCanvas.width, recordingCanvas.height);
-  recordingContext.drawImage(canvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
-  recordingContext.drawImage(overlayCanvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+  const includeShade = !state.gearVr && !document.body.classList.contains('focus-mode');
+  drawRecordingFrame(recordingContext, canvas, overlayCanvas, recordingCanvas.width, recordingCanvas.height, includeShade);
 }
 function updateHud(raw, applied, result) {
   const now = performance.now();
@@ -710,11 +710,13 @@ function savePendingRecording() {
 async function startRecording() {
   if (!state.active) { showToast('Inicie a sessão antes de gravar'); return; }
   if (!recorder.isSupported()) { showToast('Gravação não suportada neste navegador'); return; }
+  if (!recordingContext) { showToast('Composição de gravação indisponível neste navegador'); return; }
   resize();
   if (!canvas.width || !canvas.height) { showToast('Palco indisponível para gravação'); return; }
   releasePendingRecording();
-  recordingCanvas.width = canvas.width;
-  recordingCanvas.height = canvas.height;
+  const size = recordingCanvasSize(canvas.width, canvas.height);
+  recordingCanvas.width = size.width;
+  recordingCanvas.height = size.height;
   drawRecordingComposite(true);
   recordingEffect = state.effect;
   try {
@@ -722,7 +724,8 @@ async function startRecording() {
     const longEdge = Math.max(recordingCanvas.width, recordingCanvas.height);
     const videoBitsPerSecond = longEdge >= 1920 ? 8_000_000 : longEdge >= 1280 ? 4_000_000 : Math.max(1_000_000, Math.round(longEdge / 1280 * 4_000_000));
     const recordInfo = recorder.start({ audioStream: destination?.stream || null, videoBitsPerSecond });
-    if (!recordInfo.includesAudio) showToast('Gravando somente vídeo · áudio indisponível');
+    const audioNotice = recordInfo.includesAudio ? '' : ' · áudio indisponível';
+    showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · até ${deviceProfile.fps} fps${audioNotice}`);
   } catch (error) {
     try { disconnectRecordingAudio(); }
     catch (cleanupError) { log(`Gravação: falha ao liberar saída de áudio (${cleanupError.message})`); }

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { BlobTracker } from '../src/blob-tracker.js';
 import { createRecorder, recordingExtension, selectRecordingMimeType } from '../src/recorder.js';
+import { drawRecordingFrame, recordingCanvasSize } from '../src/recording-canvas.js';
 import { clearVideoComposition } from '../src/video-crop.js';
 
 const projectRoot = new URL('../', import.meta.url);
@@ -204,6 +205,37 @@ test('Canvas 2D cleanup clears both composition layers', () => {
     ['fallback', 0, 0, 320, 180],
     ['overlay', 0, 0, 320, 180],
   ]);
+});
+
+test('recording dimensions cap the long edge without changing aspect ratio', () => {
+  assert.deepEqual(recordingCanvasSize(1920, 1080), { width: 1280, height: 720 });
+  assert.deepEqual(recordingCanvasSize(640, 480), { width: 640, height: 480 });
+  assert.throws(() => recordingCanvasSize(0, 480), /Dimensões/);
+});
+
+test('recording composition letterboxes, shades, and layers the overlay last', () => {
+  const calls = [];
+  const gradient = { addColorStop: (...args) => calls.push(['stop', ...args]) };
+  const context = {
+    save: () => calls.push(['save']),
+    restore: () => calls.push(['restore']),
+    clearRect: (...args) => calls.push(['clear', ...args]),
+    fillRect: (...args) => calls.push(['fill', ...args]),
+    createLinearGradient: (...args) => { calls.push(['gradient', ...args]); return gradient; },
+    drawImage: (...args) => calls.push(['image', ...args]),
+  };
+  const visual = { width: 480, height: 640 };
+  const overlay = { width: 480, height: 640 };
+
+  const frame = drawRecordingFrame(context, visual, overlay, 1280, 720, true);
+
+  assert.deepEqual(frame, { left: 370, top: 0, width: 540, height: 720 });
+  const visualIndex = calls.findIndex(([type, image]) => type === 'image' && image === visual);
+  const shadeIndex = calls.findIndex(([type]) => type === 'gradient');
+  const overlayIndex = calls.findIndex(([type, image]) => type === 'image' && image === overlay);
+  assert.ok(visualIndex < shadeIndex && shadeIndex < overlayIndex);
+  assert.equal(calls.filter(([type]) => type === 'stop').length, 4);
+  assert.deepEqual(calls.at(-1), ['restore']);
 });
 
 test('service worker precaches all runtime assets', async () => {
