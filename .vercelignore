@@ -1,0 +1,10 @@
+# Arquivos de desenvolvimento e o APK antigo não fazem parte da PWA servida pelo Vercel.
+android/
+dist/
+docs/
+tests/
+AUDITORIA.md
+BUGS-CROP.md
+CHANGELOG.md
+README.md
+RECORDING-PLAN.md

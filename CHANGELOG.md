@@ -1,3 +1,7 @@
+## 22/11/2026 — Interface e rebranding web
+- Criada navegação Palco, Sessão, Ajustes e Ajuda, sheet de ajustes rápidos e recuperação de câmera.
+- Adicionados estados de sessão, conexão e gravação; pausa e retomada usam as operações existentes do gravador.
+- Aplicados nome público, metadados PWA, ícone web e preferências acessíveis. IDs técnicos e APK permaneceram intactos.
 # Changelog — BlobTrack Celular-00
 
 ## 2026-11-21 — Ação inicial sem sobreposição

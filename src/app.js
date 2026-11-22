@@ -3,14 +3,21 @@ import { deviceProfile } from './core/deviceProfile.js';
 import { clamp, fmt, formatRecordingTime } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
-import { createAudio } from './audio/audio.js';
+import { createAudio, createAudioBus } from './audio/audio.js';
 import { createRender } from './render/render.js';
 import { createRecorder, recordingExtension } from './recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
 import { exportRecording } from './recording-export.js';
 import { clearVideoComposition } from './video-crop.js';
 import { loadPreferences } from './preferences.js';
+import { createScaleRouter } from './audio/scale-router.js';
+import { attachScalesUI } from './ui/scales-ui.js';
+import { strings } from './ui/i18n/pt-BR.js';
+import { createNavigation } from './ui/navigation.js';
 const $ = (id) => document.getElementById(id);
+const audioScaleRouter = createScaleRouter();
+document.title = strings.app.title;
+document.querySelector('meta[name=description]')?.setAttribute('content', strings.app.description);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandaloneApp = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
@@ -47,6 +54,9 @@ let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null }
 let pendingRecording = null;
 let recordingEffect = state.effect;
 const saved = loadPreferences();
+let themeChoice = ['system','dark','light'].includes(saved.theme) ? saved.theme : 'system';
+let reduceMotion = saved.reduceMotion === true;
+let hapticsEnabled = saved.hapticsEnabled === true;
 if (typeof saved.reacting === 'boolean') state.reacting = saved.reacting;
 if (typeof saved.effect === 'string' && ['invert','threshold','dither'].includes(saved.effect)) state.effect = saved.effect;
 if (Number.isFinite(saved.master)) state.master = clamp(saved.master,0,2);
@@ -107,10 +117,22 @@ const wakeLockService = createWakeLock({
 });
 function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
-function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
+function announceStatus(message) { $('appStatus').textContent = message; }
+function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); announceStatus(text); }
+function showCameraIssue(error) {
+  const message = error?.name === 'NotAllowedError' ? strings.errors.permission : error?.name === 'NotFoundError' ? strings.errors.missing : error?.name === 'NotReadableError' ? strings.errors.busy : error?.name === 'SecurityError' ? strings.errors.insecure : strings.errors.generic;
+  $('cameraIssueTitle').textContent = error?.name === 'SecurityError' ? 'Conexão segura necessária' : error?.name === 'NotAllowedError' ? 'Acesso à câmera bloqueado' : error?.name === 'NotFoundError' ? 'Câmera não encontrada' : error?.name === 'NotReadableError' ? 'Câmera indisponível' : 'Não foi possível iniciar';
+  $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
+}
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect})); } catch {} }
-function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,soundEffects:state.audioEffects}); }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
+const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
+let soundSaveTimer = null;
+function saveSoundPreferences() { clearTimeout(soundSaveTimer); soundSaveTimer = setTimeout(savePreferences, 300); }
+function soundOptions() { return {oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,soundEffects:state.audioEffects}; }
+function postAudioScale(scale) { state.worklet?.port.postMessage({type:'scale',id:scale.id,degrees:scale.degrees}); }
+function sendAudioOptions(debounce = false) { if(debounce) audioBus.scheduleOptions(soundOptions(),80); else audioBus.sendOptions(soundOptions()); if(!debounce && audioScaleRouter.hasStoredChoice()) postAudioScale(audioScaleRouter.getScale()); }
+const scalesUi = attachScalesUI({ root:$('audioScales'), router:audioScaleRouter, onSelect:postAudioScale, getAudioContext:()=>state.audio, getKey:()=>state.audioKey, isAudible:()=>state.audioEnabled&&!state.muted&&state.reacting&&state.master>0 });
 
 const audioService = createAudio({
   state,
@@ -180,7 +202,7 @@ toggle($('trailEffectButton'),state.trailEffect);
 toggle($('waveEffectButton'),state.waveEffect);
 toggle($('meshEffectButton'),state.meshEffect);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
-$('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';
+$('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
 $('bias').value=String(state.bias);$('biasValue').textContent=fmt(state.bias);
 document.querySelectorAll('[data-effect]').forEach(b=>toggle(b,b.dataset.effect===state.effect));
@@ -213,14 +235,14 @@ async function refreshCameraChoices(){if(!navigator.mediaDevices?.enumerateDevic
 async function startCamera() {
   if (state.sessionBlocked) { releaseSession(); showToast('BlobTrack Celular-00 já está aberto em outra aba'); return; }
   if (state.active || state.starting) return;
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { log('Abra em HTTPS ou localhost para liberar câmera e áudio.'); showToast('Câmera precisa de HTTPS ou localhost'); releaseSession(); return; }
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { log('Abra em HTTPS ou localhost para liberar câmera.'); showCameraIssue({name:'SecurityError'}); releaseSession(); return; }
   state.starting = true; setStatus('Aguardando câmera'); log('Aguardando permissão da câmera no navegador.'); channel?.postMessage({ type: 'start', id: tabId });
   try {
     const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode={ideal:state.camera}; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode={ideal:state.camera};stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
     state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
-    $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
+    $('stageMessage').hidden = true; if($('permissionDialog').open)$('permissionDialog').close(); $('stagePill').hidden = false; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
     const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
     track.addEventListener('ended', () => {
       if (!state.active || state.switching) return;
@@ -236,7 +258,7 @@ async function startCamera() {
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
     updateRecordingControls(recordingSnapshot);
     requestAnimationFrame(frame); watchAudio();
-  } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showToast(e.name === 'NotAllowedError' ? 'Permita o acesso à câmera para ligar.' : 'Não foi possível abrir a câmera.'); }
+  } catch (e) { state.starting = false; state.switching = false; await stopMedia(); $('stageMessage').hidden = false; $('stagePill').hidden = true; $('stopButton').hidden = true; $('startButton2').hidden = false; $('switchCamera').disabled = true; $('exposureButton').disabled = true; channel?.postMessage({type:'stop',id:tabId}); releaseSession(); setStatus('Câmera indisponível'); log(`Câmera: ${e.name === 'NotAllowedError' ? 'permissão negada.' : e.message}`); showCameraIssue(e); }
 }
 async function recoverCameraStream() {
   if (state.cameraRecovering || state.switching) return;
@@ -246,7 +268,7 @@ async function recoverCameraStream() {
 }
 async function stopMedia() { state.active = false; updateRecordingControls(recordingSnapshot); clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
 function releaseSession() { sessionLock.release(); }
-async function stopSession() { await wakeLockService.release(); if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
+async function stopSession() { await wakeLockService.release(); if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stagePill').hidden = true; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.camera = state.camera === 'environment' ? 'user' : 'environment'; await stopMedia(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
@@ -314,7 +336,7 @@ function analyze(source = video) {
   return { ...result, dt };
 }
 function followEnvelope(current, target, dt, attack=.06, decay=.45) { const tau = target > current ? attack : decay; return current + (target - current) * (1 - Math.exp(-dt / tau)); }
-function updateSignals(raw, dt) {
+function updateSignals(raw, dt, blobs = []) {
   const e = state.envelopes;
   for (const key of ['energy','density','speed','coherence','ambient']) e[key] = followEnvelope(e[key], raw[key], dt);
   for (let i = 0; i < e.zones.length; i++) e.zones[i] = followEnvelope(e.zones[i],raw.zones[i],dt,.06,.9);
@@ -322,7 +344,7 @@ function updateSignals(raw, dt) {
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  state.worklet?.port.postMessage({ type:'signals', signals:{...e,zones:[...e.zones]}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled, oscillation:state.audioOscillation, pitchRange:state.audioPitchRange, key:state.audioKey, timbre:state.audioTimbre, soundEffects:state.audioEffects });
+  audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled });
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -372,7 +394,7 @@ function frame(now) {
         const source = captureVideoFrame();
         const result = analyze(source);
         if (result) {
-          const applied = updateSignals(result.raw, result.dt);
+          const applied = updateSignals(result.raw, result.dt, result.blobs);
           render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
@@ -444,6 +466,13 @@ function updateRecordingControls(snapshot) {
   $('recordIndicatorLabel').textContent = snapshot.state === 'paused' ? 'PAUSADO' : snapshot.state === 'stopping' ? 'FINALIZANDO' : 'REC';
   $('recordIndicatorTime').textContent = time;
 
+  const sessionNames={idle:pendingRecording?'Gravação pronta':'Pronta para começar',recording:'Gravando',paused:'Gravação pausada',stopping:'Finalizando gravação'};
+  $('sessionCard').dataset.state=snapshot.state; $('sessionStateText').textContent=sessionNames[snapshot.state]||sessionNames.idle;
+  $('sessionDuration').textContent=recording?'Duração: '+formatRecordingTime(snapshot.durationMs):pendingRecording?'Pronta para salvar · '+formatRecordingTime(pendingRecording.durationMs):'Nenhuma gravação em andamento.';
+  $('sessionRecordButton').hidden=recording; $('sessionRecordButton').disabled=!recording&&!state.active;
+  $('sessionPauseButton').hidden=!['recording','paused'].includes(snapshot.state); $('sessionPauseButton').textContent=snapshot.state==='paused'?'Retomar gravação':'Pausar gravação';
+  $('sessionStopButton').hidden=!recording; $('sessionSaveButton').hidden=!pendingRecording;
+  $('quickRecordButton').textContent=recording?'Parar gravação':'Gravar'; $('quickPauseButton').hidden=!['recording','paused'].includes(snapshot.state); $('quickPauseButton').textContent=snapshot.state==='paused'?'Retomar gravação':'Pausar gravação'; $('quickSaveButton').hidden=!pendingRecording;
   const hasResult = Boolean(pendingRecording);
   $('recordSaveButton').hidden = !hasResult;
   $('recordSaveButtonPanel').hidden = !hasResult;
@@ -516,6 +545,11 @@ recorder.onError(error => {
   showToast('Erro durante a gravação');
 });
 ['recordButton', 'recordButtonPanel', 'recordIndicator'].forEach(id => $(id).addEventListener('click', toggleRecording));
+$('sessionRecordButton').addEventListener('click',()=>$('recordButton').click());
+$('sessionStopButton').addEventListener('click',()=>$('recordButton').click());
+$('sessionSaveButton').addEventListener('click',()=>$('recordSaveButtonPanel').click());$('quickSaveButton').addEventListener('click',()=>$('recordSaveButtonPanel').click());
+function toggleRecordingPause(){const changed=recordingSnapshot.state==='recording'?recorder.pause():recordingSnapshot.state==='paused'?recorder.resume():false;if(!changed)showToast('Pausa indisponível neste estado.');}
+$('sessionPauseButton').addEventListener('click',toggleRecordingPause);$('quickPauseButton').addEventListener('click',toggleRecordingPause);
 ['recordSaveButton', 'recordSaveButtonPanel'].forEach(id => $(id).addEventListener('click', savePendingRecording));
 function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
 async function beginSession(button){
@@ -535,20 +569,13 @@ $('startButton2').addEventListener('click',e=>beginSession(e.currentTarget));
 $('switchCamera').addEventListener('click',switchCamera);$('exposureButton').addEventListener('click',setManualExposure);$('stopButton').addEventListener('click',stopSession);
 /* Painel deslizante: alça e gesto de arrasto */
 const dock=$('dock');
+$('settingsControls').append(dock);
 function setDock(open){dock.classList.toggle('closed',!open);$('dockHandle').setAttribute('aria-expanded',String(open));$('dockPeek').textContent=open?'▾':'▴';$('dockLabel').textContent=open?'Controles':'Ajustes';}
 $('dockHandle').addEventListener('click',()=>setDock(dock.classList.contains('closed')));
 let dockDragY=null;
 $('dockHandle').addEventListener('touchstart',e=>{dockDragY=e.changedTouches[0].clientY;},{passive:true});
 $('dockHandle').addEventListener('touchend',e=>{if(dockDragY===null)return;const dy=dockDragY-e.changedTouches[0].clientY;dockDragY=null;if(Math.abs(dy)>30)setDock(dy>0);},{passive:true});
-/* Ocultar interface pelo botão flutuante ◌ */
-let uiHidden=false;
-function setUiHidden(on){
-  uiHidden=on;
-  document.body.classList.toggle('ui-hidden',on);
-  if(!on)setDock(true);
-  showToast(on?'Interface oculta · toque no palco para voltar':'Interface visível');
-}
-$('hideUiButton').addEventListener('click',()=>setUiHidden(!uiHidden));
+
 function setGearVr(on, persist=true){
   state.gearVr=on;
   document.body.classList.toggle('gear-vr',on);
@@ -562,10 +589,7 @@ function setGearVr(on, persist=true){
 $('gearVrButton').addEventListener('click',()=>setGearVr(!state.gearVr));
 $('gearVrExit').addEventListener('click',()=>setGearVr(false));
 if(state.gearVr)setGearVr(true,false);
-stage.addEventListener('click',e=>{
-  if(!uiHidden)return;
-  if(e.target===canvas||e.target===overlayCanvas)setUiHidden(false);
-});
+
 document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>toggle(x,x===b));savePreferences();}));
 function bindReactiveToggle(id, key) {
   $(id).addEventListener('click', event => { state[key] = !state[key]; toggle(event.currentTarget, state[key]); savePreferences(); });
@@ -575,53 +599,53 @@ bindReactiveToggle('trailEffectButton', 'trailEffect');
 bindReactiveToggle('waveEffectButton', 'waveEffect');
 bindReactiveToggle('meshEffectButton', 'meshEffect');
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
-$('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(Number(e.target.value));});
-$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Auto · '+deviceProfile.name:'Auto desligado';savePreferences();});
+$('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
+$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);savePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);savePreferences();});
 
 $('reactButton').addEventListener('click',e=>{state.reacting=!state.reacting;toggle(e.currentTarget,state.reacting);savePreferences();});
-$('muteButton').addEventListener('click',e=>{state.muted=!state.muted;toggle(e.currentTarget,state.muted);if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.muted?0:1,t,.12);}state.worklet?.port.postMessage({type:'mute',muted:state.muted});});
+$('muteButton').addEventListener('click',e=>{state.muted=!state.muted;toggle(e.currentTarget,state.muted);if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.muted?0:1,t,.12);}audioBus.send({type:'mute',muted:state.muted});audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled});});
 /* ===== Sensibilidade do áudio: liga/desliga + intensidade ===== */
 $('audioSensitivityButton').addEventListener('click',e=>{
   state.audioEnabled=!state.audioEnabled;
   toggle(e.currentTarget,state.audioEnabled);
   e.currentTarget.textContent=state.audioEnabled?'Som · ligado':'Som · desligado';
-  state.worklet?.port.postMessage({type:'audioEnabled',enabled:state.audioEnabled});
-  state.worklet?.port.postMessage({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled});
+  audioBus.send({type:'audioEnabled',enabled:state.audioEnabled});
+  audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled});
   if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.audioEnabled&&!state.muted?1:0,t,.12);}
   showToast(state.audioEnabled?'Som reativo ligado':'Som desligado · imagem continua');
-  savePreferences();
+  saveSoundPreferences();
 });
 $('audioSensitivity').addEventListener('input',e=>{
   state.audioSensitivity=clamp(Number(e.target.value),0,3);
   $('audioSensitivityValue').textContent=fmt(state.audioSensitivity);
-  state.worklet?.port.postMessage({type:'sensitivity',value:state.audioSensitivity});
-  savePreferences();
+  audioBus.scheduleMessage({type:'sensitivity',value:state.audioSensitivity},80);
+  saveSoundPreferences();
 });
 $('audioOscillation').addEventListener('input',e=>{
   state.audioOscillation=clamp(Number(e.target.value),0,1);
   $('audioOscillationValue').textContent=`${Math.round(state.audioOscillation*100)}%`;
-  sendAudioOptions();savePreferences();
+  sendAudioOptions(true);saveSoundPreferences();
 });
 $('audioPitchRange').addEventListener('input',e=>{
   state.audioPitchRange=clamp(Number(e.target.value),0,7);
   $('audioPitchRangeValue').textContent=`${fmt(state.audioPitchRange,1)} semitons`;
-  sendAudioOptions();savePreferences();
+  sendAudioOptions(true);saveSoundPreferences();
 });
 $('audioKey').addEventListener('change',e=>{
   state.audioKey=clamp(Number(e.target.value),0,11);
-  sendAudioOptions();savePreferences();
+  sendAudioOptions(true);saveSoundPreferences();
 });
 $('audioTimbre').addEventListener('change',e=>{
   state.audioTimbre=clamp(Number(e.target.value),0,2);
-  sendAudioOptions();savePreferences();
+  sendAudioOptions(true);saveSoundPreferences();
 });
 function bindAudioEffect(id, key) {
   $(id).addEventListener('click',event=>{
     state.audioEffects[key]=!state.audioEffects[key];
     toggle(event.currentTarget,state.audioEffects[key]);
-    sendAudioOptions();savePreferences();
+    sendAudioOptions(true);saveSoundPreferences();
   });
 }
 bindAudioEffect('audioEchoButton','echo');
@@ -640,7 +664,7 @@ $('rectangleButton').addEventListener('click',e=>{
   showToast(state.drawingRect?'Use as setas e Enter, ou arraste no palco':'Criação cancelada');
 });
 function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;savePreferences();}
-function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(state.trackingWidth+delta);}
+function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});
 
@@ -662,13 +686,13 @@ async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : awa
 $('fullscreenButton').addEventListener('click',toggleFullscreen);
 document.addEventListener('fullscreenchange',()=>{
   const on=isFullscreen();
-  $('fullscreenButton').textContent=on?'⤢':'⛶';
+  $('fullscreenButton').querySelector('.chip-icon').textContent=on?'⤢':'⛶';
   $('fullscreenButton').setAttribute('aria-label',on?'Sair da tela cheia':'Tela cheia');
 });
-document.addEventListener('webkitfullscreenchange',()=>$('fullscreenButton').textContent=isFullscreen()?'⤢':'⛶');
+document.addEventListener('webkitfullscreenchange',()=>$('fullscreenButton').querySelector('.chip-icon').textContent=isFullscreen()?'⤢':'⛶');
 /* Esc / gesto de volta do sistema: sempre reflete o estado */
-window.addEventListener('keydown',e=>{if(e.key==='Escape'&&isFullscreen())exitFullscreen();});
-window.addEventListener('resize',()=>{ if(!isFullscreen()) $('fullscreenButton').textContent='⛶'; });
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&focusMode)setFocusMode(false);else if(e.key==='Escape'&&isFullscreen())exitFullscreen();});
+window.addEventListener('resize',()=>{ if(!isFullscreen()) $('fullscreenButton').querySelector('.chip-icon').textContent='⛶'; });
 
 /* ===== Compartilhar (captura do palco via Web Share API) ===== */
 async function shareStage(){
@@ -686,41 +710,56 @@ async function shareStage(){
 }
 $('shareButton').addEventListener('click',shareStage);
 
-/* ===== Modo palco: prioriza o efeito visual, oculta a interface ===== */
+/* Um único controle liga/desliga o modo palco; duplo toque no palco também alterna. */
 let focusMode=false;
+let overlayBeforeFocusMode=state.overlay;
 function setFocusMode(on){
   focusMode=on;
   document.body.classList.toggle('focus-mode',on);
-  $('focusButton')?.classList.toggle('active',on);
-  $('focusButton')?.setAttribute('aria-pressed',String(on));
+  $('focusModeButton').classList.toggle('active',on);
+  $('focusModeButton').setAttribute('aria-pressed',String(on));
+  $('focusModeButton').setAttribute('aria-label',on?'Sair do modo palco':'Ativar modo palco');
+  $('focusModeLabel').textContent=on?'Voltar':'Palco';
   $('focusHint').hidden=!on;
   $('focusHint').textContent=on?'Duplo toque para voltar':'Duplo toque para o modo palco';
   if(on){
+    overlayBeforeFocusMode=state.overlay;
     if(!isFullscreen())enterFullscreen().catch(()=>{});
     state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
   } else {
-    // Sair do modo palco também sai da tela cheia (facilita voltar)
     if(isFullscreen())exitFullscreen().catch(()=>{});
-    state.overlay=true;$('overlayButton')?.classList.add('active');$('overlayButton')?.setAttribute('aria-pressed','true');
+    state.overlay=overlayBeforeFocusMode;
+    $('overlayButton')?.classList.toggle('active',state.overlay);
+    $('overlayButton')?.setAttribute('aria-pressed',String(state.overlay));
   }
   savePreferences();
 }
-$('focusButton').addEventListener('click',()=>setFocusMode(!focusMode));
+$('focusModeButton').addEventListener('click',()=>setFocusMode(!focusMode));
 let lastTap=0;
 stage.addEventListener('touchend',e=>{
   if(e.target!==canvas&&e.target!==overlayCanvas)return;
   const now=Date.now();
   if(now-lastTap<320){
     lastTap=0;
-    if(uiHidden)setUiHidden(false);
-    else setFocusMode(!focusMode);
+    setFocusMode(!focusMode);
   } else lastTap=now;
 },{passive:true});
 if(saved.focusMode)setFocusMode(true);
+const dockBody=$('dockBody'),dockActions=$('dockActions'),dockActionsHint=$('dockActionsHint'),dockScrollHint=$('dockScrollHint');
+function updateDockScrollHints(){
+  dockActionsHint.hidden=dockActions.scrollWidth<=dockActions.clientWidth+2;
+  dockScrollHint.hidden=dockBody.scrollHeight<=dockBody.clientHeight+28;
+}
+window.addEventListener('resize',updateDockScrollHints);
+if('ResizeObserver' in window){const dockResizeObserver=new ResizeObserver(updateDockScrollHints);dockResizeObserver.observe(dockActions);dockResizeObserver.observe(dockBody);}
+const dockMutationObserver=new MutationObserver(updateDockScrollHints);
+dockMutationObserver.observe(dockActions,{attributes:true,childList:true,subtree:true,attributeFilter:['hidden']});
+setTimeout(updateDockScrollHints,0);
 const tabButtons=[...document.querySelectorAll('.tab-button')];
 function activateTab(button,moveFocus=false){
   tabButtons.forEach(tab=>{const selected=tab===button;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;});
   document.querySelectorAll('.dock-panel').forEach(panel=>panel.classList.toggle('active',panel.id===button.getAttribute('aria-controls')));
+  updateDockScrollHints();
   if(moveFocus)button.focus();
 }
 tabButtons.forEach((button,index)=>{
@@ -739,7 +778,7 @@ let touchStartY=0,touchStartTime=0;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
 stage.addEventListener('touchend',e=>{
   if(e.target!==canvas&&e.target!==overlayCanvas)return;
-  if(uiHidden){setUiHidden(false);return;}
+
   const dy=e.changedTouches[0].clientY-touchStartY;
   if(!state.drawingRect&&Math.abs(dy)>65&&Date.now()-touchStartTime<600)switchCamera();
 },{passive:true});
@@ -774,7 +813,66 @@ overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.drag
 if(isAppleMobile && !isStandaloneApp){$('installButton').hidden=false;$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
 if(isAppleMobile && isStandaloneApp)$('fullscreenButton').hidden=true;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;return;}if(isAppleMobile&&!isStandaloneApp)showToast('No Safari: Compartilhar → Adicionar à Tela de Início.');});
+function applyUiPreferences(){
+  const systemLight=window.matchMedia?.('(prefers-color-scheme: light)').matches===true;
+  const theme=themeChoice==='system'?(systemLight?'light':'dark'):themeChoice;
+  document.documentElement.dataset.theme=theme;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content',theme==='light'?'#f6f8fa':'#090b10');
+  document.documentElement.classList.toggle('reduce-motion',reduceMotion);
+  document.querySelectorAll('[data-theme-choice]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.themeChoice===themeChoice)));
+  $('reduceMotionButton').setAttribute('aria-pressed',String(reduceMotion));
+  $('hapticsButton').setAttribute('aria-pressed',String(hapticsEnabled));
+  $('hapticsButton').textContent='Feedback tátil · '+(hapticsEnabled?'ligado':'desligado');
+}
+applyUiPreferences();
+window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(themeChoice==='system')applyUiPreferences();});
+const navigation = createNavigation({
+  pages: [{name:'stage',element:$('pageStage')},{name:'session',element:$('pageSession')},{name:'settings',element:$('pageSettings')},{name:'help',element:$('pageHelp')}],
+  buttons: [...document.querySelectorAll('.primary-nav [data-page]')].map(element=>({name:element.dataset.page,element})),
+  initial: 'stage',
+  onChange: name => { document.body.dataset.page=name; },
+});
+document.querySelectorAll('[data-go-page]').forEach(button=>button.addEventListener('click',()=>{if($('quickSettingsSheet').open)$('quickSettingsSheet').close();if($('permissionDialog').open)$('permissionDialog').close();navigation.navigate(button.dataset.goPage,{focus:true});}));
+document.querySelectorAll('[data-settings-tab]').forEach(button=>button.addEventListener('click',()=>{
+  navigation.navigate('settings',{focus:true});
+  const tab=document.getElementById('tab'+button.dataset.settingsTab);
+  if(tab)activateTab(tab);
+}));
+$('cameraIssueRetry').addEventListener('click',()=>{$('permissionDialog').close();beginSession($('startButton'));});
+$('closePermissionDialog').addEventListener('click',()=>$('permissionDialog').close());
+$('quickSettingsButton').addEventListener('click',()=>$('quickSettingsSheet').showModal());
+$('closeQuickSettings').addEventListener('click',()=>$('quickSettingsSheet').close());
+$('quickSettingsSheet').addEventListener('click',event=>{if(event.target===$('quickSettingsSheet'))$('quickSettingsSheet').close();});
+$('quickCameraButton').addEventListener('click',()=>{if(!$('switchCamera').disabled)$('switchCamera').click();else showToast('Inicie a câmera para trocar a lente.');});
+$('quickQualityButton').addEventListener('click',()=>{$('autoQualityButton').click();const on=$('autoQualityButton').getAttribute('aria-pressed')==='true';$('quickQualityButton').setAttribute('aria-pressed',String(on));$('quickQualityButton').textContent='Qualidade automática · '+(on?'ligada':'desligada');});
+$('quickRecordButton').addEventListener('click',()=>{$('recordButton').click();});
+$('stageMuteButton').addEventListener('click',()=>$('muteButton').click());
+$('quickMuteButton').addEventListener('click',()=>$('muteButton').click());
+$('quickSoundButton').addEventListener('click',()=>$('audioSensitivityButton').click());
+$('audioSensitivityButton').addEventListener('click',()=>{const on=state.audioEnabled;$('quickSoundButton').setAttribute('aria-pressed',String(on));$('quickSoundButton').textContent=on?'Som ligado':'Som desligado';});
+$('muteButton').addEventListener('click',()=>{const muted=state.muted;for(const id of ['stageMuteButton','quickMuteButton']){const b=$(id);b.setAttribute('aria-pressed',String(muted));b.textContent='Mudo';}announceStatus(muted?'Som silenciado':'Som ligado');});
+$('quickSoundButton').setAttribute('aria-pressed',String(state.audioEnabled));$('quickSoundButton').textContent=state.audioEnabled?'Som ligado':'Som desligado';
+for(const id of ['stageMuteButton','quickMuteButton'])$(id).setAttribute('aria-pressed',String(state.muted));
+document.querySelectorAll('[data-quick-effect]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.quickEffect===state.effect)));
+$('quickAudioSensitivity').value=String(state.audioSensitivity);$('quickAudioSensitivityValue').textContent=fmt(state.audioSensitivity);
+$('quickQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('quickQualityButton').textContent='Qualidade automática · '+(state.autoQuality?'ligada':'desligada');
+$('quickAudioSensitivity').addEventListener('input',event=>{$('audioSensitivity').value=event.target.value;$('audioSensitivity').dispatchEvent(new Event('input',{bubbles:true}));$('quickAudioSensitivityValue').textContent=fmt(Number(event.target.value));});
+document.querySelectorAll('[data-quick-effect]').forEach(button=>button.addEventListener('click',()=>{document.querySelector('[data-effect="'+button.dataset.quickEffect+'"]')?.click();document.querySelectorAll('[data-quick-effect]').forEach(item=>{const active=item.dataset.quickEffect===state.effect;item.setAttribute('aria-pressed',String(active));});}));
+
+
+document.querySelectorAll('[data-theme-choice]').forEach(button=>button.addEventListener('click',()=>{
+  themeChoice=button.dataset.themeChoice;applyUiPreferences();savePreferences();
+}));
+$('reduceMotionButton').addEventListener('click',event=>{reduceMotion=!reduceMotion;applyUiPreferences();savePreferences();});
+$('hapticsButton').addEventListener('click',()=>{hapticsEnabled=!hapticsEnabled;applyUiPreferences();savePreferences();if(hapticsEnabled)navigator.vibrate?.(8);});
+function hapticFeedback(){if(hapticsEnabled)navigator.vibrate?.(8);}
+document.querySelectorAll('.primary-nav button,.quick-filter-row button,.pill,.page-button').forEach(button=>button.addEventListener('click',hapticFeedback));
+function updateConnectionState(restored=false){const online=navigator.onLine;$('connectionLabel').hidden=online;if(!online)announceStatus('Sem conexão. O app está offline.');else if(restored)announceStatus('Conexão restabelecida.');}
+window.addEventListener('offline',()=>updateConnectionState());
+window.addEventListener('online',()=>updateConnectionState(true));
+updateConnectionState();
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
 document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && state.active) void wakeLockService.acquire(); });
+window.addEventListener('pageshow', () => { if(state.active) void ensureAudioAlive(); });
+window.addEventListener('focus', () => { if(state.active) void ensureAudioAlive(); });
 window.addEventListener('pagehide', () => { void wakeLockService.release(); });
-

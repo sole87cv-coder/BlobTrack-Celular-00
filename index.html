@@ -9,8 +9,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#090b10">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <meta name="description" content="Instrumento audiovisual ao vivo, feito para celular.">
-  <title>BlobTrack Celular-00</title>
+  <meta name="description" content="Instrumento audiovisual para celular: a câmera detecta movimento e o transforma em imagem e som em tempo real.">
+  <meta name="application-name" content="Os Corpos Compon o Som">
+  <meta name="apple-mobile-web-app-title" content="Os Corpos">
+  <meta property="og:title" content="Os Corpos Compon o Som — instrumento audiovisual">
+  <meta name="twitter:title" content="Os Corpos Compon o Som — instrumento audiovisual">
+  <title>Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./src/app.css">
@@ -18,39 +22,33 @@
 
 <body>
   <main class="app-shell" id="appShell">
-    <section class="workspace" aria-label="Instrumento">
+    <section class="workspace app-page stage-page" id="pageStage" aria-label="Palco" aria-current="page">
       <section class="stage" id="stage" tabindex="-1" aria-label="Palco visual" aria-describedby="visualDescription">
         <video id="camera" playsinline webkit-playsinline muted aria-hidden="true"></video>
         <canvas id="visual" role="img" aria-label="Imagem processada ao vivo" aria-describedby="visualDescription"></canvas>
         <canvas id="overlay" aria-hidden="true"></canvas>
         <button class="gear-vr-exit" id="gearVrExit" type="button" hidden>Sair do Gear VR</button>
         <canvas id="analysis" aria-hidden="true"></canvas>
-        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
-        <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
-        <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
-        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
-        <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
-        <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
-        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
+        <p id="visualDescription" class="sr-only">Palco: efeitos do movimento. Medições: regiões e sinais.</p>
         <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
         <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="stage-shade"></div>
 
         <!-- Barra flutuante minimalista sobre o palco -->
         <header class="float-bar" id="floatBar">
-          <div class="brand"><span class="brand-mark" aria-hidden="true">●</span><strong>BlobTrack</strong></div>
-          <div class="status" aria-live="polite"><i id="statusLight"></i><span id="statusText">Pronto</span></div>
+          <div class="brand"><span class="brand-mark" aria-hidden="true">●</span><strong>Os Corpos Compon o Som</strong></div>
+          <div class="status"><i id="statusLight" aria-hidden="true"></i><span id="statusText">Pronto</span><span class="connection-label" id="connectionLabel" hidden>Offline</span></div>
           <div class="float-actions">
-            <button class="chip-button" id="shareButton" type="button" aria-label="Compartilhar" hidden>⇪</button>
+            <button class="chip-button" id="shareButton" type="button" aria-label="Compartilhar" hidden><span class="chip-icon" aria-hidden="true">⇪</span><span class="chip-label">Enviar</span></button>
             <button class="chip-button record-button" id="recordButton" type="button"
               aria-label="Iniciar gravação" aria-pressed="false" title="Gravar o palco">
-              <span class="record-button-icon" aria-hidden="true">○</span><span class="record-button-time" id="recordButtonTime" hidden>00:00</span>
+              <span class="chip-icon record-button-icon" aria-hidden="true">○</span><span class="chip-label">Gravar</span><span class="record-button-time" id="recordButtonTime" hidden>00:00</span>
             </button>
             <button class="chip-button record-save-button" id="recordSaveButton" type="button"
-              aria-label="Salvar ou compartilhar gravação" title="Salvar ou compartilhar gravação" hidden>↓</button>
-            <button class="chip-button" id="fullscreenButton" type="button" aria-label="Tela cheia">⛶</button>
-            <button class="chip-button" id="hideUiButton" type="button" aria-label="Ocultar controles">◌</button>
-            <button class="chip-button" id="installButton" type="button" aria-label="Instalar" hidden>＋</button>
+              aria-label="Salvar ou compartilhar gravação" title="Salvar ou compartilhar gravação" hidden><span class="chip-icon" aria-hidden="true">↓</span><span class="chip-label">Salvar</span></button>
+            <button class="chip-button" id="fullscreenButton" type="button" aria-label="Tela cheia"><span class="chip-icon" aria-hidden="true">⛶</span><span class="chip-label">Tela</span></button>
+            <button class="chip-button" id="focusModeButton" type="button" aria-label="Ativar modo palco" aria-pressed="false"><span class="chip-icon" aria-hidden="true">◉</span><span class="chip-label" id="focusModeLabel">Palco</span></button>
+            <button class="chip-button" id="installButton" type="button" aria-label="Instalar" hidden><span class="chip-icon" aria-hidden="true">＋</span><span class="chip-label">Instalar</span></button>
           </div>
         </header>
 
@@ -60,17 +58,19 @@
           <span class="record-indicator-time" id="recordIndicatorTime">00:00</span>
         </button>
 
-        <div class="stage-pill"><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0
+        <div class="stage-pill" id="stagePill" hidden><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0
             blobs</span><span id="renderInfo">WebGL2</span></div>
 
         <div class="stage-message" id="stageMessage">
           <div class="stage-welcome">
             <div class="pulse-icon">◉</div>
             <h1>O movimento vira imagem e som</h1>
-            <p>Ligue a câmera para começar.</p>
-            <button class="primary-button" id="startButton" type="button">Ligar</button>
+            <p>Ligue a câmera para começar.</p><p class="welcome-help">Movimento vira imagem e som. Sem microfone.</p>
+            <button class="primary-button" id="startButton" type="button">Iniciar câmera</button>
           </div>
         </div>
+        <dialog class="camera-issue" id="permissionDialog" aria-labelledby="cameraIssueTitle" aria-describedby="cameraIssueText"><h2 id="cameraIssueTitle"></h2><p id="cameraIssueText"></p><button class="page-button primary" id="cameraIssueRetry" type="button">Tentar novamente</button><button class="page-button" type="button" data-go-page="help">Ajuda</button><button class="page-button" type="button" id="closePermissionDialog">Fechar</button></dialog>
+        <div class="stage-action-bar"><button class="page-button" id="quickSettingsButton" type="button">Ajustes rápidos</button><button class="page-button" id="stageMuteButton" type="button" aria-pressed="false">Mudo</button></div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -85,18 +85,19 @@
 
         <div class="dock-body" id="dockBody">
           <!-- Linha principal: ações diretas -->
-          <div class="dock-row dock-actions">
+          <div class="dock-row dock-actions" id="dockActions">
             <button class="pill record-dock-button" id="recordButtonPanel" type="button" aria-label="Iniciar gravação"
               aria-pressed="false" title="Gravar o palco">Gravar vídeo</button>
             <button class="pill record-save-dock-button" id="recordSaveButtonPanel" type="button"
               aria-label="Salvar ou compartilhar gravação" title="Salvar ou compartilhar gravação" hidden>Salvar gravação</button>
-            <button class="pill primary" id="startButton2" type="button" hidden>Ligar</button>
+            <button class="pill primary" id="startButton2" type="button" hidden>Iniciar câmera</button>
             <button class="pill" id="audioSensitivityButton" type="button" aria-pressed="true">Som · ligado</button>
             <button class="pill" id="muteButton" type="button" aria-pressed="false">Mudo</button>
             <button class="pill" id="reactButton" type="button" aria-pressed="true">Reagir</button>
-            <button class="pill" id="switchCamera" type="button" disabled>Câmera</button>
+            <button class="pill" id="switchCamera" type="button" disabled>Trocar câmera</button>
             <button class="pill" id="stopButton" type="button" hidden>Encerrar</button>
           </div>
+          <small class="dock-actions-hint" id="dockActionsHint" hidden>Mais ações →</small>
 
           <!-- Abas de ajustes finos -->
           <nav class="dock-tabs" role="tablist" aria-label="Ajustes">
@@ -105,8 +106,9 @@
             <button type="button" id="tabTracking" class="tab-button" role="tab" aria-controls="panelTracking" aria-selected="false" tabindex="-1" data-panel="panelTracking">Rastreio</button>
             <button type="button" id="tabSignals" class="tab-button" role="tab" aria-controls="panelSignals" aria-selected="false" tabindex="-1" data-panel="panelSignals">Medições</button>
           </nav>
+          <small class="dock-scroll-hint" id="dockScrollHint" hidden>Mais opções ↓</small>
 
-          <div class="dock-panel" id="panelAudio" role="tabpanel" aria-labelledby="tabAudio" tabindex="0" role="tabpanel" aria-labelledby="tabAudio" tabindex="0" role="tabpanel" aria-labelledby="tabAudio" tabindex="0">
+          <div class="dock-panel" id="panelAudio" role="tabpanel" aria-labelledby="tabAudio" tabindex="0">
             <div class="audio-params-grid">
               <div class="audio-param">
                 <label for="audioSensitivity"><span>Nível do som</span><b id="audioSensitivityValue">1,00</b></label>
@@ -130,6 +132,15 @@
                 </select>
                 </label>
               </div>
+              <div class="audio-scale-chooser">
+                <span class="audio-section-title">Escala</span>
+                <div id="audioScales" class="audio-scale-grid" role="radiogroup" aria-label="Escala musical">
+                  <button type="button" id="scale-live" class="audio-scale-button" role="radio" aria-checked="true" tabindex="0" data-scale-id="live"><span>Livre</span><small>pentatônica menor</small></button>
+                  <button type="button" id="scale-minor" class="audio-scale-button" role="radio" aria-checked="false" tabindex="-1" data-scale-id="minor"><span>Menor</span><small>menor natural</small></button>
+                  <button type="button" id="scale-strange" class="audio-scale-button" role="radio" aria-checked="false" tabindex="-1" data-scale-id="strange"><span>Estranho</span><small>dórico</small></button>
+                  <button type="button" id="scale-tense" class="audio-scale-button" role="radio" aria-checked="false" tabindex="-1" data-scale-id="tense"><span>Tenso</span><small>menor harmônica</small></button>
+                </div>
+              </div>
               <div class="audio-param audio-select-param">
                 <label for="audioTimbre"><span>Timbre</span>
                 <select id="audioTimbre" class="audio-select">
@@ -149,12 +160,13 @@
             <small class="hint">Os blobs conduzem a altura e a oscilação. Combine um timbre e ligue os efeitos ao seu gosto.</small>
           </div>
 
-          <div class="dock-panel active" id="panelEffects" role="tabpanel" aria-labelledby="tabEffects" tabindex="0" role="tabpanel" aria-labelledby="tabEffects" tabindex="0" role="tabpanel" aria-labelledby="tabEffects" tabindex="0">
+          <div class="dock-panel active" id="panelEffects" role="tabpanel" aria-labelledby="tabEffects" tabindex="0">
+            <span class="audio-section-title">Estilo da imagem</span>
             <div class="dock-row">
               <div class="effect-row" role="group" aria-label="Efeito visual">
-                <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Invert</button>
-                <button type="button" data-effect="threshold" class="effect-button" aria-pressed="false">BW umbral</button>
-                <button type="button" data-effect="dither" class="effect-button" aria-pressed="false">BW dither</button>
+                <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Inverter</button>
+                <button type="button" data-effect="threshold" class="effect-button" aria-pressed="false">Preto e branco</button>
+                <button type="button" data-effect="dither" class="effect-button" aria-pressed="false">Pontilhado</button>
               </div>
             </div>
             <div class="dock-row">
@@ -166,47 +178,47 @@
               </div>
             </div>
             <small class="hint" id="effectPerformanceHint" hidden></small>
+            <details class="advanced-controls">
+              <summary>Mais ajustes</summary>
             <div class="dock-row slider-row">
-              <label for="master"><span>Master</span><b id="masterValue">1,00</b></label>
+              <label for="master"><span>Intensidade geral</span><b id="masterValue">1,00</b></label>
               <input id="master" type="range" min="0" max="2" step="0.25" value="1">
-              <label for="bias"><span>Bias</span><b id="biasValue">0,00</b></label>
+              <label for="bias"><span>Ajuste tonal</span><b id="biasValue">0,00</b></label>
               <input id="bias" type="range" min="-1" max="1" step="0.05" value="0">
             </div>
             <div class="dock-row wrap">
-              <button class="pill small" id="flipButton" type="button" aria-pressed="false">Flip</button>
-              <button class="pill small active" id="overlayButton" type="button" aria-pressed="true">Overlay</button>
+              <button class="pill small" id="flipButton" type="button" aria-pressed="false">Espelhar</button>
+              <button class="pill small active" id="overlayButton" type="button" aria-pressed="true">Guias</button>
               <button class="pill small" id="maskButton" type="button" aria-pressed="false">Ver binarizada</button>
               <button class="pill small" id="captureButton" type="button">Capturar</button>
-              <button class="pill small" id="focusButton" type="button" aria-pressed="false">Modo palco</button>
               <button class="pill small" id="gearVrButton" type="button" aria-pressed="false">Gear VR · SM‑R323</button>
             </div>
             <small class="hint gear-vr-hint">Imagem lado a lado, enquadrada por inteiro para as lentes do Gear VR. Ative e coloque o celular no visor.</small>
+            </details>
           </div>
 
-          <div class="dock-panel" id="panelTracking" role="tabpanel" aria-labelledby="tabTracking" tabindex="0" role="tabpanel" aria-labelledby="tabTracking" tabindex="0" role="tabpanel" aria-labelledby="tabTracking" tabindex="0">
+          <div class="dock-panel" id="panelTracking" role="tabpanel" aria-labelledby="tabTracking" tabindex="0">
             <div class="dock-row slider-row">
-              <label for="motionThreshold"><span>Sensibilidade dos blobs</span><b id="motionValue">0,18</b></label>
+              <label for="motionThreshold"><span>Sensibilidade ao movimento</span><b id="motionValue">0,18</b></label>
               <input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
-              <label for="trackingWidth"><span>Resolução de rastreio</span><b id="trackingValue">320 px</b></label>
+              <label for="trackingWidth"><span>Detalhe do rastreio</span><b id="trackingValue">320 px</b></label>
               <input id="trackingWidth" type="range" min="160" max="640" step="80" value="320">
             </div>
             <div class="dock-row wrap">
               <button class="pill small auto-quality active" id="autoQualityButton" type="button"
                 aria-pressed="true">Auto</button>
-              <button class="pill small" id="backgroundButton" type="button">Fundo</button>
-              <button class="pill small" id="reseedButton" type="button">Reseed</button>
+              <button class="pill small" id="backgroundButton" type="button">Reaprender fundo</button>
+              <button class="pill small" id="reseedButton" type="button">Reiniciar rastreio</button>
               <button class="pill small" id="rectangleButton" type="button" aria-describedby="rectangleKeyboardHelp">Retângulo</button>
               <button class="pill small" id="exposureButton" type="button" disabled>Exposição</button>
-              <button class="pill small" id="trackDown" type="button">Tracking −</button>
-              <button class="pill small" id="trackUp" type="button">Tracking +</button>
+              <button class="pill small" id="trackDown" type="button">Resolução −</button>
+              <button class="pill small" id="trackUp" type="button">Resolução +</button>
             </div>
-            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
-            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
             <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
             <small class="hint" id="exposureHint">Exposição manual quando a câmera suportar.</small>
           </div>
 
-          <div class="dock-panel" id="panelSignals" role="tabpanel" aria-labelledby="tabSignals" tabindex="0" role="tabpanel" aria-labelledby="tabSignals" tabindex="0" role="tabpanel" aria-labelledby="tabSignals" tabindex="0">
+          <div class="dock-panel" id="panelSignals" role="tabpanel" aria-labelledby="tabSignals" tabindex="0">
             <div class="signal-grid">
               <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i>
               </div>
@@ -237,6 +249,79 @@
         </div>
       </section>
     </section>
+    <p class="sr-only" id="appStatus" role="status" aria-live="polite" aria-atomic="true"></p>
+    <section class="app-page secondary-page" id="pageSession" aria-labelledby="sessionHeading" hidden>
+      <header class="page-heading"><h1 id="sessionHeading" tabindex="-1">Sessão</h1><p>Acompanhe a gravação atual.</p></header>
+      <section class="session-card" id="sessionCard">
+        <div class="session-state"><span class="state-indicator" aria-hidden="true"></span><strong id="sessionStateText" role="status" aria-live="polite" aria-atomic="true">Pronta para começar</strong></div>
+        <p id="sessionDuration">Nenhuma gravação em andamento.</p>
+        <div class="page-actions">
+          <button class="page-button primary" id="sessionRecordButton" type="button">Iniciar gravação</button>
+          <button class="page-button" id="sessionPauseButton" type="button" hidden>Pausar gravação</button>
+          <button class="page-button" id="sessionStopButton" type="button" hidden>Encerrar gravação</button>
+        </div>
+        <button class="page-button" id="sessionSaveButton" type="button" hidden>Salvar gravação</button>
+      </section>
+      <section class="page-card"><h2>Sobre esta sessão</h2><p>Salve ou compartilhe a gravação antes de fechar o app. O áudio gravado é sintetizado pelo app; o microfone não é usado.</p></section>
+      <button class="page-button" type="button" data-go-page="stage">Voltar ao palco</button>
+    </section>
+    <section class="app-page secondary-page" id="pageSettings" aria-labelledby="settingsHeading" hidden>
+      <header class="page-heading"><h1 id="settingsHeading" tabindex="-1">Ajustes</h1><p>Câmera, som e imagem em um só lugar.</p></header>
+      <section class="page-card settings-shortcuts" aria-label="Grupos de ajustes">
+        <button type="button" data-settings-tab="Tracking">Câmera <span>Qualidade e rastreio</span></button>
+        <button type="button" data-settings-tab="Audio">Áudio <span>Nível, timbre e efeitos</span></button>
+        <button type="button" data-settings-tab="Effects">Visual <span>Estilos e composição</span></button>
+        <button type="button" data-go-page="session">Gravação <span>Estado e exportação</span></button>
+      </section>
+      <div id="settingsControls" class="settings-control-mount"></div>
+      <section class="page-card accessibility-settings" aria-labelledby="accessibilityHeading">
+        <h2 id="accessibilityHeading">Acessibilidade</h2><p>Escolha a aparência e reduza animações da interface.</p>
+        <div class="setting-row"><span>Tema</span><div class="segmented-setting" role="group" aria-label="Tema da interface">
+          <button type="button" data-theme-choice="system" aria-pressed="true">Sistema</button>
+          <button type="button" data-theme-choice="dark" aria-pressed="false">Escuro</button>
+          <button type="button" data-theme-choice="light" aria-pressed="false">Claro</button>
+        </div></div>
+        <button class="page-button" id="reduceMotionButton" type="button" aria-pressed="false">Reduzir animações</button>
+        <button class="page-button" id="hapticsButton" type="button" aria-pressed="false">Feedback tátil · desligado</button>
+      </section>
+      <section class="page-card about-card" aria-labelledby="aboutHeading">
+        <h2 id="aboutHeading">Os Corpos Compon o Som</h2>
+        <p class="about-subheading">Instrumento audiovisual que transforma movimento em som e imagem</p>
+        <p>Um instrumento audiovisual para celular. A câmera detecta os corpos em movimento e os converte em imagem e som sintetizados em tempo real.</p>
+        <p class="about-version">Versão 0.0.1</p>
+      </section>
+    </section>
+    <section class="app-page secondary-page" id="pageHelp" aria-labelledby="helpHeading" hidden>
+      <header class="page-heading"><h1 id="helpHeading" tabindex="-1">Ajuda</h1><p>Comece em poucos passos.</p></header>
+      <ol class="help-steps">
+        <li><strong>Enquadre o movimento.</strong><span>Posicione o celular para mostrar a área que quer explorar.</span></li>
+        <li><strong>Inicie a câmera.</strong><span>O navegador pedirá acesso à câmera. O microfone não é usado.</span></li>
+        <li><strong>Experimente som e imagem.</strong><span>Abra Ajustes rápidos ou explore os Ajustes.</span></li>
+        <li><strong>Grave se quiser.</strong><span>Salve ou compartilhe o resultado antes de fechar o app.</span></li>
+      </ol>
+      <details class="help-topic"><summary>A câmera foi bloqueada</summary><p>Abra as permissões do site no navegador, permita a câmera e tente novamente. A câmera exige HTTPS ou localhost.</p><button class="page-button" type="button" data-go-page="stage">Voltar e tentar</button></details>
+      <details class="help-topic"><summary>O som não iniciou</summary><p>Toque em Som para tentar ativar a saída de áudio. A imagem pode continuar sem som. O app não pede acesso ao microfone.</p></details>
+      <details class="help-topic"><summary>Gravação e salvamento</summary><p>Os formatos e o compartilhamento variam conforme o navegador. Consulte a tela Sessão para ver o estado e as ações disponíveis.</p></details>
+    </section>
+    <nav class="primary-nav" aria-label="Navegação principal">
+      <button type="button" data-page="stage" aria-current="page"><span aria-hidden="true">◉</span>Palco</button>
+      <button type="button" data-page="session"><span aria-hidden="true">●</span>Sessão</button>
+      <button type="button" data-page="settings"><span aria-hidden="true">⚙</span>Ajustes</button>
+      <button type="button" data-page="help"><span aria-hidden="true">?</span>Ajuda</button>
+    </nav>
+    <dialog class="quick-sheet" id="quickSettingsSheet" aria-labelledby="quickSettingsHeading">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <header class="sheet-heading"><h2 id="quickSettingsHeading">Ajustes rápidos</h2><button class="page-button close-sheet" type="button" id="closeQuickSettings">Fechar</button></header>
+      <section class="sheet-group"><h3>Câmera</h3><button class="page-button" type="button" id="quickCameraButton">Trocar câmera</button><button class="page-button" type="button" id="quickQualityButton" aria-pressed="true">Qualidade automática · ligada</button></section>
+      <section class="sheet-group"><h3>Visual</h3><div class="quick-filter-row" role="group" aria-label="Estilo da imagem">
+        <button type="button" data-quick-effect="invert" aria-pressed="true">Inverter</button><button type="button" data-quick-effect="threshold" aria-pressed="false">Preto e branco</button><button type="button" data-quick-effect="dither" aria-pressed="false">Pontilhado</button>
+      </div></section>
+      <section class="sheet-group"><h3>Som</h3><label for="quickAudioSensitivity">Nível do som <output id="quickAudioSensitivityValue">1,00</output></label><input id="quickAudioSensitivity" type="range" min="0" max="3" step="0.05" value="1"><div class="quick-filter-row">
+        <button type="button" id="quickSoundButton" aria-pressed="true">Som ligado</button><button type="button" id="quickMuteButton" aria-pressed="false">Mudo</button>
+      </div></section>
+      <section class="sheet-group"><h3>Sessão</h3><button class="page-button" type="button" id="quickRecordButton">Gravar</button><button class="page-button" type="button" id="quickPauseButton" hidden>Pausar gravação</button><button class="page-button" type="button" id="quickSaveButton" hidden>Salvar gravação</button><button class="page-button" type="button" data-go-page="session">Abrir Sessão</button></section>
+      <button class="page-button" type="button" data-go-page="settings">Todos os ajustes</button>
+    </dialog>
   </main>
   <script type="module" src="./src/app.js"></script>
 </body>

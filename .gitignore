@@ -3,8 +3,9 @@ android/.gradle/
 android/.local-build/
 android/app/build/
 android/local.properties
-dist/
+dist/*
 *.apk
+!dist/BlobTrack-Celular-00-debug.apk
 *.log
 .DS_Store
 Thumbs.db

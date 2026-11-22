@@ -1,4 +1,4 @@
-# BlobTrack Celular-00
+# Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem
 
 Aplicativo audiovisual mobile-first. A câmera detecta regiões de movimento conectadas (blobs); os sinais rastreados alimentam o palco visual e a síntese de áudio.
 
@@ -38,7 +38,7 @@ Abra um terminal PowerShell na raiz e execute:
 python -m http.server 8000
 ```
 
-Abra `http://localhost:8000` e toque em **Iniciar sessão**. Câmera e áudio exigem HTTPS ou `localhost`; `file://` não é suportado.
+Abra `http://localhost:8000` e toque em **Iniciar câmera**. Câmera e áudio exigem HTTPS ou `localhost`; `file://` não é suportado.
 
 ## Testes automatizados
 
@@ -68,6 +68,6 @@ O script compila e copia o APK para `dist/BlobTrack-Celular-00-debug.apk`. O arq
 
 ## Medições e validação
 
-A revisão de implementação atual usa o service worker v28 e 22 recursos no shell offline, totalizando 170.519 bytes sem compressão. O tamanho deve ser recalculado após mudanças de assets. Os testes usam frames e APIs sintéticos; não medem câmera, autonomia ou desempenho em aparelho físico.
+A versão atual usa o service worker v34 e 29 recursos no shell offline, totalizando 240.752 bytes sem compressão. A suíte `npm test` contém 147 testes; os testes usam frames e APIs sintéticos e não medem câmera, autonomia ou desempenho em aparelho físico. O APK debug em `dist/` foi recompilado com o seletor de escalas e o shell v34; ele é separado da PWA e não deve ser publicado na Play Store. O arquivo `.vercelignore` exclui Android, APK, documentação e testes do deploy da PWA. Para validar no celular, use o deployment HTTPS do Vercel após o commit correspondente chegar ao repositório remoto.
 
 As pendências de validação em hardware e navegador publicado estão registradas em [`AUDITORIA.md`](AUDITORIA.md). O APK em `dist/` é artefato de debug, não destinado à publicação na Play Store.
