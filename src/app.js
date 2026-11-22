@@ -241,7 +241,16 @@ async function startCamera() {
   state.starting = true; setStatus('Aguardando câmera'); log('Aguardando permissão da câmera no navegador.'); channel?.postMessage({ type: 'start', id: tabId });
   try {
     const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode=state.camera; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode=state.camera;stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
-    state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
+    state.stream = stream; video.srcObject = stream;
+    const videoReady = new Promise((resolve, reject) => {
+      if (video.readyState >= 2) { resolve(video); return; }
+      video.addEventListener('loadedmetadata', () => resolve(video), { once: true });
+      video.addEventListener('error', (ev) => reject(ev.error || new Error('video error')), { once: true });
+      setTimeout(() => reject(new Error('video timeout')), 10000);
+    });
+    try { await videoReady; } catch (e) { log(`Vídeo não carregou: ${e.message}`); throw e; }
+    try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch (e2) { log(`video.play falhou: ${e2.message}`); throw e2; } }
+    const tracks = stream.getVideoTracks(); if (!tracks.length) throw new Error('Câmera não forneceu faixa de vídeo.');
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
     $('stageMessage').hidden = true; if($('permissionDialog').open)$('permissionDialog').close(); $('stagePill').hidden = false; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
