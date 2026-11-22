@@ -1,12 +1,11 @@
 const CACHE_PREFIX = 'blobtrack-celular-00-';
 const CACHE = 'blobtrack-celular-00-v34';
 const SHELL = [
-  './index.html', './teste.html', './manifest.webmanifest', './src/app.css', './src/app.js',
+  './index.html', './manifest.webmanifest', './src/app.css', './src/app.js',
   './src/blob-tracker.js', './src/domain/blobTrackerCore.js', './src/video-crop.js', './src/audio-processor.js', './src/recorder.js',
   './src/recording-canvas.js', './src/recording-export.js', './src/preferences.js',
   './src/audio/audio.js', './src/audio/scales.js', './src/audio/scale-router.js', './src/ui/scales-ui.js', './src/core/deviceProfile.js', './src/core/utils.js',
-  './src/render/render.js', './src/session/sessionLock.js', './src/platform/wakeLock.js', './src/ui/i18n/pt-BR.js', './src/ui/navigation.js', './icons/icon-192.png', './icons/icon-512.png', './teste.css',
-  './teste.js', './icons/icon.svg'
+  './src/render/render.js', './src/session/sessionLock.js', './src/platform/wakeLock.js', './src/ui/i18n/pt-BR.js', './src/ui/navigation.js', './icons/icon-192.png', './icons/icon-512.png', './icons/icon.svg'
 ];
 
 self.addEventListener('install', event => {

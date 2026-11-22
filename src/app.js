@@ -235,22 +235,26 @@ function cameraScore(label,facing){const name=(label||'').toLocaleLowerCase();co
 async function refreshCameraChoices(){if(!navigator.mediaDevices?.enumerateDevices)return;try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');for(const facing of ['user','environment']){const pick=devices.map(device=>({device,score:cameraScore(device.label,facing)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score)[0];if(pick)state.cameraIds[facing]=pick.device.deviceId;}}catch{}}
 async function startCamera() {
   if (state.sessionBlocked) { releaseSession(); showToast('BlobTrack Celular-00 já está aberto em outra aba'); return; }
-  if (state.active || state.starting) return;
+  if (state.active || state.starting) { log('startCamera: já ativo ou iniciando'); return; }
   if (!window.isSecureContext) { log('Contexto não seguro detectado · tentando mesmo assim (WebView Android).'); }
   if (!navigator.mediaDevices?.getUserMedia) { log('getUserMedia não disponível.'); showCameraIssue({name:'NotFoundError'}); releaseSession(); return; }
   state.starting = true; setStatus('Aguardando câmera'); log('Aguardando permissão da câmera no navegador.'); channel?.postMessage({ type: 'start', id: tabId });
   try {
-    const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode=state.camera; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode=state.camera;stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
+    log(`startCamera: getUserMedia com constraints=${JSON.stringify({width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}})}`);
+    const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode=state.camera; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){log(`startCamera: getUserMedia falhou com preferred=${!!preferred}: ${err.name} ${err.message}`);if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode=state.camera;stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
     state.stream = stream; video.srcObject = stream;
+    log('startCamera: aguardando vídeo carregar');
     const videoReady = new Promise((resolve, reject) => {
       if (video.readyState >= 2) { resolve(video); return; }
-      video.addEventListener('loadedmetadata', () => resolve(video), { once: true });
+      video.addEventListener('loadedmetadata', () => { log('startCamera: loadedmetadata'); resolve(video); }, { once: true });
       video.addEventListener('error', (ev) => reject(ev.error || new Error('video error')), { once: true });
       setTimeout(() => reject(new Error('video timeout')), 10000);
     });
     try { await videoReady; } catch (e) { log(`Vídeo não carregou: ${e.message}`); throw e; }
-    try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch (e2) { log(`video.play falhou: ${e2.message}`); throw e2; } }
-    const tracks = stream.getVideoTracks(); if (!tracks.length) throw new Error('Câmera não forneceu faixa de vídeo.');
+    log('startCamera: chamando video.play()');
+    try { await video.play(); log('startCamera: video.play() OK'); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); log('startCamera: video.play() retry OK'); } catch (e2) { log(`video.play falhou: ${e2.message}`); throw e2; } }
+    const tracks = stream.getVideoTracks(); if (!tracks.length) { log('startCamera: sem tracks de vídeo'); throw new Error('Câmera não forneceu faixa de vídeo.'); }
+    log(`startCamera: ${tracks.length} track(s) de vídeo encontrada(s), readyState=${track.readyState}`);
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
     $('stageMessage').hidden = true; if($('permissionDialog').open)$('permissionDialog').close(); $('stagePill').hidden = false; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
@@ -565,15 +569,19 @@ $('sessionPauseButton').addEventListener('click',toggleRecordingPause);$('quickP
 ['recordSaveButton', 'recordSaveButtonPanel'].forEach(id => $(id).addEventListener('click', savePendingRecording));
 function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
 async function beginSession(button){
-  if(state.active||state.starting)return;
+  if(state.active||state.starting){log('beginSession: já ativo ou iniciando');return;}
   if(button)button.disabled=true;
+  log('beginSession: adquirindo sessionLock');
   const reserved=await sessionLock.acquire();
-  if(!reserved){resetStartButtons();state.sessionBlocked=true;showToast('BlobTrack Celular-00 já está aberto em outra aba');return;}
+  log(`beginSession: sessionLock resultado=${reserved}`);
+  if(!reserved){resetStartButtons();state.sessionBlocked=true;showToast('BlobTrack Celular-00 já está aberto em outra aba');log('beginSession: lock não adquirido');return;}
   resetStartButtons();
+  log('beginSession: iniciando áudio');
   const audioPromise=makeAudio();
   try { if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen().catch(()=>{}); } catch {}
   await audioPromise; if(state.audio?.state==='suspended') await state.audio.resume().catch(()=>{});
   if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.audioEnabled&&!state.muted?1:0,t,.12);}
+  log('beginSession: iniciando câmera');
   await startCamera();
 }
 $('startButton').addEventListener('click',e=>beginSession(e.currentTarget));

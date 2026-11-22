@@ -97,6 +97,12 @@ public final class MainActivity extends Activity {
     });
 
     setContentView(webView);
+
+    // Solicitar permissão de câmera antes de carregar o WebView
+    if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+      requestPermissions(new String[] { Manifest.permission.CAMERA }, CAMERA_PERMISSION);
+    }
+
     webView.loadUrl("https://" + APP_HOST + "/assets/index.html");
   }
 
