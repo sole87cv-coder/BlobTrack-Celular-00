@@ -193,9 +193,9 @@ export function createAudio({
 }) {
   async function makeAudio() {
     if (state.audio) return;
-    if (!('AudioWorkletNode' in globalThis) || !globalThis.isSecureContext) {
-      log('Áudio exige navegador compatível e HTTPS.');
-      showToast('Áudio precisa de navegador compatível e HTTPS');
+    if (!('AudioWorkletNode' in globalThis)) {
+      log('Áudio exige navegador compatível.');
+      showToast('Áudio precisa de navegador compatível');
       return;
     }
     try {

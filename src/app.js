@@ -44,6 +44,7 @@ const state = {
   audioEffects: { echo: false, space: false, chorus: false },
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, tracking: null, cycle: null, bus: null, composition: null, windows: null },
+  focusMode: false,
 };
 const recorder = createRecorder({
   canvas: recordingCanvas,
@@ -77,7 +78,8 @@ if (Number.isFinite(saved.audioTimbre)) state.audioTimbre = clamp(saved.audioTim
 if (saved.audioEffects && typeof saved.audioEffects === 'object') {
   for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
 }
-let toastTimer, installPrompt, glProgram, texture, posBuffer, uniforms = null;
+if (typeof saved.focusMode === 'boolean') state.focusMode = saved.focusMode;
+let toastTimer = null, installPrompt = null, glProgram = null, texture = null, posBuffer = null, uniforms = null;
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
@@ -98,7 +100,6 @@ if (channel) {
   let replied = false;
   channel.onmessage = ({ data }) => {
     if (data?.type === 'probe' && (state.active || state.starting || state.sessionReserved)) channel.postMessage({ type: 'active', id: tabId });
-    if (data?.type === 'claim' && (state.active || state.starting || state.sessionReserved)) channel.postMessage({ type: 'active', id: tabId });
     if (data?.type === 'claim' && state.claiming && data.id < tabId) state.sessionBlocked = true;
     if (data?.type === 'active' && !state.active) { replied = true; state.sessionBlocked = true; showToast('BlobTrack Celular-00 já está aberto em outra aba'); log('Sessão ativa em outra aba.'); }
     if (data?.type === 'start' && data.id !== tabId) { if (state.sessionReserved && tabId < data.id) return; if (state.claiming && tabId < data.id) return; state.sessionBlocked = true; if(state.active||state.starting) stopSession(); showToast('BlobTrack Celular-00 já está aberto em outra aba'); }
@@ -235,10 +236,11 @@ async function refreshCameraChoices(){if(!navigator.mediaDevices?.enumerateDevic
 async function startCamera() {
   if (state.sessionBlocked) { releaseSession(); showToast('BlobTrack Celular-00 já está aberto em outra aba'); return; }
   if (state.active || state.starting) return;
-  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) { log('Abra em HTTPS ou localhost para liberar câmera.'); showCameraIssue({name:'SecurityError'}); releaseSession(); return; }
+  if (!window.isSecureContext) { log('Contexto não seguro detectado · tentando mesmo assim (WebView Android).'); }
+  if (!navigator.mediaDevices?.getUserMedia) { log('getUserMedia não disponível.'); showCameraIssue({name:'NotFoundError'}); releaseSession(); return; }
   state.starting = true; setStatus('Aguardando câmera'); log('Aguardando permissão da câmera no navegador.'); channel?.postMessage({ type: 'start', id: tabId });
   try {
-    const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode={ideal:state.camera}; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode={ideal:state.camera};stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
+    const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode=state.camera; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode=state.camera;stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
     state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
@@ -500,6 +502,7 @@ async function savePendingRecording() {
 }
 async function startRecording() {
   if (!state.active) { showToast('Inicie a sessão antes de gravar'); return; }
+  if (recordingSnapshot.state === 'stopping') { showToast('Gravação já está sendo finalizada'); return; }
   if (!recorder.isSupported()) { showToast('Gravação não suportada neste navegador'); return; }
   if (!recordingContext) { showToast('Composição de gravação indisponível neste navegador'); return; }
   resize();
@@ -569,7 +572,6 @@ $('startButton2').addEventListener('click',e=>beginSession(e.currentTarget));
 $('switchCamera').addEventListener('click',switchCamera);$('exposureButton').addEventListener('click',setManualExposure);$('stopButton').addEventListener('click',stopSession);
 /* Painel deslizante: alça e gesto de arrasto */
 const dock=$('dock');
-$('settingsControls').append(dock);
 function setDock(open){dock.classList.toggle('closed',!open);$('dockHandle').setAttribute('aria-expanded',String(open));$('dockPeek').textContent=open?'▾':'▴';$('dockLabel').textContent=open?'Controles':'Ajustes';}
 $('dockHandle').addEventListener('click',()=>setDock(dock.classList.contains('closed')));
 let dockDragY=null;
