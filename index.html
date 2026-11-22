@@ -3,11 +3,12 @@
 
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#090b10">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
   <meta name="description" content="Instrumento audiovisual ao vivo, feito para celular.">
   <title>BlobTrack Celular-00</title>
   <link rel="manifest" href="./manifest.webmanifest">
@@ -18,12 +19,21 @@
 <body>
   <main class="app-shell" id="appShell">
     <section class="workspace" aria-label="Instrumento">
-      <section class="stage" id="stage" aria-label="Palco visual">
+      <section class="stage" id="stage" tabindex="-1" aria-label="Palco visual" aria-describedby="visualDescription">
         <video id="camera" playsinline webkit-playsinline muted aria-hidden="true"></video>
-        <canvas id="visual" aria-label="Imagem processada ao vivo"></canvas>
+        <canvas id="visual" role="img" aria-label="Imagem processada ao vivo" aria-describedby="visualDescription"></canvas>
         <canvas id="overlay" aria-hidden="true"></canvas>
         <button class="gear-vr-exit" id="gearVrExit" type="button" hidden>Sair do Gear VR</button>
         <canvas id="analysis" aria-hidden="true"></canvas>
+        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
+        <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
+        <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
+        <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
+        <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+        <p id="visualDescription" class="sr-only">Palco ao vivo com efeitos guiados pelo movimento da câmera. O resumo informa quantas regiões estão em movimento; o painel Medições apresenta atividade e sinais.</p>
+        <div id="visualSummary" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Aguardando a sessão da câmera.</div>
+        <div id="rectangleKeyboardStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
         <div class="stage-shade"></div>
 
         <!-- Barra flutuante minimalista sobre o palco -->
@@ -89,14 +99,14 @@
           </div>
 
           <!-- Abas de ajustes finos -->
-          <nav class="dock-tabs" aria-label="Ajustes">
-            <button type="button" class="tab-button active" data-panel="panelEffects" aria-pressed="true">Efeito</button>
-            <button type="button" class="tab-button" data-panel="panelAudio" aria-pressed="false">Som</button>
-            <button type="button" class="tab-button" data-panel="panelTracking" aria-pressed="false">Rastreio</button>
-            <button type="button" class="tab-button" data-panel="panelSignals" aria-pressed="false">Medições</button>
+          <nav class="dock-tabs" role="tablist" aria-label="Ajustes">
+            <button type="button" id="tabEffects" class="tab-button active" role="tab" aria-controls="panelEffects" aria-selected="true" tabindex="0" data-panel="panelEffects">Efeito</button>
+            <button type="button" id="tabAudio" class="tab-button" role="tab" aria-controls="panelAudio" aria-selected="false" tabindex="-1" data-panel="panelAudio">Som</button>
+            <button type="button" id="tabTracking" class="tab-button" role="tab" aria-controls="panelTracking" aria-selected="false" tabindex="-1" data-panel="panelTracking">Rastreio</button>
+            <button type="button" id="tabSignals" class="tab-button" role="tab" aria-controls="panelSignals" aria-selected="false" tabindex="-1" data-panel="panelSignals">Medições</button>
           </nav>
 
-          <div class="dock-panel" id="panelAudio">
+          <div class="dock-panel" id="panelAudio" role="tabpanel" aria-labelledby="tabAudio" tabindex="0" role="tabpanel" aria-labelledby="tabAudio" tabindex="0" role="tabpanel" aria-labelledby="tabAudio" tabindex="0">
             <div class="audio-params-grid">
               <div class="audio-param">
                 <label for="audioSensitivity"><span>Nível do som</span><b id="audioSensitivityValue">1,00</b></label>
@@ -139,7 +149,7 @@
             <small class="hint">Os blobs conduzem a altura e a oscilação. Combine um timbre e ligue os efeitos ao seu gosto.</small>
           </div>
 
-          <div class="dock-panel active" id="panelEffects">
+          <div class="dock-panel active" id="panelEffects" role="tabpanel" aria-labelledby="tabEffects" tabindex="0" role="tabpanel" aria-labelledby="tabEffects" tabindex="0" role="tabpanel" aria-labelledby="tabEffects" tabindex="0">
             <div class="dock-row">
               <div class="effect-row" role="group" aria-label="Efeito visual">
                 <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Invert</button>
@@ -173,7 +183,7 @@
             <small class="hint gear-vr-hint">Imagem lado a lado, enquadrada por inteiro para as lentes do Gear VR. Ative e coloque o celular no visor.</small>
           </div>
 
-          <div class="dock-panel" id="panelTracking">
+          <div class="dock-panel" id="panelTracking" role="tabpanel" aria-labelledby="tabTracking" tabindex="0" role="tabpanel" aria-labelledby="tabTracking" tabindex="0" role="tabpanel" aria-labelledby="tabTracking" tabindex="0">
             <div class="dock-row slider-row">
               <label for="motionThreshold"><span>Sensibilidade dos blobs</span><b id="motionValue">0,18</b></label>
               <input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
@@ -185,15 +195,18 @@
                 aria-pressed="true">Auto</button>
               <button class="pill small" id="backgroundButton" type="button">Fundo</button>
               <button class="pill small" id="reseedButton" type="button">Reseed</button>
-              <button class="pill small" id="rectangleButton" type="button">Retângulo</button>
+              <button class="pill small" id="rectangleButton" type="button" aria-describedby="rectangleKeyboardHelp">Retângulo</button>
               <button class="pill small" id="exposureButton" type="button" disabled>Exposição</button>
               <button class="pill small" id="trackDown" type="button">Tracking −</button>
               <button class="pill small" id="trackUp" type="button">Tracking +</button>
             </div>
+            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
+            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
+            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
             <small class="hint" id="exposureHint">Exposição manual quando a câmera suportar.</small>
           </div>
 
-          <div class="dock-panel" id="panelSignals">
+          <div class="dock-panel" id="panelSignals" role="tabpanel" aria-labelledby="tabSignals" tabindex="0" role="tabpanel" aria-labelledby="tabSignals" tabindex="0" role="tabpanel" aria-labelledby="tabSignals" tabindex="0">
             <div class="signal-grid">
               <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i>
               </div>
@@ -206,13 +219,13 @@
               <div class="signal-card wide"><span>Nível ambiente</span><b id="signal-ambient">—</b><i><u
                     id="bar-ambient"></u></i></div>
             </div>
-            <div class="zone-grid" id="zoneGrid" aria-label="Atividade nas seis zonas">
-              <div class="zone" data-zone="0" aria-label="Zona 1"><span>01</span><b>—</b></div>
-              <div class="zone" data-zone="1" aria-label="Zona 2"><span>02</span><b>—</b></div>
-              <div class="zone" data-zone="2" aria-label="Zona 3"><span>03</span><b>—</b></div>
-              <div class="zone" data-zone="3" aria-label="Zona 4"><span>04</span><b>—</b></div>
-              <div class="zone" data-zone="4" aria-label="Zona 5"><span>05</span><b>—</b></div>
-              <div class="zone" data-zone="5" aria-label="Zona 6"><span>06</span><b>—</b></div>
+            <div class="zone-grid" id="zoneGrid" role="list" aria-label="Atividade nas seis zonas">
+              <div class="zone" data-zone="0" role="listitem" aria-label="Zona 1: sem atividade"><span>01</span><b>—</b></div>
+              <div class="zone" data-zone="1" role="listitem" aria-label="Zona 2: sem atividade"><span>02</span><b>—</b></div>
+              <div class="zone" data-zone="2" role="listitem" aria-label="Zona 3: sem atividade"><span>03</span><b>—</b></div>
+              <div class="zone" data-zone="3" role="listitem" aria-label="Zona 4: sem atividade"><span>04</span><b>—</b></div>
+              <div class="zone" data-zone="4" role="listitem" aria-label="Zona 5: sem atividade"><span>05</span><b>—</b></div>
+              <div class="zone" data-zone="5" role="listitem" aria-label="Zona 6: sem atividade"><span>06</span><b>—</b></div>
             </div>
             <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>

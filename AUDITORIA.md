@@ -1,73 +1,102 @@
-# Auditoria técnica — BlobTrack Celular-00
+# Relatório de implementação — BlobTrack Celular-00
 
-Revisão do estado do projeto em 21/11/2026. A árvore estava limpa antes desta revisão; a branch local era `main`, sem divergência reportada em relação a `origin/main`. O inventário inclui o PWA, os fontes Android, os documentos e o APK debug rastreado. A auditoria é estática e não equivale a teste de hardware.
+**Data:** 22/11/2026
+**Projeto:** `C:\Users\sole8\OneDrive\Documentos\GitHub\BlobTrack Celular`
+**Escopo:** implementação aprovada de correções e melhorias técnicas, execução de testes, verificação do APK em Android API 35 e atualização documental.
+**Resultado geral:** correções e melhorias de software implementadas; 107 testes aprovados; build e lint Android aprovados; APK instalado e aberto no emulador. As validações que exigem celular físico, câmera real, leitor de tela e PWA publicada permanecem identificadas como pendentes.
 
-## Arquitetura e estado
+## 1. Descrição e propósito
 
-- `index.html` carrega `src/app.css` e `src/app.js`; o app importa o tracker e o helper de limpeza.
-- `src/app.js` coordena câmera, captura de frame, análise, envelopes compartilhados, renderização WebGL/Canvas 2D, áudio, interface e ciclo de sessão.
-- `src/recorder.js`, `src/recording-canvas.js` e `src/recording-export.js` isolam gravação, composição do palco e exportação manual.
-- `src/preferences.js` valida a leitura das preferências locais e retorna defaults se o valor estiver corrompido.
-- `src/blob-tracker.js` faz diferença de luminância, componentes conectados e associação gulosa de IDs. `src/audio-processor.js` executa a síntese no AudioWorklet.
-- `sw.js` pré-cacheia a interface, os módulos usados em runtime, o manifesto, o ícone e a página de diagnóstico. A versão de cache atual é `v24`; shell estático: **155.694 bytes sem compressão**.
-- `android/` empacota os assets web por `WebViewAssetLoader`. `dist/BlobTrack-Celular-00-debug.apk` é rastreado pelo Git; `android/build-apk.ps1` o substitui quando recompila.
-- O código de interface e ciclo de vida permanece concentrado em `src/app.js`; a suíte Node testa módulos isolados e regressões selecionadas, não toda a UI.
-- O inventário inicial tinha 34 arquivos rastreados, sem faltantes ou arquivos não rastreados. Todos os fontes de runtime em `src/` e o ícone tinham referências; `teste.html` é o diagnóstico acessível, e o APK em `dist/` é um artefato de distribuição rastreado, não órfãos. `.vs/` e `android/.local-build/` são diretórios locais ignorados.
+BlobTrack Celular-00 é um instrumento audiovisual mobile-first. A câmera fornece quadros de vídeo em baixa resolução; o software estima o fundo, detecta regiões em movimento e rastreia componentes (“blobs”). Os sinais de energia, densidade, velocidade, coerência e atividade por zona modulam os efeitos visuais e a síntese de áudio. O usuário pode capturar o palco, gravar vídeo com áudio sintetizado e exportar o resultado.
 
-## Correções e regressões verificadas
+O rastreio mede movimento na imagem, não profundidade nem identidade de objetos. Um objeto parado pode se incorporar ao fundo; variações de iluminação podem gerar movimento aparente. O app funciona como PWA e como APK Android baseado em WebView local.
 
-| Item | Estado atual | Verificação |
+### Fluxo de execução
+
+1. `index.html` carrega estilos, metadados PWA e `src/app.js`.
+2. O app obtém permissão e quadros da câmera; o adaptador em `src/blob-tracker.js` reduz o frame e lê os pixels pelo Canvas.
+3. `src/domain/blobTrackerCore.js` processa o buffer RGBA sem depender de DOM ou câmera: segmenta movimento, agrupa componentes, associa IDs e calcula zonas/sinais.
+4. `src/render/render.js` compõe o palco WebGL/Canvas 2D; `src/audio/audio.js` coordena o AudioWorklet e os efeitos sintetizados.
+5. `src/recorder.js`, `src/recording-canvas.js` e `src/recording-export.js` gravam e exportam a composição.
+6. `sw.js` pré-armazena os recursos locais para uso offline. A aplicação Android empacota as mesmas fontes por `WebViewAssetLoader`.
+
+O projeto não depende de backend nem de serviços remotos em runtime. Não há dependências npm externas; `npm test` usa o executor nativo do Node.
+
+## 2. Melhorias implementadas
+
+### P0 — inicialização e estado
+
+- Movida a criação do renderer para depois da inicialização dos dados que ele captura; isso elimina acesso a `const` ainda não inicializadas que impedia carregar o módulo principal.
+- O estado de gravação agora atualiza o mesmo objeto compartilhado com o renderer, evitando que a composição leia um snapshot antigo e permaneça em estado incorreto.
+- O app passou a usar as factories de áudio e bloqueio de sessão já existentes, removendo implementações paralelas do caminho de produção.
+- O Wake Lock é mantido por um serviço que registra o sentinel, trata pedidos concorrentes, libera ao parar/ocultar a página e tenta reativar ao retornar para primeiro plano.
+
+### P1 — acessibilidade, segurança e offline
+
+- A viewport móvel permite ampliar a página com zoom.
+- As abas agora expõem relações tab/tablist/tabpanel, seleção, foco móvel e navegação pelas setas, Home e End.
+- O canvas visual tem nome e descrição textual; um resumo anuncia mudanças na quantidade de regiões sem inundar o leitor de tela.
+- O indicador de zonas apresenta atividade em texto acessível. O controle de retângulo também pode ser usado por teclado: setas posicionam o cursor, Enter marca os cantos, Shift acelera e Escape cancela.
+- O CSS inclui classe para conteúdo apenas para leitores de tela; os estilos da página de diagnóstico passaram para `teste.css`, incluído no PWA e no APK.
+- Uma Content Security Policy foi adicionada às páginas e uma política de cabeçalhos ao `vercel.json`, com limites de câmera/microfone, bloqueio de incorporação externa, MIME estrito e política de referenciador. O microfone permanece desabilitado.
+- O service worker usa cache v28 com 22 assets. A limpeza de cache apaga apenas versões anteriores do próprio BlobTrack, aguarda escrita no Cache Storage, limita o fallback offline à navegação e deixa falhas de módulos/scripts visíveis em vez de responder HTML.
+
+### P2 — separação e manutenção
+
+- O núcleo de rastreio foi extraído para `src/domain/blobTrackerCore.js`, recebendo apenas dimensões e pixels RGBA. A camada de câmera ficou como adaptador fino em `src/blob-tracker.js`.
+- Foram adicionados testes de regressão para acessibilidade, inicialização do app, serviço de Wake Lock, comportamento do service worker e núcleo puro do tracker.
+- O README e este relatório foram atualizados; versões e números de assets antigos foram removidos do trecho de validação atual.
+
+## 3. Verificações e resultados
+
+| Verificação | Resultado |
+|---|---|
+| `npm test` | **107 aprovados, 0 falhas** |
+| `node --check src/app.js` | Aprovado |
+| `node --check src/domain/blobTrackerCore.js` | Aprovado |
+| `node --check src/render/render.js` | Aprovado |
+| `git diff --check` | Sem erros de whitespace; Git pode avisar que normalizará LF/CRLF conforme configuração local |
+| Shell offline | 22 assets existentes e únicos, **170.519 bytes sem compressão** |
+| Build `:app:assembleDebug` | **BUILD SUCCESSFUL** |
+| Android `:app:lintDebug` | **BUILD SUCCESSFUL**; sem erro de lint reportado |
+| APK instalado no emulador Android API 35 | Instalação concluída; atividade `MainActivity` permaneceu no topo |
+| Inicialização WebView | WebView 124 abriu a tela principal; inspeção visual do emulador sem falha de layout evidente |
+| Conteúdo APK | Confirmados `index.html`, `sw.js`, `teste.css`, `src/domain/blobTrackerCore.js` e `src/platform/wakeLock.js` |
+
+Comandos reproduzíveis (PowerShell):
+
+```powershell
+npm test
+node --check src/app.js
+node --check src/domain/blobTrackerCore.js
+Set-Location android
+.\build-apk.ps1
+```
+
+O build emitiu um aviso das ferramentas Android: um arquivo SDK XML versão 4 foi lido por ferramenta que reconhece até a versão 3. A compilação não falhou; o alerta indica diferença de versão entre ferramentas SDK locais.
+
+**APK debug gerado:** `dist/BlobTrack-Celular-00-debug.apk`
+**SHA-256:** `F37B86FC5659C83E07DA275FF8195F6AC8854746597C7BBEF05957AE9E085736`
+**Versão:** 0.0.1; minSdk 23; targetSdk 35. O APK anterior foi preservado separadamente antes do build.
+
+## 4. Prioridades e pendências restantes
+
+As pendências abaixo dependem de equipamentos ou ambiente publicado e não podem ser declaradas resolvidas com segurança por teste sintético/emulador:
+
+| Prioridade | Validação pendente | Critério de aceite |
 |---|---|---|
-| Threshold inválido (`NaN`) | `BlobTracker.update()` usa valor seguro | Teste sintético detecta seis blobs |
-| Composição antiga após parar/trocar câmera | `stopMedia()` chama `clearVideoComposition()` | Testes unitários verificam limpeza WebGL e Canvas 2D; troca física pendente |
-| Retorno da aba em primeiro plano | O código consulta `document.visibilityState` | Teste de regressão estático cobre as duas condições; retomada real pendente |
-| Composição e orientação da gravação | Canvas offscreen combina visual, shade, overlay e letterbox em dimensões fixas (máximo 1280 px) | Testes sintéticos cobrem ordem, aspecto e limite; orientação física pendente |
-| Gravação em segundo plano | MediaRecorder pausa em `hidden` e retoma em `visible`; troca de câmera conserva a sessão | Testes do recorder cobrem pausa e relógio; ciclo de câmera em aparelho pendente |
-| Exportação | Share de arquivo, seletor nativo e download usam MIME/extensão negociados | Testes Node cobrem os três caminhos; share sheet e reprodução física pendentes |
-| Assets offline | Recursos de runtime estão listados no shell | Teste compara os recursos requeridos e confirma que existem |
-| Shell Android incompleto | A página de diagnóstico e seu script agora são incluídos nos assets Android; a entrada de diretório duplicada foi removida | Teste compara todos os assets do shell com os padrões `include` do Gradle e build empacotado |
-| Preferências locais corrompidas | JSON inválido, conteúdo que não é objeto e storage indisponível retornam defaults; o app lê as preferências uma vez | Teste unitário dedicado |
-| IDs entre frames e reset do fundo | Estado do tracker coberto por fixtures sintéticas | Testes de continuidade e reset |
+| P1 | Celular real: permissão de câmera, iniciar/parar/reiniciar, alternar frontal/traseira e rotação | Sem crash; composição e tracker acompanham a câmera correta em sessões repetidas |
+| P1 | PWA publicada em HTTPS: primeira carga e recarga offline em Chrome/Safari compatíveis | Depois da instalação/carregamento inicial, navegação principal funciona sem rede e assets não recebem fallback HTML indevido |
+| P1 | Áudio e gravação em dispositivo real, incluindo interrupção/suspensão e exportação | Sem captura de microfone; retomada/pausa coerente; vídeo e áudio reproduzíveis; compartilhamento/download funcionam |
+| P1 | Leitores de tela TalkBack e VoiceOver, navegação completa por teclado e ampliação | Fluxos essenciais são anunciados, focáveis e operáveis; zoom continua disponível; contraste AA verificado manualmente nas combinações da UI |
+| P2 | Desempenho, aquecimento e consumo em aparelhos de baixo/médio desempenho | Registrar FPS sustentado, resolução, duração e dispositivo; ajustar perfil se houver degradação observada |
+| P2 | Wake Lock em celulares/browser reais | Tela permanece ativa apenas durante sessão permitida e libera ao parar, ocultar ou encerrar |
 
-`npm test` passou com 20 testes. O projeto não requer dependências npm externas. A cobertura não simula permissões, câmera, áudio do aparelho ou interrupções do sistema.
+O teste no emulador comprova empacotamento, instalação e abertura, mas não substitui câmera física, permissões reais, leitor de tela nem autonomia. Não foram publicados arquivos nem feito commit/push.
 
-## Riscos e limites
+## 5. Estado de manutenção
 
-- `getImageData()` e flood fill percorrem os pixels em cada análise. A resolução adaptativa reduz o trabalho, mas FPS, latência, memória e consumo não foram medidos em celular.
-- Mudanças abruptas de iluminação podem criar componentes falsos; movimento sustentado, blobs que se tocam e rastreamento por distância podem causar perda ou troca de identidade.
-- A composição de vídeo, Gear VR, rotação e acessibilidade foram revisadas estaticamente; não houve validação visual em aparelhos nem medição formal de contraste.
-- Resolução/fps codificados dependem do canvas, câmera e WebView; a gravação não promete 1080p e pode ficar sem áudio se `MediaStreamAudioDestinationNode` não estiver disponível. O tamanho de saída é limitado a 1280 px no lado maior, 10 minutos e 350 MiB.
-- Permissões, seleção de lente, retomada de câmera/áudio, Wake Lock e tela cheia variam conforme navegador e versão do Android/iOS.
-- O APK é debug. A build do Android pode emitir aviso de compatibilidade do SDK XML v4 com as ferramentas locais.
-- `lintDebug` mantém dois avisos: JavaScript habilitado é necessário ao app local, e WebKit 1.18 requer API 24; foi mantido WebKit 1.12.1 para preservar `minSdk 23`.
-- O compartilhamento de captura agora verifica a presença de `navigator.share` antes de usar a Web Share API e mantém o download como fallback.
-- O dock e a barra flutuante usam fundos translúcidos com desfoque e acentos da paleta reativa. A ação de gravação e o salvamento ficam na faixa principal do dock, fora das abas; o atalho de gravação permanece fixo ao rolar a faixa.
-- O cartão inicial usa o espaço livre entre a barra superior e o dock no celular e se mantém fora da área do painel lateral em desktop; o botão “Ligar” não fica encoberto pelos controles.
-
-## Validação executada nesta revisão
-
-- `npm test`: **20/20 aprovados**; inclui preferências inválidas, referências do shell Android, seleção/fallback MIME, limites, pausa, composição e exportação.
-- `node --check` passou para os scripts e `git diff --check` não reporta erros de whitespace.
-- `:app:assembleDebug` e `:app:lintDebug`: build aprovada, **0 erros e 2 avisos**; os avisos restantes são JavaScript necessário e dependência mais recente incompatível com `minSdk 23`.
-- O APK em `dist/` foi regenerado com a interface atualizada; assinatura verificada por `apksigner`, alinhamento validado por `zipalign` e os 14 assets do shell, além de `sw.js`, comparados com as fontes. SHA-256: `601EADB801051868DFFE0DFBA54B0BD14FEB77195790A291F76BB1B9C1E5C202`.
-- AVD Pixel 6/API 35: APK instalado e iniciado; service worker `v22` ativado, cache com 14/14 assets e todos os 14 `Cache.match()` responderam offline com status 200 e MIME esperado.
-- APK atual instalado e iniciado no AVD Pixel 6/API 35; a atividade principal permaneceu ativa. Isso não confirma individualmente os itens do Cache Storage `v24`, nem exercita câmera/gravação.
-- Preview da interface atualizada em navegador: 320×480 e 320×569 em retrato, 641×391 em paisagem e 1441×900 em desktop; safe areas também foram simuladas. O botão “Ligar” ficou visível entre barra e dock e fora do painel lateral. Cache local `v24` contém 14 assets; verificação em AVD e gravação/câmera real ainda pendentes.
-- A recarga offline do appassets exibiu o shell, mas o novo documento ficou sem controller do service worker e foi servido pelo `WebViewAssetLoader`; isso não substitui a recarga offline de uma PWA publicada em Chrome.
-- Smoke tests de browser desktop, gravação sintética e instalação do cache v20 são resultados anteriores de 20/11.
-- Build-tools reportaram que o SDK XML versão 4 excede o formato conhecido pela ferramenta local (até versão 3). É um aviso de compatibilidade, não uma falha de build.
-- ADB: nenhum aparelho físico estava conectado. O AVD acelerado foi encerrado após o teste e permanece disponível em `android/.local-build/avd/BlobTrackCacheV22_API35`; testes físicos continuam pendentes.
-- O smoke test de browser anterior não iniciou câmera nem áudio e não substitui a matriz física abaixo.
-
-## Pendências para aparelho real
-
-Com depuração USB habilitada e aparelho conectado, instalar `dist/BlobTrack-Celular-00-debug.apk` e validar:
-
-1. Permitir/negar câmera; iniciar, parar e iniciar novamente.
-2. Trocar frontal/traseira; confirmar que a composição antiga some antes do novo frame.
-3. Alternar filtros, máscara, overlay, janelas, captura e os efeitos reativos.
-4. Verificar som, mudo, timbres, Eco/Espaço/Chorus e interrupção/retomada.
-5. Suspender e restaurar o app; girar a tela e repetir ciclos de sessão.
-6. Confirmar instalação/offline, saída do modo Gear VR e layout em 360×640, 390×844, 412×915 e 844×390.
-
-Não declarar metas de FPS, boot ou memória atendidas sem esses dados. Para atualizar a validação, registrar modelo do aparelho, versão do sistema/WebView, passos executados e resultados observados.
+- Não foram apagados arquivos do projeto nem removidos os APKs locais. O APK anterior ao build foi copiado para a pasta de resultados desta tarefa.
+- O repositório já continha alterações locais e módulos não rastreados quando o trabalho começou. Eles foram preservados; não houve reset, staging, commit ou push.
+- `teste.css` é agora asset separado e necessário; `src/domain/blobTrackerCore.js` é importado pelo adaptador. Ambos fazem parte do shell e do pacote Android.
+- Revisar a configuração de cabeçalhos no ambiente efetivamente usado se a publicação não ocorrer na Vercel; `vercel.json` só configura deploys Vercel.

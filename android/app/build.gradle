@@ -28,6 +28,7 @@ tasks.register("syncBlobTrackWeb", Sync) {
     include "index.html"
     include "teste.html"
     include "teste.js"
+    include "teste.css"
     include "manifest.webmanifest"
     include "sw.js"
     include "src/**"

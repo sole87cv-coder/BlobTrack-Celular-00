@@ -414,7 +414,7 @@ test('Android asset packaging includes every service-worker shell asset', async 
 test('visibility lifecycle checks use the standard document property', async () => {
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.equal(app.includes('document.visibilitystate'), false);
-  assert.equal([...app.matchAll(/document\.visibilityState\s*(?:===|!==)\s*'visible'/g)].length, 2);
+  assert.equal([...app.matchAll(/document\.visibilityState\s*(?:===|!==)\s*'visible'/g)].length, 1);
   assert.ok(app.includes("document.visibilityState === 'hidden'"));
   assert.ok(app.includes('recorder.pause()'));
   assert.ok(app.includes('recorder.resume()'));

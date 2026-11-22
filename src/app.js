@@ -1,4 +1,10 @@
 import { BlobTracker } from './blob-tracker.js';
+import { deviceProfile } from './core/deviceProfile.js';
+import { clamp, fmt, formatRecordingTime } from './core/utils.js';
+import { createSessionLock } from './session/sessionLock.js';
+import { createWakeLock } from './platform/wakeLock.js';
+import { createAudio } from './audio/audio.js';
+import { createRender } from './render/render.js';
 import { createRecorder, recordingExtension } from './recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
 import { exportRecording } from './recording-export.js';
@@ -19,14 +25,13 @@ const frameContext = frameCanvas.getContext('2d', { alpha: false });
 const recordingCanvas = document.createElement('canvas');
 const recordingContext = recordingCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
-const deviceProfile = (() => { const memory=Number(navigator.deviceMemory)||4, cores=Number(navigator.hardwareConcurrency)||4; if(memory<=3||cores<=4)return{name:'leve',maxWidth:320,startWidth:240,fps:20,captureWidth:640,pixelRatio:1}; if(memory<=6||cores<=6)return{name:'equilibrado',maxWidth:480,startWidth:320,fps:24,captureWidth:960,pixelRatio:1.5}; return{name:'alto',maxWidth:640,startWidth:480,fps:30,captureWidth:1280,pixelRatio:2}; })();
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null, recordAudioDestination: null,
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
-  lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
+  lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0,
   audioEffects: { echo: false, space: false, chorus: false },
@@ -41,8 +46,6 @@ const recorder = createRecorder({
 let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
 let pendingRecording = null;
 let recordingEffect = state.effect;
-const clamp = (n, lo = 0, hi = 1) => Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : 0));
-const fmt = (v, d = 2) => Number.isFinite(v) ? v.toFixed(d).replace('.', ',') : '—';
 const saved = loadPreferences();
 if (typeof saved.reacting === 'boolean') state.reacting = saved.reacting;
 if (typeof saved.effect === 'string' && ['invert','threshold','dither'].includes(saved.effect)) state.effect = saved.effect;
@@ -69,7 +72,7 @@ const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
 const tracker = new BlobTracker();
-let releaseSessionLock = null;
+
 const TRAIL_SLOTS = 12, TRAIL_POINTS = 18;
 const trailIds = new Int32Array(TRAIL_SLOTS).fill(-1);
 const trailPoints = new Float32Array(TRAIL_SLOTS * TRAIL_POINTS * 2);
@@ -95,12 +98,72 @@ if (channel) {
   setTimeout(() => { if (!replied && !state.sessionBlocked) channel.postMessage({ type: 'ready', id: tabId }); }, 180);
 }
 
+const sessionLock = createSessionLock({ state, channel, tabId });
+const wakeLockService = createWakeLock({
+  navigatorObject: navigator,
+  documentObject: document,
+  isActive: () => state.active,
+  onError: error => log('Tela: Wake Lock indisponível (' + error.message + ')'),
+});
 function log(message) { $('logLine').textContent = message; }
 function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
 function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
 function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect})); } catch {} }
 function sendAudioOptions() { state.worklet?.port.postMessage({type:'sound',oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,soundEffects:state.audioEffects}); }
+
+const audioService = createAudio({
+  state,
+  log,
+  showToast,
+  sendAudioOptions,
+  fmt,
+  onMeter: (peak, voices, cost) => {
+    $('audioReadout').textContent = 'WebAudio · ' + fmt(peak, 3) + ' pico · ' + voices + ' vozes · ' + fmt(cost, 2) + ' ms';
+  },
+});
+const { makeAudio, connectRecordingAudio, disconnectRecordingAudio, ensureAudioAlive, watchAudio, handleAudioInterruption } = audioService;
+
+const render = createRender({
+  state,
+  canvas,
+  overlayCanvas,
+  gl,
+  glProgram: null,
+  texture: null,
+  uniforms: null,
+  fallbackContext,
+  overlayContext,
+  video,
+  maskCanvas,
+  maskContext: null,
+  maskImage: null,
+  cropRect,
+  gridPoint,
+  mapPointA,
+  mapPointB,
+  blobViewPoints,
+  TRAIL_SLOTS,
+  TRAIL_POINTS,
+  trailIds,
+  trailPoints,
+  trailCursor,
+  trailLength,
+  trailAge,
+  trailSpeed,
+  trailSeen,
+  recordingContext,
+  recordingCanvas,
+  recordingSnapshot,
+  recordingCanvasSize,
+  drawRecordingFrame,
+  resize,
+  log,
+  showToast,
+  onMeter: null,
+  sendAudioOptions,
+  fmt,
+});
 
 toggle($('reactButton'),state.reacting);
 toggle($('audioSensitivityButton'),state.audioEnabled);
@@ -139,101 +202,11 @@ function initRenderer() {
     gl.useProgram(glProgram); posBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(glProgram, 'aPosition'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    render.glProgram = glProgram; render.texture = texture; render.uniforms = uniforms;
     $('renderInfo').textContent = 'WebGL2 ativo'; return true;
   } catch (e) { log(`Renderizador: ${e.message}`); showToast(fallbackContext ? 'WebGL indisponível · usando modo leve' : 'Renderização indisponível'); $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'WebGL2 indisponível'; return Boolean(fallbackContext); }
 }
 initRenderer();
-
-async function acquireSessionLock() {
-  state.sessionBlocked = false;
-  if (navigator.locks?.request) {
-    let resolveLock;
-    const acquired = new Promise(resolve => { resolveLock = resolve; });
-    let unlock;
-    const hold = new Promise(resolve => { unlock = resolve; });
-    navigator.locks.request('blobtrack-celular-00-session', { ifAvailable: true }, lock => {
-      resolveLock(Boolean(lock));
-      if (!lock) return;
-      releaseSessionLock = unlock;
-      state.sessionReserved = true;
-      return hold;
-    }).catch(() => resolveLock(false));
-    return acquired;
-  }
-  state.claiming = true;
-  channel?.postMessage({type:'claim',id:tabId});
-  await new Promise(resolve => setTimeout(resolve,220));
-  state.claiming = false;
-  if (state.sessionBlocked) return false;
-  state.sessionReserved = true;
-  channel?.postMessage({type:'start',id:tabId});
-  return true;
-}
-
-async function makeAudio() {
-  if (state.audio) return;
-  if (!('AudioWorkletNode' in window) || !window.isSecureContext) { log('Áudio exige navegador compatível e HTTPS.'); showToast('Áudio precisa de navegador compatível e HTTPS'); return; }
-  try {
-    state.audio = new AudioContext({ latencyHint: 'interactive' });
-    await state.audio.audioWorklet.addModule('./src/audio-processor.js');
-    state.worklet = new AudioWorkletNode(state.audio, 'blobtrack-audio', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
-    state.audioGain = state.audio.createGain(); state.audioGain.gain.value = 1;
-    state.worklet.connect(state.audioGain).connect(state.audio.destination);
-    state.worklet.port.onmessage = ({ data }) => { if (data.type === 'meter') { $('audioReadout').textContent = `WebAudio · ${fmt(data.peak, 3)} pico · ${data.voices} vozes · ${fmt(data.cost, 2)} ms`; } };
-    sendAudioOptions();
-    await state.audio.resume();
-  } catch (e) { log(`Áudio indisponível: ${e.message}`); showToast('Não foi possível iniciar o áudio'); }
-}
-
-function connectRecordingAudio() {
-  if (!state.audio || !state.audioGain || typeof state.audio.createMediaStreamDestination !== 'function') return null;
-  if (state.recordAudioDestination) return state.recordAudioDestination;
-  const destination = state.audio.createMediaStreamDestination();
-  state.audioGain.connect(destination);
-  state.recordAudioDestination = destination;
-  return destination;
-}
-
-function disconnectRecordingAudio(destination = state.recordAudioDestination) {
-  if (!destination) return;
-  try {
-    state.audioGain?.disconnect(destination);
-  } finally {
-    for (const track of destination.stream.getAudioTracks()) track.stop();
-    if (state.recordAudioDestination === destination) state.recordAudioDestination = null;
-  }
-}
-
-// Blindagem de áudio: navegadores móveis suspendem o AudioContext ao bloquear a tela/aba.
-// Retomada automática e recriação do worklet se o contexto ficar indisponível.
-async function ensureAudioAlive() {
-  if (!state.active) return;
-  try {
-    if (!state.audio) { await makeAudio(); return; }
-    if (state.audio.state === 'suspended' || state.audio.state === 'interrupted') {
-      await state.audio.resume();
-      if (state.audioGain && state.audio) {
-        const t = state.audio.currentTime;
-        state.audioGain.gain.cancelScheduledValues(t);
-        state.audioGain.gain.setTargetAtTime(state.muted ? 0 : 1, t, .12);
-      }
-    }
-  } catch (e) { log(`Áudio: retomada falhou (${e.message})`); }
-}
-
-async function watchAudio() {
-  while (state.active) {
-    await ensureAudioAlive();
-    await new Promise(r => setTimeout(r, 2000));
-  }
-}
-
-function handleAudioInterruption() {
-  if (!state.audio || state.audioHandlersRegistered) return;
-  state.audioHandlersRegistered = true;
-  state.audio.addEventListener('statechange', () => { if (state.active && state.audio.state !== 'running') ensureAudioAlive(); });
-  state.audio.addEventListener('interrupted', () => ensureAudioAlive());
-}
 
 function cameraScore(label,facing){const name=(label||'').toLocaleLowerCase();const front=/front|user|frontal|selfie|frente/.test(name),rear=/back|rear|environment|traseir|principal|facing back/.test(name);if(facing==='user')return front?100:rear?-100:0;if(front)return-100;let score=rear?20:0;if(/main|primary|principal|wide|camera 0|camera2 0/.test(name))score+=12;if(/ultra|tele|macro|zoom/.test(name))score-=100;return score;}
 async function refreshCameraChoices(){if(!navigator.mediaDevices?.enumerateDevices)return;try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');for(const facing of ['user','environment']){const pick=devices.map(device=>({device,score:cameraScore(device.label,facing)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score)[0];if(pick)state.cameraIds[facing]=pick.device.deviceId;}}catch{}}
@@ -246,6 +219,7 @@ async function startCamera() {
     const videoConstraints={width:{ideal:deviceProfile.captureWidth},height:{ideal:Math.round(deviceProfile.captureWidth*9/16)},frameRate:{ideal:deviceProfile.fps,max:30}}; const preferred=state.cameraIds[state.camera]; if(preferred)videoConstraints.deviceId={exact:preferred};else videoConstraints.facingMode={ideal:state.camera}; let stream; try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}catch(err){if(!preferred)throw err;state.cameraIds[state.camera]=null;delete videoConstraints.deviceId;videoConstraints.facingMode={ideal:state.camera};stream=await navigator.mediaDevices.getUserMedia({audio:false,video:videoConstraints});}
     state.stream = stream; video.srcObject = stream; try { await video.play(); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); } catch {} }
     state.active = true; state.starting = false; state.switching = false;
+    void wakeLockService.acquire();
     $('stageMessage').hidden = true; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
     const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
     track.addEventListener('ended', () => {
@@ -271,13 +245,14 @@ async function recoverCameraStream() {
   finally { state.cameraRecovering = false; }
 }
 async function stopMedia() { state.active = false; updateRecordingControls(recordingSnapshot); clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
-function releaseSession() { releaseSessionLock?.(); releaseSessionLock = null; state.sessionReserved = false; channel?.postMessage({type:'stop',id:tabId}); }
-async function stopSession() { if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
+function releaseSession() { sessionLock.release(); }
+async function stopSession() { await wakeLockService.release(); if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.camera = state.camera === 'environment' ? 'user' : 'environment'; await stopMedia(); await startCamera(); }
 function updateExposureCapability(track) { const caps = track.getCapabilities?.() || {}; const ok = Array.isArray(caps.exposureMode) && caps.exposureMode.includes('manual'); $('exposureButton').disabled = !ok; $('exposureHint').textContent = ok ? 'A câmera aceita exposição manual.' : 'Exposição manual não suportada por esta câmera.'; }
 // Blindagem: retoma câmera/vídeo quando a aba volta ao primeiro plano (iOS suspende o stream).
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
+    void wakeLockService.release();
     if (recordingSnapshot.state === 'recording') {
       try {
         if (!recorder.pause()) throw new Error('A gravação não pôde ser pausada.');
@@ -300,6 +275,7 @@ document.addEventListener('visibilitychange', () => {
     }
   }
   if (state.active) {
+    void wakeLockService.acquire();
     const track = state.stream?.getVideoTracks()[0];
     if (!track || track.readyState === 'ended') { recoverCameraStream().catch(() => {}); return; }
     if (video.readyState < 2) video.play().catch(() => {});
@@ -350,256 +326,22 @@ function updateSignals(raw, dt) {
   state.timing.bus = performance.now() - t0;
   return applied;
 }
-function render(applied, source = video) {
-  if (!source.videoWidth) return;
-  state.timing.camera = state.timing.camera ?? null;
-  const t0 = performance.now(); resize();
-  if (!gl || !glProgram) {
-    if (fallbackContext) {
-      fallbackContext.save(); fallbackContext.filter = state.effect === 'invert' ? 'invert(1)' : state.effect === 'threshold' ? 'grayscale(1) contrast(8)' : 'grayscale(1) contrast(2)';
-      const eyes = state.gearVr ? 2 : 1, eyeWidth = canvas.width / eyes;
-      for (let eye = 0; eye < eyes; eye++) {
-        const x = Math.floor(eye * eyeWidth), width = Math.ceil((eye + 1) * eyeWidth) - x;
-        fallbackContext.save(); fallbackContext.beginPath(); fallbackContext.rect(x, 0, width, canvas.height); fallbackContext.clip();
-        fallbackContext.translate(x + (state.camera === 'user' ? width : 0), state.flip ? canvas.height : 0);
-        fallbackContext.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-        if (state.gearVr) drawContainedSource(fallbackContext, source, width, canvas.height);
-        else { calculateCoverCrop(source.videoWidth, source.videoHeight, width, canvas.height, cropRect); fallbackContext.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, width, canvas.height); }
-        fallbackContext.restore();
-      }
-      fallbackContext.restore();
-    }
-    state.timing.camera = performance.now() - t0; state.timing.cycle = performance.now() - t0; return;
-  }
-  gl.useProgram(glProgram); gl.bindTexture(gl.TEXTURE_2D,texture);
-  try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source); } catch { return; }
-  state.timing.camera = performance.now() - t0;
-  gl.uniform1i(uniforms.uTexture,0); gl.uniform1i(uniforms.uEffect,({invert:0,threshold:1,dither:2})[state.effect]);
-  gl.uniform1f(uniforms.uThreshold,.5+applied.threshold); gl.uniform1f(uniforms.uBias,state.bias); gl.uniform1f(uniforms.uExposure,applied.exposure); gl.uniform1f(uniforms.uGrowth,applied.grow); gl.uniform1f(uniforms.uSpeed,applied.speed); gl.uniform1f(uniforms.uTime,performance.now()/1000); gl.uniform1f(uniforms.uImageAspect,source.videoWidth/source.videoHeight); gl.uniform1f(uniforms.uViewportAspect,(state.gearVr?canvas.width/2:canvas.width)/canvas.height);
-  gl.uniform1i(uniforms.uMirror,state.camera==='user'?1:0);gl.uniform1i(uniforms.uFlip,state.flip?1:0);gl.uniform1i(uniforms.uFit,state.gearVr?1:0);
-  if(state.gearVr){gl.viewport(0,0,Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(Math.floor(canvas.width/2),0,canvas.width-Math.floor(canvas.width/2),canvas.height);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.viewport(0,0,canvas.width,canvas.height);}else gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
-  state.timing.cycle=performance.now()-t0;
-}
-function calculateCoverCrop(sourceWidth, sourceHeight, viewWidth, viewHeight, out) {
-  const sourceAspect = sourceWidth / sourceHeight, viewAspect = viewWidth / viewHeight;
-  if (sourceAspect > viewAspect) { out[2] = sourceHeight * viewAspect; out[0] = (sourceWidth - out[2]) / 2; out[1] = 0; out[3] = sourceHeight; }
-  else { out[3] = sourceWidth / viewAspect; out[0] = 0; out[1] = (sourceHeight - out[3]) / 2; out[2] = sourceWidth; }
-}
-function calculateContainRect(sourceWidth, sourceHeight, viewWidth, viewHeight, out) {
-  const scale = Math.min(viewWidth / sourceWidth, viewHeight / sourceHeight);
-  out[2] = sourceWidth * scale; out[3] = sourceHeight * scale;
-  out[0] = (viewWidth - out[2]) / 2; out[1] = (viewHeight - out[3]) / 2;
-}
-function drawContainedSource(c, source, viewWidth, viewHeight, offsetX = 0) {
-  calculateContainRect(source.videoWidth || source.width, source.videoHeight || source.height, viewWidth, viewHeight, cropRect);
-  c.drawImage(source, 0, 0, source.videoWidth || source.width, source.videoHeight || source.height,
-    offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-}
-function mapVideoPoint(x, y, viewWidth, viewHeight, out) {
-  const sourceAspect = video.videoWidth / video.videoHeight, viewAspect = viewWidth / viewHeight;
-  if (state.gearVr) {
-    calculateContainRect(video.videoWidth, video.videoHeight, viewWidth, viewHeight, cropRect);
-    x = (cropRect[0] + x * cropRect[2]) / viewWidth;
-    y = (cropRect[1] + y * cropRect[3]) / viewHeight;
-  } else if (sourceAspect > viewAspect) { const visible = viewAspect / sourceAspect; x = (x - (1 - visible) / 2) / visible; }
-  else { const visible = sourceAspect / viewAspect; y = (y - (1 - visible) / 2) / visible; }
-  out[0] = state.camera === 'user' ? 1 - x : x;
-  out[1] = state.flip ? 1 - y : y;
-  return out;
-}
-function prepareBlobViewPoints(blobs, viewWidth, viewHeight) {
-  const count = Math.min(blobs.length, TRAIL_SLOTS);
-  for (let i = 0; i < count; i++) {
-    mapVideoPoint(blobs[i].x, blobs[i].y, viewWidth, viewHeight, mapPointA);
-    blobViewPoints[i * 2] = mapPointA[0]; blobViewPoints[i * 2 + 1] = mapPointA[1];
-  }
-  return count;
-}
-function recordBlobTrails(blobs) {
-  trailSeen.fill(0);
-  for (let i = 0; i < Math.min(blobs.length, TRAIL_SLOTS); i++) {
-    const blob = blobs[i], id = Number.isFinite(blob.id) ? blob.id : i;
-    let slot = -1;
-    for (let j = 0; j < TRAIL_SLOTS; j++) if (trailIds[j] === id) { slot = j; break; }
-    if (slot < 0) {
-      for (let j = 0; j < TRAIL_SLOTS; j++) if (trailIds[j] < 0) { slot = j; break; }
-      if (slot < 0) { for (let j = 0; j < TRAIL_SLOTS; j++) if (!trailSeen[j] && (slot < 0 || trailAge[j] > trailAge[slot])) slot = j; }
-      if (slot < 0) continue;
-      trailIds[slot] = id; trailCursor[slot] = 0; trailLength[slot] = 0;
-    }
-    trailSeen[slot] = 1; trailAge[slot] = 0; trailSpeed[slot] = clamp(blob.speed, 0, 1);
-    const cursor = trailCursor[slot], base = (slot * TRAIL_POINTS + cursor) * 2;
-    trailPoints[base] = blob.x; trailPoints[base + 1] = blob.y;
-    trailCursor[slot] = (cursor + 1) % TRAIL_POINTS;
-    trailLength[slot] = Math.min(TRAIL_POINTS, trailLength[slot] + 1);
-  }
-  for (let i = 0; i < TRAIL_SLOTS; i++) if (!trailSeen[i] && trailIds[i] >= 0) {
-    trailAge[i] = Math.min(255, trailAge[i] + 1);
-    if (trailAge[i] > 30) { trailIds[i] = -1; trailLength[i] = 0; }
-  }
-}
-function drawTrails(c, viewWidth, viewHeight, offsetX) {
-  for (let slot = 0; slot < TRAIL_SLOTS; slot++) {
-    const length = trailLength[slot], age = trailAge[slot];
-    if (length < 2 || age > 30) continue;
-    const start = (trailCursor[slot] - length + TRAIL_POINTS) % TRAIL_POINTS;
-    c.beginPath();
-    for (let i = 0; i < length; i++) {
-      const point = (slot * TRAIL_POINTS + (start + i) % TRAIL_POINTS) * 2;
-      mapVideoPoint(trailPoints[point], trailPoints[point + 1], viewWidth, viewHeight, mapPointA);
-      const x = offsetX + mapPointA[0] * viewWidth, y = mapPointA[1] * viewHeight;
-      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    }
-    c.globalAlpha = Math.max(0, 1 - age / 31) * (.35 + .55 * trailSpeed[slot]);
-    c.strokeStyle = trailSpeed[slot] > .55 ? '#b8f36a' : '#74eaff';
-    c.lineWidth = 1.2 + trailSpeed[slot] * 2.4; c.lineCap = 'round'; c.stroke();
-  }
-  c.globalAlpha = 1;
-}
-function drawWaves(c, blobs, viewWidth, viewHeight, offsetX, now) {
-  const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight), size = Math.min(viewWidth, viewHeight);
-  for (let i = 0; i < count; i++) {
-    const blob = blobs[i], speed = clamp(blob.speed, 0, 1);
-    const x = offsetX + blobViewPoints[i * 2] * viewWidth, y = blobViewPoints[i * 2 + 1] * viewHeight;
-    const phaseBase = now * (.00015 + speed * .00018) + (blob.id || i) * .173;
-    for (let ring = 0; ring < 3; ring++) {
-      const phase = (phaseBase + ring / 3) % 1;
-      const radius = size * (.025 + phase * (.1 + .2 * state.envelopes.density));
-      c.globalAlpha = (.1 + speed * .24) * (1 - phase);
-      c.strokeStyle = '#74eaff'; c.lineWidth = 1 + state.envelopes.energy * 1.4;
-      c.beginPath(); c.arc(x, y, radius, 0, Math.PI * 2); c.stroke();
-    }
-  }
-  c.globalAlpha = 1;
-}
-function deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, out) {
-  let pushX = 0, pushY = 0; const size = Math.min(viewWidth, viewHeight);
-  for (let i = 0; i < count; i++) {
-    const dx = x - blobViewPoints[i * 2] * viewWidth, dy = y - blobViewPoints[i * 2 + 1] * viewHeight;
-    const speed = clamp(blobs[i].speed, 0, 1), radius = size * (.12 + .16 * state.envelopes.density + .06 * speed);
-    const d2 = dx * dx + dy * dy, r2 = radius * radius;
-    if (d2 >= r2) continue;
-    const influence = 1 - d2 / r2, force = influence * influence * (.05 + .16 * speed + .06 * state.envelopes.energy);
-    pushX += (dx - dy * .22) * force; pushY += (dy + dx * .22) * force;
-  }
-  out[0] = x + pushX; out[1] = y + pushY;
-}
-function drawMesh(c, blobs, viewWidth, viewHeight, offsetX) {
-  const count = Math.min(prepareBlobViewPoints(blobs, viewWidth, viewHeight), 8);
-  const spacing = Math.max(34, Math.min(52, Math.min(viewWidth, viewHeight) / 11));
-  c.globalAlpha = .22 + state.envelopes.density * .2; c.strokeStyle = '#ed72ff';
-  c.lineWidth = .7 + state.envelopes.speed * .8;
-  for (let y = 0; y <= viewHeight; y += spacing) {
-    c.beginPath();
-    for (let x = 0; x <= viewWidth; x += spacing) { deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint); if (x === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]); else c.lineTo(offsetX + gridPoint[0], gridPoint[1]); }
-    c.stroke();
-  }
-  for (let x = 0; x <= viewWidth; x += spacing) {
-    c.beginPath();
-    for (let y = 0; y <= viewHeight; y += spacing) { deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint); if (y === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]); else c.lineTo(offsetX + gridPoint[0], gridPoint[1]); }
-    c.stroke();
-  }
-  c.globalAlpha = 1;
-}
-function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
-  if (!source?.videoWidth || !blobs.length) return;
-  c.save(); c.beginPath();
-  for (const blob of blobs) {
-    mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
-    mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
-    const left = Math.min(mapPointA[0], mapPointB[0]), top = Math.min(mapPointA[1], mapPointB[1]);
-    const right = Math.max(mapPointA[0], mapPointB[0]), bottom = Math.max(mapPointA[1], mapPointB[1]);
-    c.rect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
-  }
-  c.clip();
-  if (state.gearVr) {
-    calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-    c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
-    c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-    c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-    c.restore(); return;
-  }
-  calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-  c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
-  c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-  c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
-  c.restore();
-}
-function drawMaskOverlay(result, source = video) {
-  const started = performance.now(), c = overlayContext;
-  if (!c) return;
-  const rect = overlayCanvas.getBoundingClientRect();
-  c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  if (!rect.width || !rect.height) return;
-  c.save(); c.scale(overlayCanvas.width / rect.width, overlayCanvas.height / rect.height);
-  const eyeCount = state.gearVr ? 2 : 1, viewWidth = rect.width / eyeCount, viewHeight = rect.height;
-  if (state.trailEffect) recordBlobTrails(result.blobs);
-  if (state.showMask) {
-    if (maskCanvas.width !== result.width || maskCanvas.height !== result.height) { maskCanvas.width = result.width; maskCanvas.height = result.height; maskImage = maskContext.createImageData(result.width, result.height); }
-    const image = maskImage;
-    for (let i = 0; i < result.mask.length; i++) { const q = i * 4, value = result.mask[i] ? 255 : 0; image.data[q] = value; image.data[q + 1] = value; image.data[q + 2] = value; image.data[q + 3] = 255; }
-    maskContext.putImageData(image, 0, 0);
-  }
-  let windowCost = 0;
-  for (let eye = 0; eye < eyeCount; eye++) {
-    const offsetX = eye * viewWidth;
-    c.save(); c.beginPath(); c.rect(offsetX, 0, viewWidth, viewHeight); c.clip();
-    if (state.gearVr && source.videoWidth && source.videoHeight) {
-      calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-      c.beginPath(); c.rect(offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]); c.clip();
-    }
-    if (state.showMask) {
-      if (state.gearVr) calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-      else calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-      c.save(); c.globalAlpha = .7; c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0); c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
-      if (state.gearVr) c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-      else c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
-      c.restore();
-    }
-    if (!state.performance.effectsPaused) {
-      if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
-      if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now());
-      if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX);
-    }
-    // A única composição do frame cru cobre as janelas de todos os blobs.
-    if (state.videoWindows) { const windowStarted = performance.now(); drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source); windowCost += performance.now() - windowStarted; }
-    if (state.overlay && state.lastSignal) {
-      const cellW = viewWidth / 3, cellH = viewHeight / 2;
-      c.globalAlpha = .72; c.lineWidth = 1; c.strokeStyle = '#6ee7bc'; c.fillStyle = '#6ee7bc'; c.font = '10px monospace';
-      for (let i = 0; i < 6; i++) { const x = offsetX + (i % 3) * cellW, y = Math.floor(i / 3) * cellH; c.strokeRect(x + 4, y + 4, cellW - 8, cellH - 8); c.fillText(`${String(i + 1).padStart(2, '0')} ${Math.round(state.lastSignal.zones[i] * 100)}%`, x + 10, y + 18); }
-      c.globalAlpha = .95; c.lineWidth = 2; c.strokeStyle = '#b9a1ff'; c.fillStyle = '#f0eaff'; c.font = 'bold 11px monospace';
-      for (const blob of result.blobs) {
-        mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA); mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
-        const left = Math.min(mapPointA[0], mapPointB[0]), top = Math.min(mapPointA[1], mapPointB[1]);
-        const right = Math.max(mapPointA[0], mapPointB[0]), bottom = Math.max(mapPointA[1], mapPointB[1]);
-        c.strokeRect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
-        c.fillText(`B${blob.id}`, offsetX + left * viewWidth + 4, Math.max(12, top * viewHeight - 4));
-      }
-    }
-    if (state.overlay) {
-      c.globalAlpha = .95; c.strokeStyle = '#b9a1ff'; c.lineWidth = 2;
-      for (const r of state.manualRects) c.strokeRect(offsetX + r.x * viewWidth, r.y * viewHeight, r.w * viewWidth, r.h * viewHeight);
-      if (state.dragRect) { const r = state.dragRect; c.strokeRect(offsetX + r.x * viewWidth, r.y * viewHeight, r.w * viewWidth, r.h * viewHeight); }
-    }
-    c.restore();
-  }
-  c.restore(); state.timing.windows = windowCost; state.timing.composition = performance.now() - started;
-}
-function drawRecordingComposite(force = false) {
-  if (!recordingContext || (!force && recordingSnapshot.state !== 'recording') || !recordingCanvas.width || !recordingCanvas.height) return;
-  const includeShade = !state.gearVr && !document.body.classList.contains('focus-mode');
-  drawRecordingFrame(recordingContext, canvas, overlayCanvas, recordingCanvas.width, recordingCanvas.height, includeShade);
-}
 function updateHud(raw, applied, result) {
   const now = performance.now();
   if (now - state.lastHudAt < 100) return;
   state.lastHudAt = now;
   for(const k of ['energy','density','speed','coherence','ambient']){$(`signal-${k}`).textContent=`${Math.round(state.envelopes[k]*100)}%`;$(`bar-${k}`).style.width=`${state.envelopes[k]*100}%`;}
-  document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i];el.querySelector('b').textContent=`${Math.round(v*100)}%`;el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
+  document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i],percent=Math.round(v*100);el.querySelector('b').textContent=`${percent}%`;el.setAttribute('aria-label',`Zona ${i+1}: ${percent}%`);el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
   $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
   $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
+  if (now - state.lastAccessibleAt >= 1500 && result.blobs.length !== state.lastAccessibleCount) {
+    state.lastAccessibleAt = now;
+    state.lastAccessibleCount = result.blobs.length;
+    const count = result.blobs.length;
+    $('visualSummary').textContent = count === 1 ? 'Uma região de movimento detectada.' : `${count} regiões de movimento detectadas.`;
+  }
 }
 function updateReactiveEffectQuality(now) {
   const perf = state.performance, elapsed = perf.lastFrameAt ? now - perf.lastFrameAt : 0;
@@ -631,7 +373,7 @@ function frame(now) {
         const result = analyze(source);
         if (result) {
           const applied = updateSignals(result.raw, result.dt);
-          render(applied, source); drawMaskOverlay(result, source); drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
+          render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
       if (state.autoQuality) {
@@ -654,13 +396,9 @@ function frame(now) {
   }
 }
 
-function formatRecordingTime(durationMs) {
-  const totalSeconds = Math.floor(durationMs / 1000);
-  return `${String(Math.floor(totalSeconds / 60)).padStart(2, '0')}:${String(totalSeconds % 60).padStart(2, '0')}`;
-}
 function updateRecordingControls(snapshot) {
   const previousState = recordingSnapshot.state;
-  recordingSnapshot = snapshot;
+  Object.assign(recordingSnapshot, snapshot);
   if (previousState !== 'idle' && snapshot.state === 'idle') {
     try { disconnectRecordingAudio(); }
     catch (error) { log(`Gravação: falha ao liberar saída de áudio (${error.message})`); }
@@ -714,15 +452,9 @@ function releasePendingRecording() {
   if (pendingRecording?.url) URL.revokeObjectURL(pendingRecording.url);
   pendingRecording = null;
 }
-function recordingFileName(result) {
-  const date = new Date();
-  const pad = value => String(value).padStart(2, '0');
-  const stamp = `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-  return `blobtrack-${recordingEffect}-${stamp}.${result.extension || recordingExtension(result.mimeType)}`;
-}
 async function savePendingRecording() {
   if (!pendingRecording) return;
-  const filename = recordingFileName(pendingRecording);
+  const filename = recordingFileName({ ...pendingRecording, effect: recordingEffect });
   try {
     const method = await exportRecording(pendingRecording, {
       filename,
@@ -746,7 +478,7 @@ async function startRecording() {
   const size = recordingCanvasSize(canvas.width, canvas.height);
   recordingCanvas.width = size.width;
   recordingCanvas.height = size.height;
-  drawRecordingComposite(true);
+  render.drawRecordingComposite(true);
   recordingEffect = state.effect;
   try {
     const destination = connectRecordingAudio();
@@ -789,12 +521,11 @@ function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b
 async function beginSession(button){
   if(state.active||state.starting)return;
   if(button)button.disabled=true;
-  const reserved=await acquireSessionLock();
+  const reserved=await sessionLock.acquire();
   if(!reserved){resetStartButtons();state.sessionBlocked=true;showToast('BlobTrack Celular-00 já está aberto em outra aba');return;}
   resetStartButtons();
   const audioPromise=makeAudio();
   try { if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen().catch(()=>{}); } catch {}
-  try { if('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(()=>{}); } catch {}
   await audioPromise; if(state.audio?.state==='suspended') await state.audio.resume().catch(()=>{});
   if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(state.audioEnabled&&!state.muted?1:0,t,.12);}
   await startCamera();
@@ -897,7 +628,17 @@ bindAudioEffect('audioEchoButton','echo');
 bindAudioEffect('audioSpaceButton','space');
 bindAudioEffect('audioChorusButton','chorus');
 $('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
-$('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});$('rectangleButton').addEventListener('click',e=>{state.drawingRect=!state.drawingRect;toggle(e.currentTarget,state.drawingRect);showToast(state.drawingRect?'Arraste no palco para criar o retângulo':'Criação cancelada');});
+$('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});
+$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});
+$('rectangleButton').addEventListener('click',e=>{
+  state.drawingRect=!state.drawingRect;
+  state.dragRect=null;
+  state.keyboardPoint=state.drawingRect?{x:.5,y:.5,anchor:null}:null;
+  toggle(e.currentTarget,state.drawingRect);
+  if(state.drawingRect){$('rectangleKeyboardStatus').textContent='Desenho por teclado ativo. Use as setas, Enter e Escape.';stage.focus({preventScroll:true});}
+  else $('rectangleKeyboardStatus').textContent='Criação de região cancelada.';
+  showToast(state.drawingRect?'Use as setas e Enter, ou arraste no palco':'Criação cancelada');
+});
 function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;savePreferences();}
 function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Auto desligado';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
@@ -976,7 +717,24 @@ stage.addEventListener('touchend',e=>{
   } else lastTap=now;
 },{passive:true});
 if(saved.focusMode)setFocusMode(true);
-document.querySelectorAll('.tab-button').forEach(b=>{b.setAttribute('aria-pressed',String(b.classList.contains('active')));b.addEventListener('click',()=>{document.querySelectorAll('.tab-button').forEach(x=>toggle(x,x===b));document.querySelectorAll('.dock-panel').forEach(p=>p.classList.toggle('active',p.id===b.dataset.panel));});});
+const tabButtons=[...document.querySelectorAll('.tab-button')];
+function activateTab(button,moveFocus=false){
+  tabButtons.forEach(tab=>{const selected=tab===button;tab.classList.toggle('active',selected);tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;});
+  document.querySelectorAll('.dock-panel').forEach(panel=>panel.classList.toggle('active',panel.id===button.getAttribute('aria-controls')));
+  if(moveFocus)button.focus();
+}
+tabButtons.forEach((button,index)=>{
+  button.addEventListener('click',()=>activateTab(button));
+  button.addEventListener('keydown',event=>{
+    let next=index;
+    if(event.key==='ArrowRight')next=(index+1)%tabButtons.length;
+    else if(event.key==='ArrowLeft')next=(index+tabButtons.length-1)%tabButtons.length;
+    else if(event.key==='Home')next=0;
+    else if(event.key==='End')next=tabButtons.length-1;
+    else return;
+    event.preventDefault();activateTab(tabButtons[next],true);
+  });
+});
 let touchStartY=0,touchStartTime=0;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
 stage.addEventListener('touchend',e=>{
@@ -985,15 +743,38 @@ stage.addEventListener('touchend',e=>{
   const dy=e.changedTouches[0].clientY-touchStartY;
   if(!state.drawingRect&&Math.abs(dy)>65&&Date.now()-touchStartTime<600)switchCamera();
 },{passive:true});
-overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
+stage.addEventListener('keydown',e=>{
+  if(!state.drawingRect||!state.keyboardPoint)return;
+  const point=state.keyboardPoint,step=e.shiftKey ? 0.05 : 0.01,status=$('rectangleKeyboardStatus');
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){
+    e.preventDefault();
+    if(e.key==='ArrowLeft')point.x=Math.max(0,point.x-step);
+    if(e.key==='ArrowRight')point.x=Math.min(1,point.x+step);
+    if(e.key==='ArrowUp')point.y=Math.max(0,point.y-step);
+    if(e.key==='ArrowDown')point.y=Math.min(1,point.y+step);
+    if(point.anchor){state.dragRect={x:Math.min(point.anchor.x,point.x),y:Math.min(point.anchor.y,point.y),w:Math.abs(point.x-point.anchor.x),h:Math.abs(point.y-point.anchor.y)};}
+    if(!e.repeat)status.textContent=`Ponto em ${Math.round(point.x*100)}%, ${Math.round(point.y*100)}%.`;
+    return;
+  }
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(!point.anchor){point.anchor={x:point.x,y:point.y};status.textContent='Primeiro canto marcado. Posicione o segundo canto e pressione Enter.';return;}
+    const rect={x:Math.min(point.anchor.x,point.x),y:Math.min(point.anchor.y,point.y),w:Math.abs(point.x-point.anchor.x),h:Math.abs(point.y-point.anchor.y)};
+    if(rect.w>.015&&rect.h>.015){state.manualRects.push(rect);status.textContent='Região adicionada.';}
+    else status.textContent='Região muito pequena; mova o ponto e tente novamente.';
+    state.dragRect=null;state.keyboardPoint=null;state.drawingRect=false;toggle($('rectangleButton'),false);$('rectangleButton').focus();return;
+  }
+  if(e.key==='Escape'){
+    e.preventDefault();state.dragRect=null;state.keyboardPoint=null;state.drawingRect=false;toggle($('rectangleButton'),false);status.textContent='Criação de região cancelada.';$('rectangleButton').focus();
+  }
+});
+overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;state.keyboardPoint=null;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
 overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
-overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;toggle($('rectangleButton'),false);}});
+overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;state.keyboardPoint=null;toggle($('rectangleButton'),false);}});
 if(isAppleMobile && !isStandaloneApp){$('installButton').hidden=false;$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
 if(isAppleMobile && isStandaloneApp)$('fullscreenButton').hidden=true;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;return;}if(isAppleMobile&&!isStandaloneApp)showToast('No Safari: Compartilhar → Adicionar à Tela de Início.');});
 if('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('./sw.js').catch(e=>log(`Offline: ${e.message}`));
-let wakeLock=null;async function acquireWakeLock(){try{if('wakeLock' in navigator)wakeLock=await navigator.wakeLock.request('screen');}catch{}}
-async function releaseWakeLock(){try{await wakeLock?.release();}catch{}wakeLock=null;}
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&state.active)acquireWakeLock();else releaseWakeLock();});
-document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&state.active)acquireWakeLock();});
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && state.active) void wakeLockService.acquire(); });
+window.addEventListener('pagehide', () => { void wakeLockService.release(); });
 

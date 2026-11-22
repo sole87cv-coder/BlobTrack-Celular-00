@@ -17,7 +17,8 @@ O tracker detecta movimento, não profundidade. Um objeto parado pode ser incorp
 ## Código
 
 - `index.html`: interface e metadados PWA.
-- `src/app.js`: câmera, ciclo da sessão, renderização e controles.
+- `src/app.js`: coordenação da câmera, sessão, renderização e controles.
+- `src/audio/`, `src/core/`, `src/domain/`, `src/platform/`, `src/render/` e `src/session/`: áudio, utilitários/perfil, desenho do palco e bloqueio de sessão.
 - `src/blob-tracker.js`: fundo, segmentação, componentes conectados e IDs.
 - `src/audio-processor.js`: síntese e efeitos no AudioWorklet.
 - `src/recorder.js`, `src/recording-canvas.js` e `src/recording-export.js`: MediaRecorder, composição fixa do palco e exportação.
@@ -26,7 +27,7 @@ O tracker detecta movimento, não profundidade. Um objeto parado pode ser incorp
 - `src/app.css`: layout responsivo e apresentação.
 - `sw.js`: shell offline. Ao adicionar um arquivo carregado em runtime, inclua-o em `SHELL` e incremente a versão do cache.
 - `teste.html` e `teste.js`: diagnóstico manual de câmera, rastreio e áudio.
-- `tests/core.test.js`: regressões automatizadas sem câmera ou dependências externas.
+- `tests/`: regressões automatizadas sem câmera ou dependências npm externas.
 - `android/`: WebView offline e script de build do APK.
 
 ## Desenvolvimento local
@@ -67,6 +68,6 @@ O script compila e copia o APK para `dist/BlobTrack-Celular-00-debug.apk`. O arq
 
 ## Medições e validação
 
-O shell pré-cacheado pelo service worker `v24` ocupa **155.694 bytes sem compressão** nesta revisão (incluindo o diagnóstico, gravação e preferências). Esse tamanho não é um benchmark de rede.
+A revisão de implementação atual usa o service worker v28 e 22 recursos no shell offline, totalizando 170.519 bytes sem compressão. O tamanho deve ser recalculado após mudanças de assets. Os testes usam frames e APIs sintéticos; não medem câmera, autonomia ou desempenho em aparelho físico.
 
-No AVD Pixel 6/API 35, o cache `v22` ativou e os 14 assets responderam do Cache Storage com rede offline; o shell local também recarregou. A interface atualizada incrementa o cache para `v24`; ele contém 14 assets no navegador local, mas ainda precisa de verificação offline no AVD. A recarga offline de uma PWA publicada em Chrome e os testes de câmera/áudio físicos também exigem validação própria. FPS, latência, memória, reprodução e compartilhamento em aparelho requerem um telefone real. Consulte [`AUDITORIA.md`](AUDITORIA.md) e [`BUGS-CROP.md`](BUGS-CROP.md) para resultados e pendências.
+As pendências de validação em hardware e navegador publicado estão registradas em [`AUDITORIA.md`](AUDITORIA.md). O APK em `dist/` é artefato de debug, não destinado à publicação na Play Store.
