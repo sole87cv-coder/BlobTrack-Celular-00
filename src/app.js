@@ -1,5 +1,5 @@
 import { BlobTracker } from './blob-tracker.js';
-import { deviceProfile } from './core/deviceProfile.js';
+import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
 import { clamp, fmt, formatRecordingTime } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
@@ -15,6 +15,7 @@ import { attachScalesUI } from './ui/scales-ui.js';
 import { strings } from './ui/i18n/pt-BR.js';
 import { createNavigation } from './ui/navigation.js';
 const $ = (id) => document.getElementById(id);
+const deviceProfile = createDeviceProfile();
 const audioScaleRouter = createScaleRouter();
 document.title = strings.app.title;
 document.querySelector('meta[name=description]')?.setAttribute('content', strings.app.description);
@@ -254,11 +255,12 @@ async function startCamera() {
     log('startCamera: chamando video.play()');
     try { await video.play(); log('startCamera: video.play() OK'); } catch (e) { await new Promise(r => setTimeout(r, 250)); try { await video.play(); log('startCamera: video.play() retry OK'); } catch (e2) { log(`video.play falhou: ${e2.message}`); throw e2; } }
     const tracks = stream.getVideoTracks(); if (!tracks.length) { log('startCamera: sem tracks de vídeo'); throw new Error('Câmera não forneceu faixa de vídeo.'); }
+    const track = tracks[0];
     log(`startCamera: ${tracks.length} track(s) de vídeo encontrada(s), readyState=${track.readyState}`);
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
     $('stageMessage').hidden = true; if($('permissionDialog').open)$('permissionDialog').close(); $('stagePill').hidden = false; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
-    const track = stream.getVideoTracks()[0]; $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
+    $('cameraLabel').textContent = state.camera==='environment'?'Traseira principal':'Frontal'; refreshCameraChoices();
     track.addEventListener('ended', () => {
       if (!state.active || state.switching) return;
       log('Câmera desconectada; tentando reconectar.');

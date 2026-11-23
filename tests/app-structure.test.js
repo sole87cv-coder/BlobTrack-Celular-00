@@ -29,6 +29,14 @@ test('production app uses the tested audio and session factories', () => {
   assert.ok(!app.includes('async function makeAudio()'));
 });
 
+test('camera loop initializes the device profile factory before using its FPS', () => {
+  const factoryIndex = app.indexOf("import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';");
+  const profileIndex = app.indexOf('const deviceProfile = createDeviceProfile();');
+  const firstFpsUse = app.indexOf('deviceProfile.fps');
+  assert.ok(factoryIndex >= 0);
+  assert.ok(profileIndex > factoryIndex && profileIndex < firstFpsUse);
+});
+
 test('viewport does not prevent user zoom', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /user-scalable\s*=\s*no/i);
