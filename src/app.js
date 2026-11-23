@@ -387,12 +387,13 @@ function updateReactiveEffectQuality(now) {
   perf.lastFrameAt = now;
   const fps = elapsed > 0 ? 1000 / elapsed : deviceProfile.fps;
   perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
-  const threshold = Math.max(15, Math.min(28, deviceProfile.fps - 2));
+  const pauseBelow = Math.max(12, deviceProfile.fps * 0.55);
+  const resumeAt = Math.max(pauseBelow + 2, deviceProfile.fps * 0.65);
   if (!perf.effectsPaused) {
-    perf.lowFpsFrames = perf.fpsAverage < threshold ? perf.lowFpsFrames + 1 : 0;
+    perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
     if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
   } else {
-    perf.recoveredFrames = perf.fpsAverage >= threshold + 2 ? perf.recoveredFrames + 1 : 0;
+    perf.recoveredFrames = perf.fpsAverage >= resumeAt ? perf.recoveredFrames + 1 : 0;
     if (perf.recoveredFrames >= 45) { perf.effectsPaused = false; perf.lowFpsFrames = 0; showToast('Efeitos reativos retomados'); }
   }
   const hint = $('effectPerformanceHint');

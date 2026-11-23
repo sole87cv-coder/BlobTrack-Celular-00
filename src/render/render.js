@@ -261,6 +261,11 @@ export function createRender({
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
+    // These windows cover the filtered stage. Keep the selected visual style
+    // visible inside them instead of exposing unfiltered camera pixels.
+    c.filter = state.effect === 'invert' ? 'invert(1)'
+      : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+        : 'grayscale(1) contrast(2)';
     c.beginPath();
     for (const blob of blobs) {
       mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
