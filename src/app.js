@@ -717,7 +717,7 @@ async function savePendingRecording() {
       if (result.url) URL.revokeObjectURL(result.url);
       recorder.releaseResult();
       if (method === 'shared') showToast('Gravação compartilhada');
-      else if (method === 'saved') showToast('Arquivo de gravação salvo');
+      else if (method === 'saved') showToast('Gravação salva no local escolhido (cartão SD, se selecionado)');
       else showToast('Download da gravação iniciado');
     } else showToast('Salvamento cancelado');
   } catch (error) {
@@ -760,7 +760,7 @@ async function startRecording() {
     const recordInfo = recorder.start({ audioStream: audioDestination?.stream, videoBitsPerSecond: deviceProfile.recordingBitrate });
     releasePendingRecording();
     updateRecordingControls(recordingSnapshot);
-    showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · ${recordInfo.includesAudio ? 'com áudio do app' : 'sem áudio'} · até 5 min`);
+    showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · ${recordInfo.includesAudio ? 'com áudio do app' : 'sem áudio'} · até 5 min · ${recordInfo.extension === 'mp4' ? 'MP4 compatível Android' : 'WebM · escolha MP4 nas configurações se disponível'}`);
   } catch (error) {
     disconnectRecordingAudio(audioDestination);
     document.body.classList.remove('recording-active');

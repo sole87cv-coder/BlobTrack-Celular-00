@@ -13,6 +13,7 @@ export async function exportRecording(result, {
   onError = () => {},
 } = {}) {
   const mimeType = result.mimeType.split(';', 1)[0];
+  const ext = result.extension || 'webm';
   let file = null;
   if (typeof FileClass === 'function') {
     try {
@@ -22,23 +23,19 @@ export async function exportRecording(result, {
     }
   }
 
-  if (file && typeof navigatorObject?.canShare === 'function' && typeof navigatorObject.share === 'function') {
-    try {
-      if (navigatorObject.canShare({ files: [file] })) {
-        await navigatorObject.share({ files: [file], title: 'BlobTrack Celular' });
-        return 'shared';
-      }
-    } catch (error) {
-      if (isAbortError(error)) return 'cancelled';
-      onError('compartilhamento', error);
-    }
-  }
-
-  if (typeof windowObject?.showSaveFilePicker === 'function') {
+  // 1) Salvar em local escolhido pelo usuário (inclui cartão SD no Android via seletor do sistema)
+  if (typeof windowObject?.showSaveFilePicker === 'function' && file) {
     try {
       const handle = await windowObject.showSaveFilePicker({
         suggestedName: filename,
-        types: [{ description: 'Vídeo BlobTrack', accept: { [mimeType]: [`.${result.extension}`] } }],
+        types: [{
+          description: 'Vídeo BlobTrack',
+          accept: {
+            'video/mp4': ['.mp4'],
+            'video/webm': ['.webm'],
+            'video/*': [`.${ext}`],
+          },
+        }],
       });
       const writable = await handle.createWritable();
       try {
@@ -58,6 +55,20 @@ export async function exportRecording(result, {
     }
   }
 
+  // 2) Compartilhar arquivo (Android share sheet)
+  if (file && typeof navigatorObject?.canShare === 'function' && typeof navigatorObject.share === 'function') {
+    try {
+      if (navigatorObject.canShare({ files: [file] })) {
+        await navigatorObject.share({ files: [file], title: 'BlobTrack Celular' });
+        return 'shared';
+      }
+    } catch (error) {
+      if (isAbortError(error)) return 'cancelled';
+      onError('compartilhamento', error);
+    }
+  }
+
+  // 3) Download direto
   let url = result.url;
   const createdUrl = !url;
   if (createdUrl) url = URLClass.createObjectURL(result.blob);
