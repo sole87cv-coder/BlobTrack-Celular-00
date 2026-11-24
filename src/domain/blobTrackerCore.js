@@ -21,6 +21,7 @@ export class BlobTrackerCore {
     this.matchedTracks = new Uint8Array(maxBlobs);
     this.matchedBlobs = new Uint8Array(maxBlobs);
     this.zonePixels = new Uint32Array(6);
+    this.roiZonePixels = new Uint32Array(6);
     this.zoneHits = new Uint32Array(6);
     this.zoneCoverage = new Float64Array(6);
     this.zoneValues = new Array(6).fill(0);
@@ -35,11 +36,13 @@ export class BlobTrackerCore {
     this.gridThresholds.fill(0.18);
     this.frameCount = 0;
     this.lastThreshold = null;
+    this.lastRoiMask = null;
     this.lowLight = false;
   }
 
   reset() {
     this.background = null;
+    this.lastRoiMask = null;
     for (const track of this.tracks) track.alive = false;
   }
 
@@ -73,19 +76,26 @@ export class BlobTrackerCore {
     for (const track of this.tracks) track.alive = false;
   }
 
-  updatePixels(pixels, width, height, threshold, dt) {
+  updatePixels(pixels, width, height, threshold, dt, roiMask = null) {
     if (!pixels || pixels.length < width * height * 4 || width < 1 || height < 1) return null;
+    if (roiMask && roiMask.length < width * height) return null;
     const safeDt = Math.min(1, Math.max(0.001, Number.isFinite(dt) ? dt : 0.04));
     const safeThreshold = Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0.18));
     this.resize(width, height);
     const count = width * height;
+    const sampleCount = roiMask ? roiMask.reduce((sum, included) => sum + (included ? 1 : 0), 0) : count;
     if (this.lastThreshold !== safeThreshold) {
       this.lastThreshold = safeThreshold;
+      this.gridThresholds.fill(safeThreshold);
+    }
+    if (this.lastRoiMask !== roiMask) {
+      this.lastRoiMask = roiMask;
       this.gridThresholds.fill(safeThreshold);
     }
     let lumaSum = 0;
     let changed = 0;
     this.zoneHits.fill(0);
+    if (roiMask) this.roiZonePixels.fill(0);
 
     if (!this.background) {
       for (let i = 0, p = 0; i < count; i++, p += 4) {
@@ -95,6 +105,15 @@ export class BlobTrackerCore {
       }
       this.background = this.luma.slice();
       this.mask.fill(0);
+      if (roiMask) {
+        for (let y = 0; y < height; y++) {
+          const zoneRow = this.zoneRows[y] * 3;
+          const rowStart = y * width;
+          for (let x = 0; x < width; x++) {
+            if (roiMask[rowStart + x]) this.roiZonePixels[zoneRow + this.zoneColumns[x]]++;
+          }
+        }
+      }
     } else {
       const sampleColumn = this.frameCount & 3;
       for (let row = 0; row < 16; row++) {
@@ -106,26 +125,54 @@ export class BlobTrackerCore {
         }
       }
       let i = 0, p = 0;
-      for (let y = 0; y < height; y++) {
-        const zoneRow = this.zoneRows[y] * 3;
-        const tileRow = this.tileRows[y] * 16;
-        for (let x = 0; x < width; x++, i++, p += 4) {
-          const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
-          this.luma[i] = value;
-          lumaSum += value;
-          const difference = Math.abs(value - this.background[i]);
-          const tileColumn = this.tileColumns[x];
-          const tile = tileRow + tileColumn;
-          const active = difference > this.gridThresholds[tile];
-          this.mask[i] = active ? 1 : 0;
-          if (active) {
-            changed++;
-            this.zoneHits[zoneRow + this.zoneColumns[x]]++;
-          } else this.background[i] += (value - this.background[i]) * 0.006;
-          if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
-            this.gridSum[tile] += difference;
-            this.gridSumSq[tile] += difference * difference;
-            this.gridCount[tile]++;
+      if (!roiMask) {
+        for (let y = 0; y < height; y++) {
+          const zoneRow = this.zoneRows[y] * 3;
+          const tileRow = this.tileRows[y] * 16;
+          for (let x = 0; x < width; x++, i++, p += 4) {
+            const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+            this.luma[i] = value;
+            lumaSum += value;
+            const difference = Math.abs(value - this.background[i]);
+            const tileColumn = this.tileColumns[x];
+            const tile = tileRow + tileColumn;
+            const active = difference > this.gridThresholds[tile];
+            this.mask[i] = active ? 1 : 0;
+            if (active) {
+              changed++;
+              this.zoneHits[zoneRow + this.zoneColumns[x]]++;
+            } else this.background[i] += (value - this.background[i]) * 0.006;
+            if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
+              this.gridSum[tile] += difference;
+              this.gridSumSq[tile] += difference * difference;
+              this.gridCount[tile]++;
+            }
+          }
+        }
+      } else {
+        for (let y = 0; y < height; y++) {
+          const zoneRow = this.zoneRows[y] * 3;
+          const tileRow = this.tileRows[y] * 16;
+          for (let x = 0; x < width; x++, i++, p += 4) {
+            const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+            this.luma[i] = value;
+            lumaSum += value;
+            if (!roiMask[i]) { this.mask[i] = 0; continue; }
+            this.roiZonePixels[zoneRow + this.zoneColumns[x]]++;
+            const difference = Math.abs(value - this.background[i]);
+            const tileColumn = this.tileColumns[x];
+            const tile = tileRow + tileColumn;
+            const active = difference > this.gridThresholds[tile];
+            this.mask[i] = active ? 1 : 0;
+            if (active) {
+              changed++;
+              this.zoneHits[zoneRow + this.zoneColumns[x]]++;
+            } else this.background[i] += (value - this.background[i]) * 0.006;
+            if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
+              this.gridSum[tile] += difference;
+              this.gridSumSq[tile] += difference * difference;
+              this.gridCount[tile]++;
+            }
           }
         }
       }
@@ -150,7 +197,8 @@ export class BlobTrackerCore {
 
     let occupiedZones = 0, meanSum = 0;
     for (let i = 0; i < 6; i++) {
-      const value = this.zonePixels[i] ? this.zoneHits[i] / this.zonePixels[i] : 0;
+      const zonePixels = roiMask ? this.roiZonePixels[i] : this.zonePixels[i];
+      const value = zonePixels ? this.zoneHits[i] / zonePixels : 0;
       this.zoneCoverage[i] = value;
       if (value > 0.01) occupiedZones++;
       meanSum += value;
@@ -179,7 +227,7 @@ export class BlobTrackerCore {
       blobs,
       centroid,
       raw: {
-        energy: Math.min(1, changed / count * 5),
+        energy: Math.min(1, changed / Math.max(1, sampleCount) * 5),
         density: Math.min(1, occupiedZones / 6),
         speed,
         coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(varianceSum / 6) / (mean + 0.0001))) : 0,

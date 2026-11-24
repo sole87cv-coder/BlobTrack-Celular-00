@@ -377,6 +377,7 @@ test('service worker precaches all runtime assets', async () => {
     './index.html',
     './src/app.css',
     './src/app.js',
+    './src/core/roiMask.js',
     './src/blob-tracker.js',
     './src/video-crop.js',
     './src/audio-processor.js',
