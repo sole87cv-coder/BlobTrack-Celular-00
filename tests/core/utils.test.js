@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clamp, fmt, formatRecordingTime, recordingFileName } from '../../src/core/utils.js';
+import { clamp, fmt, formatRecordingTime, recordingFileName, hasRecordingStorageHeadroom } from '../../src/core/utils.js';
 
 test('clamp limits value to [lo, hi]', (t) => {
   assert.equal(clamp(-5, 0, 10), 0);
@@ -42,22 +42,22 @@ test('formatRecordingTime converts ms to mm:ss', (t) => {
   assert.equal(formatRecordingTime(3661000), '61:01');
 });
 
-test('recordingFileName generates filename with effect, timestamp and extension', (t) => {
-  const result = { effect: 'invert', extension: 'webm' };
-  const filename = recordingFileName(result);
-  assert.ok(filename.startsWith('blobtrack-invert-'));
-  assert.ok(filename.endsWith('.webm'));
-  assert.match(filename, /blobtrack-invert-\d{8}-\d{6}\.webm/);
-});
-
-test('recordingFileName defaults effect to invert', (t) => {
-  const result = { extension: 'mp4' };
-  const filename = recordingFileName(result);
-  assert.ok(filename.startsWith('blobtrack-invert-'));
+test('recordingFileName follows the BlobTrack date-time format', (t) => {
+  const filename = recordingFileName({ extension: 'webm' }, new Date(2026, 0, 2, 3, 4, 5));
+  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.webm');
 });
 
 test('recordingFileName defaults extension to webm', (t) => {
-  const result = { effect: 'threshold' };
-  const filename = recordingFileName(result);
-  assert.ok(filename.endsWith('.webm'));
+  const filename = recordingFileName({}, new Date(2026, 0, 2, 3, 4, 5));
+  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.webm');
+});
+
+test('recording storage API absence or failure does not block recording', async () => {
+  assert.equal(await hasRecordingStorageHeadroom(null), true);
+  assert.equal(await hasRecordingStorageHeadroom({ estimate: async () => { throw new Error('unavailable'); } }), true);
+});
+
+test('recording requires at least 100 MB of available storage', async () => {
+  assert.equal(await hasRecordingStorageHeadroom({ estimate: async () => ({ quota: 500_000_000, usage: 350_000_000 }) }), true);
+  assert.equal(await hasRecordingStorageHeadroom({ estimate: async () => ({ quota: 500_000_000, usage: 401_000_000 }) }), false);
 });

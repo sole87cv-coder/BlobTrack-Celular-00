@@ -1,12 +1,12 @@
 const MIME_TYPES = [
-  'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-  'video/webm;codecs=vp9,opus',
-  'video/webm;codecs=vp8,opus',
+  'video/webm;codecs=vp9',
+  'video/webm;codecs=vp8',
   'video/webm',
+  'video/mp4;codecs=avc1.42E01E',
   'video/mp4',
 ];
 
-const DEFAULT_MAX_DURATION_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000;
 const DEFAULT_MAX_BYTES = 350 * 1024 * 1024;
 const MEMORY_LIMIT_BYTES = 500 * 1024 * 1024;
 

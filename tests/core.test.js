@@ -9,7 +9,7 @@ import { clearVideoComposition } from '../src/video-crop.js';
 import { loadPreferences } from '../src/preferences.js';
 
 const projectRoot = new URL('../', import.meta.url);
-const supportedMime = 'video/webm;codecs=vp8,opus';
+const supportedMime = 'video/webm;codecs=vp8';
 
 class FakeTrack {
   constructor(kind) {
@@ -81,14 +81,14 @@ class FakeMediaRecorder {
 }
 
 class FallbackMediaRecorder extends FakeMediaRecorder {
-  static supportedTypes = new Set(['video/webm;codecs=vp9,opus', supportedMime]);
+  static supportedTypes = new Set(['video/webm;codecs=vp9', supportedMime]);
 
   static isTypeSupported(type) {
     return this.supportedTypes.has(type);
   }
 
   constructor(stream, options) {
-    if (options.mimeType === 'video/webm;codecs=vp9,opus') {
+    if (options.mimeType === 'video/webm;codecs=vp9') {
       const error = new Error('Codec indisponível');
       error.name = 'NotSupportedError';
       throw error;
@@ -275,7 +275,7 @@ test('recording export prefers file sharing and respects user cancellation', asy
     }
   }
   const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
-  const filename = 'blobtrack-invert-20260101-120000.webm';
+  const filename = 'BlobTrack_2026-01-01_12-00-00.webm';
   const shared = await exportRecording(result, {
     filename,
     FileClass: FakeFile,
@@ -304,7 +304,7 @@ test('recording export prefers file sharing and respects user cancellation', asy
 
 test('recording export uses the file picker and falls back to download', async () => {
   const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
-  const filename = 'blobtrack-invert-20260101-120000.webm';
+  const filename = 'BlobTrack_2026-01-01_12-00-00.webm';
   const operations = [];
   const pickerResult = await exportRecording(result, {
     filename,
@@ -353,7 +353,7 @@ test('recording export reports a file-picker failure before downloading', async 
     mimeType: supportedMime,
     extension: 'webm',
   }, {
-    filename: 'blobtrack-invert-20260101-120000.webm',
+    filename: 'BlobTrack_2026-01-01_12-00-00.webm',
     navigatorObject: {},
     windowObject: { showSaveFilePicker: async () => { throw new Error('Picker indisponível'); } },
     documentObject: { createElement: () => ({ click: () => { clicked = true; } }) },
@@ -435,7 +435,7 @@ test('recorder falls back when a supported MIME is rejected by its constructor',
 
   const startInfo = fixture.recorder.start();
 
-  assert.equal(selectRecordingMimeType(FallbackMediaRecorder), 'video/webm;codecs=vp9,opus');
+  assert.equal(selectRecordingMimeType(FallbackMediaRecorder), 'video/webm;codecs=vp9');
   assert.equal(startInfo.mimeType, supportedMime);
   assert.equal(fixture.activeMediaRecorder.mimeType, supportedMime);
   await fixture.recorder.stop();
@@ -481,6 +481,18 @@ test('recorder stops automatically at the duration limit', () => {
   assert.equal(finalSnapshot.state, 'idle');
   assert.equal(finalSnapshot.result.reason, 'max-duration');
   assert.equal(finalSnapshot.result.durationMs, 600);
+});
+
+test('default recording limit is five minutes', () => {
+  const fixture = createRecorderFixture();
+  let finalSnapshot;
+  fixture.recorder.onState(snapshot => { finalSnapshot = snapshot; });
+  fixture.recorder.start();
+  fixture.setNow(301_000);
+  fixture.tick();
+  assert.equal(finalSnapshot.state, 'idle');
+  assert.equal(finalSnapshot.result.reason, 'max-duration');
+  assert.equal(finalSnapshot.result.durationMs, 300_000);
 });
 
 test('recorder preserves a partial result if the media stream ends unexpectedly', () => {
