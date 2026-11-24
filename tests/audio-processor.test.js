@@ -33,6 +33,7 @@ test('legacy sound message still updates timbre and effects', () => {
 
 test('rhythmic notes stay in the selected key and scale', () => {
   const processor = new RegisteredProcessor();
+  processor.rhythmRandomState = 1;
   const degrees = [0, 2, 3, 7, 8, 10];
   processor.port.onmessage({ data: { type: 'scale', id: 'minor', degrees } });
   processor.port.onmessage({ data: { type: 'sound', key: 2, rhythmEnabled: true } });
@@ -48,17 +49,46 @@ test('rhythmic notes stay in the selected key and scale', () => {
 test('rhythmic layer can be disabled and its tempo follows blob activity', () => {
   const makeActive = speed => {
     const processor = new RegisteredProcessor();
+    processor.rhythmRandomState = 1;
     processor.port.onmessage({ data: { type: 'sound', rhythmEnabled: true } });
     processor.port.onmessage({ data: { type: 'signals', signals: { energy: speed, density: speed, speed, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 1, x: .5, y: .5, speed }] }, master: 1, muted: false, audioEnabled: true } });
     processBlock(processor);
     return processor;
   };
   const slow = makeActive(.1), fast = makeActive(.8);
-  assert.ok(fast.rhythmNextAt < slow.rhythmNextAt);
+  assert.ok(fast.rhythmBpm > slow.rhythmBpm);
 
   fast.port.onmessage({ data: { type: 'sound', rhythmEnabled: false } });
   processBlock(fast);
   assert.equal(fast.rhythmActive, false);
+});
+
+test('rhythmic phrases contain rests between scale notes', () => {
+  const processor = new RegisteredProcessor();
+  processor.rhythmRandomState = 1;
+  const signals = { blobs: [], energy: .1, density: .05, speed: .04 };
+  let rests = 0;
+  for (let slot = 0; slot < 32; slot++) {
+    processor.rhythmClock = processor.rhythmNextAt;
+    processor.rhythmEnvelope = 0;
+    processor.scheduleRhythmicNote(signals, signals.energy, signals.speed, signals.density);
+    if (processor.rhythmEnvelope === 0) rests++;
+  }
+  assert.ok(rests > 0);
+});
+
+test('instrument mode keeps sustained voices from sweeping between pitches', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'sound', pitchRange: 7, rhythmEnabled: true } });
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .8, density: .5, speed: 1, ambient: 0, zones: [1,1,1,1,1,1], blobs: [{ id: 1, x: .5, y: .5, speed: 1 }] }, master: 1, muted: false, audioEnabled: true } });
+
+  for (let block = 0; block < 12; block++) processBlock(processor);
+
+  for (let zone = 0; zone < processor.phaseSteps.length; zone++) {
+    const currentFrequency = processor.phaseSteps[zone] * sampleRate / (2 * Math.PI);
+    const pitchDeviation = 12 * Math.log2(currentFrequency / processor.baseFrequency[zone]);
+    assert.ok(Math.abs(pitchDeviation) <= .12 + 1e-6);
+  }
 });
 
 test('new mallet signals spawn a panned note after blob movement', () => {

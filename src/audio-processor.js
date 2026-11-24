@@ -31,6 +31,8 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.rhythmFrequency = 220;
     this.rhythmVelocity = .7;
     this.rhythmStep = 0;
+    this.rhythmBpm = 62;
+    this.rhythmLastDegree = -1;
     this.rhythmRandomState = (Math.random() * 0xffffffff) >>> 0 || 1;
     this.oscillation = .4;
     this.pitchRange = 2;
@@ -119,25 +121,40 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       return;
     }
     const bpm = Math.min(126, Math.max(56, 62 + energy * 28 + speed * 22 + density * 14));
+    this.rhythmBpm = bpm;
     if (!this.rhythmActive) {
       this.rhythmActive = true;
       this.rhythmNextAt = this.rhythmClock;
     }
     if (this.rhythmClock + 1 / sampleRate < this.rhythmNextAt) return;
 
+    const stepIndex = this.rhythmStep++;
+    const stepDuration = 30 / bpm;
+    const probability = Math.min(.9, .52 + energy * .2 + speed * .12 + density * .13);
+    const accentedRest = stepIndex % 6 === 0 && energy + speed > .65;
+    if (this.nextRhythmRandom() >= probability && !accentedRest) {
+      const restSteps = this.nextRhythmRandom() < .7 ? 1 : 2;
+      this.rhythmNextAt = this.rhythmClock + stepDuration * (restSteps + 1);
+      return;
+    }
+
     const scale = this.scaleDegrees?.length ? this.scaleDegrees : degreesForZones('live');
     const blob = blobs.length ? blobs[Math.floor(this.nextRhythmRandom() * blobs.length)] : null;
     const anchor = blob && Number.isFinite(blob.x) ? Math.round(Math.max(0, Math.min(1, blob.x)) * (scale.length - 1)) : Math.floor(this.nextRhythmRandom() * scale.length);
     const nearbyStep = Math.floor(this.nextRhythmRandom() * 3) - 1;
-    const degreeIndex = (anchor + nearbyStep + scale.length) % scale.length;
+    let degreeIndex = (anchor + nearbyStep + scale.length) % scale.length;
+    if (degreeIndex === this.rhythmLastDegree && scale.length > 1) {
+      degreeIndex = (degreeIndex + 1 + Math.floor(this.nextRhythmRandom() * (scale.length - 1))) % scale.length;
+    }
+    this.rhythmLastDegree = degreeIndex;
     const octave = this.nextRhythmRandom() < .16 ? -1 : this.nextRhythmRandom() > .84 ? 1 : 0;
     const key = Number.isFinite(this.key) ? this.key : 0;
     this.rhythmFrequency = Math.max(70, Math.min(1500, 130.8128 * 2 ** ((key + scale[degreeIndex] + octave * 12) / 12)));
-    this.rhythmVelocity = .58 + this.nextRhythmRandom() * .28 + (this.rhythmStep % 4 === 0 ? .1 : 0);
-    this.rhythmEnvelope = .48;
+    this.rhythmVelocity = Math.min(1, .76 + this.nextRhythmRandom() * .2 + (stepIndex % 4 === 0 ? .08 : 0));
+    this.rhythmEnvelope = .62;
     this.rhythmPhase = 0;
-    this.rhythmStep++;
-    this.rhythmNextAt = this.rhythmClock + 60 / bpm;
+    const spacing = this.nextRhythmRandom() < .56 ? 1 : this.nextRhythmRandom() < .78 ? 2 : 3;
+    this.rhythmNextAt = this.rhythmClock + stepDuration * spacing;
   }
   setPreset(name) {
     if (!PRESETS[name]) return;
@@ -316,12 +333,14 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     const release = 1 - Math.exp(-1 / (sampleRate * .11));
     const timbreFadeStep = 1 / (sampleRate * .045);
     const lfoHz = .14 + speed * 2.8 + energy * .55;
+    const instrumentBed = this.rhythmEnabled ? .24 : 1;
+    const bendRange = this.rhythmEnabled ? Math.min(this.pitchRange, .12) : this.pitchRange;
     let voices = 0;
     for (let z = 0; z < 6; z++) {
       const zone = unitAudioSignal(s.zones?.[z]);
-      this.voiceTargets[z] = Math.min(.46, zone * (.16 + .20 * energy) * (.75 + .5 * speed) * this.sensitivity);
+      this.voiceTargets[z] = Math.min(.46, zone * (.16 + .20 * energy) * (.75 + .5 * speed) * this.sensitivity * instrumentBed);
       if (this.voiceTargets[z] > .01) voices++;
-      const bend = this.pitchRange * Math.sin(this.modPhase[z]) * (.25 + .75 * speed);
+      const bend = bendRange * Math.sin(this.modPhase[z]) * (.25 + .75 * speed);
       this.phaseSteps[z] = 2 * Math.PI * this.baseFrequency[z] * Math.pow(2, bend / 12) / sampleRate;
     }
     const processStart = Date.now();
@@ -346,13 +365,13 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
         if (this.modPhase[z] >= Math.PI * 2) this.modPhase[z] -= Math.PI * 2;
       }
       if (this.rhythmEnvelope > .0005) {
-        const beat = Math.sin(this.rhythmPhase);
-        sample += beat * this.rhythmEnvelope * .15 * this.rhythmVelocity;
+        const beat = Math.sin(this.rhythmPhase) * .76 + Math.sin(this.rhythmPhase * 2) * .24;
+        sample += beat * this.rhythmEnvelope * .26 * this.rhythmVelocity;
         this.rhythmPhase += 2 * Math.PI * this.rhythmFrequency / sampleRate;
         if (this.rhythmPhase >= Math.PI * 2) this.rhythmPhase -= Math.PI * 2;
-        this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .075));
+        this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .06));
       }
-      const air = Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity));
+      const air = Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity)) * (this.rhythmEnabled ? .25 : 1);
       sample += air * Math.sin(this.phase[7]);
       this.phase[7] += 2 * Math.PI * (180 + 620 * speed + 180 * density) / sampleRate;
       if (this.phase[7] >= Math.PI * 2) this.phase[7] -= Math.PI * 2;
