@@ -325,7 +325,7 @@ async function setManualExposure() { const track = state.stream?.getVideoTracks(
 
 function resize() {
   const rect = canvas.getBoundingClientRect(); if (!rect.width || !rect.height) return;
-  const ratio = Math.min(devicePixelRatio || 1, deviceProfile.pixelRatio); const w = Math.round(rect.width * ratio), h = Math.round(rect.height * ratio);
+  const ratio = Math.min(devicePixelRatio || 1, deviceProfile.pixelRatio, 1.5); const w = Math.round(rect.width * ratio), h = Math.round(rect.height * ratio);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (overlayCanvas.width !== w || overlayCanvas.height !== h) { overlayCanvas.width = w; overlayCanvas.height = h; }
   if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
@@ -335,8 +335,11 @@ window.addEventListener('orientationchange', () => requestAnimationFrame(resize)
 
 // One immutable camera snapshot feeds tracking, the main render and raw blob windows.
 function captureVideoFrame() {
-  if (frameCanvas.width !== video.videoWidth || frameCanvas.height !== video.videoHeight) {
-    frameCanvas.width = video.videoWidth; frameCanvas.height = video.videoHeight;
+  const scale = Math.min(1, deviceProfile.captureWidth / video.videoWidth);
+  const width = Math.max(1, Math.round(video.videoWidth * scale));
+  const height = Math.max(1, Math.round(video.videoHeight * scale));
+  if (frameCanvas.width !== width || frameCanvas.height !== height) {
+    frameCanvas.width = width; frameCanvas.height = height;
   }
   frameContext.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
   return frameCanvas;
