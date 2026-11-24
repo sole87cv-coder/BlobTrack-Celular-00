@@ -64,11 +64,12 @@ test('janelas aparecem antes dos efeitos reativos e da rede', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   const overlay = render.slice(render.indexOf('function drawMaskOverlay('));
   const windows = overlay.indexOf('drawRawVideoWindows(c,');
+  const mask = overlay.indexOf('drawImage(maskCanvas,');
   const trails = overlay.indexOf('drawTrails(c,');
   const waves = overlay.indexOf('drawWaves(c,');
   const mesh = overlay.indexOf('drawMesh(c,');
   const network = overlay.indexOf('drawBlobNetwork(c,');
-  assert.ok(windows >= 0 && windows < trails);
+  assert.ok(windows >= 0 && windows < mask && mask < trails);
   assert.ok(trails < waves && waves < mesh && mesh < network);
 });
 

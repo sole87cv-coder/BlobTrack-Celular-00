@@ -458,6 +458,11 @@ export function createRender({
         c.rect(offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
         c.clip();
       }
+      if (state.videoWindows) {
+        const windowStarted = performance.now();
+        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source);
+        windowCost += performance.now() - windowStarted;
+      }
       if (state.showMask) {
         if (state.gearVr) {
           calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
@@ -477,11 +482,6 @@ export function createRender({
           c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
         }
         c.restore();
-      }
-      if (state.videoWindows) {
-        const windowStarted = performance.now();
-        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source);
-        windowCost += performance.now() - windowStarted;
       }
       if (!state.performance.effectsPaused) {
         if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
