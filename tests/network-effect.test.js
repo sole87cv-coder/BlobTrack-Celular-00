@@ -59,3 +59,24 @@ test('botão da rede alterna e persiste o efeito e o renderer respeita pausa', a
   assert.ok(app.includes("bindReactiveToggle('blobNetworkButton', 'networkEffect')"));
   assert.match(render, /if \(state\.networkEffect && !state\.performance\.effectsPaused\)\s*\{\s*drawBlobNetwork/);
 });
+
+test('janelas aparecem antes dos efeitos reativos e da rede', async () => {
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  const overlay = render.slice(render.indexOf('function drawMaskOverlay('));
+  const windows = overlay.indexOf('drawRawVideoWindows(c,');
+  const trails = overlay.indexOf('drawTrails(c,');
+  const waves = overlay.indexOf('drawWaves(c,');
+  const mesh = overlay.indexOf('drawMesh(c,');
+  const network = overlay.indexOf('drawBlobNetwork(c,');
+  assert.ok(windows >= 0 && windows < trails);
+  assert.ok(trails < waves && waves < mesh && mesh < network);
+});
+
+test('pausa por FPS tem badge visível no palco e mantém descrição detalhada', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.match(html, /id="effectsPausedBadge"[^>]*role="status"[^>]*hidden/);
+  assert.ok(app.includes("const badge = $('effectsPausedBadge')"));
+  assert.ok(app.includes('badge.hidden = !perf.effectsPaused'));
+  assert.ok(app.includes('Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps'));
+});

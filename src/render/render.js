@@ -478,15 +478,15 @@ export function createRender({
         }
         c.restore();
       }
-      if (!state.performance.effectsPaused) {
-        if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
-        if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now());
-        if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX);
-      }
       if (state.videoWindows) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source);
         windowCost += performance.now() - windowStarted;
+      }
+      if (!state.performance.effectsPaused) {
+        if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
+        if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now());
+        if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX);
       }
       if (state.networkEffect && !state.performance.effectsPaused) {
         drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX);

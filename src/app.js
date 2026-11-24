@@ -433,6 +433,9 @@ function updateReactiveEffectQuality(now) {
   const hint = $('effectPerformanceHint');
   hint.hidden = !perf.effectsPaused;
   if (perf.effectsPaused) hint.textContent = `Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps · a Janela viva continua ativa.`;
+  const badge = $('effectsPausedBadge');
+  badge.hidden = !perf.effectsPaused;
+  if (perf.effectsPaused) badge.textContent = 'Efeitos reativos pausados para proteger o FPS';
 }
 let frameErrors = 0;
 function frame(now) {
