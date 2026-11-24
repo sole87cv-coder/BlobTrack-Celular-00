@@ -751,7 +751,7 @@ async function startRecording() {
     showToast('Palco indisponível para gravação');
     return;
   }
-  const size = recordingCanvasSize(canvas.width, canvas.height, deviceProfile.captureWidth);
+  const size = recordingCanvasSize(canvas.width, canvas.height, state.maxEffects ? Math.round(deviceProfile.captureWidth * 0.65) : deviceProfile.captureWidth);
   recordingCanvas.width = size.width;
   recordingCanvas.height = size.height;
   render.drawRecordingComposite(true);

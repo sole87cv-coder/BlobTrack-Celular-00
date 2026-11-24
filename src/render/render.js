@@ -651,7 +651,7 @@ export function createRender({
 
   function drawRecordingComposite(force = false) {
     if (!recordingContext || (!force && recordingSnapshot.state !== 'recording') || !recordingCanvas.width || !recordingCanvas.height) return;
-    const includeShade = !state.gearVr && (!document.body.classList.contains('focus-mode') || document.body.classList.contains('recording-active'));
+    const includeShade = !state.maxEffects && !state.gearVr && (!document.body.classList.contains('focus-mode') || document.body.classList.contains('recording-active'));
     drawRecordingFrame(recordingContext, canvas, overlayCanvas, recordingCanvas.width, recordingCanvas.height, includeShade);
   }
 

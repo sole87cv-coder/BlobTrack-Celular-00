@@ -26,7 +26,7 @@ test('recording follows the mobile recording limits', () => {
   assert.ok(app.includes('videoBitsPerSecond: deviceProfile.recordingBitrate'));
   assert.ok(app.includes('beforeunload'));
   assert.ok(app.includes('audioStream: audioDestination?.stream'));
-  assert.ok(app.includes('recordingCanvasSize(canvas.width, canvas.height, deviceProfile.captureWidth)'));
+  assert.ok(app.includes('recordingCanvasSize(canvas.width, canvas.height, state.maxEffects ? Math.round(deviceProfile.captureWidth * 0.65) : deviceProfile.captureWidth)'));
   assert.ok(app.includes('recordingOwnsFocusMode'));
   assert.ok(app.includes('recorder.releaseResult()'));
 });
