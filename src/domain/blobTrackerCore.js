@@ -24,6 +24,8 @@ export class BlobTrackerCore {
     this.zoneHits = new Uint32Array(6);
     this.zoneCoverage = new Float64Array(6);
     this.zoneValues = new Array(6).fill(0);
+    this.zoneColumns = new Uint8Array(0);
+    this.zoneRows = new Uint8Array(0);
   }
 
   reset() {
@@ -41,6 +43,15 @@ export class BlobTrackerCore {
     this.mask = new Uint8Array(count);
     this.visited = new Uint8Array(count);
     this.queue = new Int32Array(count);
+    this.zoneColumns = new Uint8Array(width);
+    this.zoneRows = new Uint8Array(height);
+    this.zonePixels.fill(0);
+    for (let x = 0; x < width; x++) this.zoneColumns[x] = Math.min(2, Math.floor(x * 3 / width));
+    for (let y = 0; y < height; y++) this.zoneRows[y] = Math.min(1, Math.floor(y * 2 / height));
+    for (let y = 0; y < height; y++) {
+      const row = this.zoneRows[y] * 3;
+      for (let x = 0; x < width; x++) this.zonePixels[row + this.zoneColumns[x]]++;
+    }
     for (const track of this.tracks) track.alive = false;
   }
 
@@ -52,38 +63,36 @@ export class BlobTrackerCore {
     const count = width * height;
     let lumaSum = 0;
     let changed = 0;
-
-    for (let i = 0, p = 0; i < count; i++, p += 4) {
-      const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
-      this.luma[i] = value;
-      lumaSum += value;
-      const active = this.background && Math.abs(value - this.background[i]) > safeThreshold;
-      this.mask[i] = active ? 1 : 0;
-      if (active) changed++;
-    }
+    this.zoneHits.fill(0);
 
     if (!this.background) {
+      for (let i = 0, p = 0; i < count; i++, p += 4) {
+        const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+        this.luma[i] = value;
+        lumaSum += value;
+      }
       this.background = this.luma.slice();
       this.mask.fill(0);
     } else {
-      for (let i = 0; i < count; i++) {
-        if (!this.mask[i]) this.background[i] += (this.luma[i] - this.background[i]) * 0.006;
+      let i = 0, p = 0;
+      for (let y = 0; y < height; y++) {
+        const zoneRow = this.zoneRows[y] * 3;
+        for (let x = 0; x < width; x++, i++, p += 4) {
+          const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+          this.luma[i] = value;
+          lumaSum += value;
+          const active = Math.abs(value - this.background[i]) > safeThreshold;
+          this.mask[i] = active ? 1 : 0;
+          if (active) {
+            changed++;
+            this.zoneHits[zoneRow + this.zoneColumns[x]]++;
+          } else this.background[i] += (value - this.background[i]) * 0.006;
+        }
       }
     }
 
     const blobs = this.findComponents(width, height);
     this.assignTracks(blobs, width, height, safeDt);
-    this.zonePixels.fill(0);
-    this.zoneHits.fill(0);
-    for (let y = 0; y < height; y++) {
-      const row = Math.min(1, Math.floor(y * 2 / height));
-      for (let x = 0; x < width; x++) {
-        const zone = row * 3 + Math.min(2, Math.floor(x * 3 / width));
-        const index = y * width + x;
-        this.zonePixels[zone]++;
-        if (this.mask[index]) this.zoneHits[zone]++;
-      }
-    }
 
     let occupiedZones = 0, meanSum = 0;
     for (let i = 0; i < 6; i++) {
