@@ -113,7 +113,7 @@ Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.widt
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
-  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: false, extremeMode: false,
+  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: true, extremeMode: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lowLightNoticeShown: false,

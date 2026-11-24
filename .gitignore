@@ -12,3 +12,4 @@ Thumbs.db
 .vs/
 server.log
 server.err
+.vercel
