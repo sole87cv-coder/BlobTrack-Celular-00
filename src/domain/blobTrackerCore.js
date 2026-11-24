@@ -26,6 +26,16 @@ export class BlobTrackerCore {
     this.zoneValues = new Array(6).fill(0);
     this.zoneColumns = new Uint8Array(0);
     this.zoneRows = new Uint8Array(0);
+    this.tileColumns = new Uint8Array(0);
+    this.tileRows = new Uint8Array(0);
+    this.gridSum = new Float32Array(16 * 16);
+    this.gridSumSq = new Float32Array(16 * 16);
+    this.gridCount = new Uint32Array(16 * 16);
+    this.gridThresholds = new Float32Array(16 * 16);
+    this.gridThresholds.fill(0.18);
+    this.frameCount = 0;
+    this.lastThreshold = null;
+    this.lowLight = false;
   }
 
   reset() {
@@ -45,9 +55,17 @@ export class BlobTrackerCore {
     this.queue = new Int32Array(count);
     this.zoneColumns = new Uint8Array(width);
     this.zoneRows = new Uint8Array(height);
+    this.tileColumns = new Uint8Array(width);
+    this.tileRows = new Uint8Array(height);
     this.zonePixels.fill(0);
-    for (let x = 0; x < width; x++) this.zoneColumns[x] = Math.min(2, Math.floor(x * 3 / width));
-    for (let y = 0; y < height; y++) this.zoneRows[y] = Math.min(1, Math.floor(y * 2 / height));
+    for (let x = 0; x < width; x++) {
+      this.zoneColumns[x] = Math.min(2, Math.floor(x * 3 / width));
+      this.tileColumns[x] = Math.min(15, Math.floor(x * 16 / width));
+    }
+    for (let y = 0; y < height; y++) {
+      this.zoneRows[y] = Math.min(1, Math.floor(y * 2 / height));
+      this.tileRows[y] = Math.min(15, Math.floor(y * 16 / height));
+    }
     for (let y = 0; y < height; y++) {
       const row = this.zoneRows[y] * 3;
       for (let x = 0; x < width; x++) this.zonePixels[row + this.zoneColumns[x]]++;
@@ -61,6 +79,10 @@ export class BlobTrackerCore {
     const safeThreshold = Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0.18));
     this.resize(width, height);
     const count = width * height;
+    if (this.lastThreshold !== safeThreshold) {
+      this.lastThreshold = safeThreshold;
+      this.gridThresholds.fill(safeThreshold);
+    }
     let lumaSum = 0;
     let changed = 0;
     this.zoneHits.fill(0);
@@ -74,22 +96,54 @@ export class BlobTrackerCore {
       this.background = this.luma.slice();
       this.mask.fill(0);
     } else {
+      const sampleColumn = this.frameCount & 3;
+      for (let row = 0; row < 16; row++) {
+        for (let column = sampleColumn; column < 16; column += 4) {
+          const tile = row * 16 + column;
+          this.gridSum[tile] = 0;
+          this.gridSumSq[tile] = 0;
+          this.gridCount[tile] = 0;
+        }
+      }
       let i = 0, p = 0;
       for (let y = 0; y < height; y++) {
         const zoneRow = this.zoneRows[y] * 3;
+        const tileRow = this.tileRows[y] * 16;
         for (let x = 0; x < width; x++, i++, p += 4) {
           const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
           this.luma[i] = value;
           lumaSum += value;
-          const active = Math.abs(value - this.background[i]) > safeThreshold;
+          const difference = Math.abs(value - this.background[i]);
+          const tileColumn = this.tileColumns[x];
+          const tile = tileRow + tileColumn;
+          const active = difference > this.gridThresholds[tile];
           this.mask[i] = active ? 1 : 0;
           if (active) {
             changed++;
             this.zoneHits[zoneRow + this.zoneColumns[x]]++;
           } else this.background[i] += (value - this.background[i]) * 0.006;
+          if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
+            this.gridSum[tile] += difference;
+            this.gridSumSq[tile] += difference * difference;
+            this.gridCount[tile]++;
+          }
+        }
+      }
+      for (let row = 0; row < 16; row++) {
+        for (let column = sampleColumn; column < 16; column += 4) {
+          const tile = row * 16 + column;
+          const samples = this.gridCount[tile];
+          if (!samples) { this.gridThresholds[tile] = safeThreshold; continue; }
+          const mean = this.gridSum[tile] / samples;
+          const variance = Math.max(0, this.gridSumSq[tile] / samples - mean * mean);
+          this.gridThresholds[tile] = Math.min(1, Math.max(safeThreshold, mean + 2.5 * Math.sqrt(variance)));
         }
       }
     }
+    const ambient = lumaSum / count;
+    if (ambient < 0.12) this.lowLight = true;
+    else if (ambient > 0.20) this.lowLight = false;
+    this.frameCount++;
 
     const blobs = this.findComponents(width, height);
     this.assignTracks(blobs, width, height, safeDt);
@@ -129,7 +183,8 @@ export class BlobTrackerCore {
         density: Math.min(1, occupiedZones / 6),
         speed,
         coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(varianceSum / 6) / (mean + 0.0001))) : 0,
-        ambient: lumaSum / count,
+        ambient,
+        lowLight: this.lowLight,
         zones: this.zoneValues,
         blobCount: blobs.length,
       },

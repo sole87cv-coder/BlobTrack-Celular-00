@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { BlobTrackerCore } from '../src/domain/blobTrackerCore.js';
 
@@ -22,6 +23,13 @@ function setBox(pixels, left, top, color = 230, size = 10) {
   for (let y = top; y < top + size; y++) for (let x = left; x < left + size; x++) {
     const index = (y * width + x) * 4;
     pixels[index] = pixels[index + 1] = pixels[index + 2] = color;
+  }
+}
+
+function fillGray(pixels, value) {
+  for (let i = 0; i < pixels.length; i += 4) {
+    pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+    pixels[i + 3] = 255;
   }
 }
 
@@ -134,4 +142,67 @@ test('velocidade do teste existente permanece na mesma fórmula', () => {
   setBox(fixture.pixels, 20, 15);
   const result = update(tracker, fixture);
   assert.ok(Math.abs(result.blobs[0].speed - (5 / width / (1 / 24) / 2)) < 0.0001);
+});
+
+test('grade adaptativa reutilizada não apaga uma mancha forte sobre fundo estável', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  setBox(fixture.pixels, 40, 40, 151);
+  let result;
+  for (let i = 0; i < 9; i++) result = update(tracker, fixture);
+  assert.equal(result.blobs.length, 1);
+});
+
+test('ruído de 0.08 não gera blob e uma mancha de 0.45 gera', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  fillGray(fixture.pixels, 56);
+  assert.equal(update(tracker, fixture).blobs.length, 0);
+  setBox(fixture.pixels, 40, 40, 151);
+  assert.equal(update(tracker, fixture).blobs.length, 1);
+});
+
+test('lowLight ativa abaixo de 0.12, mantém entre limiares e desativa acima de 0.20', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  fillGray(fixture.pixels, 30);
+  assert.equal(update(tracker, fixture).raw.lowLight, true);
+  fillGray(fixture.pixels, 40);
+  assert.equal(update(tracker, fixture).raw.lowLight, true);
+  fillGray(fixture.pixels, 60);
+  assert.equal(update(tracker, fixture).raw.lowLight, false);
+});
+
+test('buffers da grade são reutilizados enquanto o tamanho do quadro não muda', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  const sum = tracker.gridSum;
+  const sumSq = tracker.gridSumSq;
+  for (let i = 0; i < 3; i++) update(tracker, fixture);
+  assert.equal(tracker.gridSum, sum);
+  assert.equal(tracker.gridSumSq, sumSq);
+});
+
+test('rampa de sombra 0→0.12 já fica abaixo do threshold global 0.18', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  for (let y = 0; y < height; y++) {
+    const value = 36 + Math.round(y / (height - 1) * 30);
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      fixture.pixels[index] = fixture.pixels[index + 1] = fixture.pixels[index + 2] = value;
+    }
+  }
+  const result = update(tracker, fixture);
+  assert.equal(result.mask.reduce((sum, value) => sum + value, 0), 0);
+});
+
+test('aviso de pouca luz é protegido por estado e rearma após sair da condição', async () => {
+  const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.ok(app.includes('result.raw.lowLight && !state.lowLightNoticeShown'));
+  assert.ok(app.includes('else if (!result.raw.lowLight) state.lowLightNoticeShown = false'));
 });

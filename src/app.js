@@ -39,6 +39,7 @@ const state = {
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
+  lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0,
@@ -415,6 +416,10 @@ function frame(now) {
         const source = captureVideoFrame();
         const result = analyze(source);
         if (result) {
+          if (result.raw.lowLight && !state.lowLightNoticeShown) {
+            state.lowLightNoticeShown = true;
+            showToast('Pouca luz: o rastreio pode ficar instável.');
+          } else if (!result.raw.lowLight) state.lowLightNoticeShown = false;
           const applied = updateSignals(result.raw, result.dt, result.blobs);
           render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
         }
