@@ -7,17 +7,28 @@ export class BlobTrackerCore {
     this.width = 0;
     this.height = 0;
     this.background = null;
-    this.previous = [];
+    this.luma = null;
+    this.mask = null;
+    this.visited = null;
+    this.queue = null;
     this.nextId = 1;
+    this.tracks = Array.from({ length: maxBlobs }, () => ({
+      id: 0, x: 0, y: 0, vx: 0, vy: 0,
+      left: 0, top: 0, right: 0, bottom: 0, area: 0,
+      age: 0, miss: 0, alive: false,
+    }));
+    this.trackForBlob = new Int16Array(maxBlobs);
+    this.matchedTracks = new Uint8Array(maxBlobs);
+    this.matchedBlobs = new Uint8Array(maxBlobs);
     this.zonePixels = new Uint32Array(6);
     this.zoneHits = new Uint32Array(6);
     this.zoneCoverage = new Float64Array(6);
-    this.availableTracks = new Uint8Array(maxBlobs);
+    this.zoneValues = new Array(6).fill(0);
   }
 
   reset() {
     this.background = null;
-    this.previous = [];
+    for (const track of this.tracks) track.alive = false;
   }
 
   resize(width, height) {
@@ -30,7 +41,7 @@ export class BlobTrackerCore {
     this.mask = new Uint8Array(count);
     this.visited = new Uint8Array(count);
     this.queue = new Int32Array(count);
-    this.previous = [];
+    for (const track of this.tracks) track.alive = false;
   }
 
   updatePixels(pixels, width, height, threshold, dt) {
@@ -83,13 +94,11 @@ export class BlobTrackerCore {
     }
     const mean = meanSum / 6;
     let varianceSum = 0;
-    const zoneValues = new Array(6);
     for (let i = 0; i < 6; i++) {
       const value = this.zoneCoverage[i];
       varianceSum += (value - mean) ** 2;
-      zoneValues[i] = Math.min(1, value * 5);
+      this.zoneValues[i] = Math.min(1, value * 5);
     }
-    const variance = varianceSum / 6;
     let centroidWeight = 0, centroidX = 0, centroidY = 0, speedSum = 0;
     for (const blob of blobs) {
       centroidWeight += blob.pixels;
@@ -110,9 +119,9 @@ export class BlobTrackerCore {
         energy: Math.min(1, changed / count * 5),
         density: Math.min(1, occupiedZones / 6),
         speed,
-        coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(variance) / (mean + 0.0001))) : 0,
+        coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(varianceSum / 6) / (mean + 0.0001))) : 0,
         ambient: lumaSum / count,
-        zones: zoneValues,
+        zones: this.zoneValues,
         blobCount: blobs.length,
       },
     };
@@ -178,44 +187,107 @@ export class BlobTrackerCore {
   }
 
   assignTracks(blobs, width, height, dt) {
-    const previousCount = this.previous.length;
-    if (this.availableTracks.length < previousCount) this.availableTracks = new Uint8Array(previousCount);
-    this.availableTracks.fill(0);
-    this.availableTracks.fill(1, 0, previousCount);
+    const trackCount = this.tracks.length;
+    const blobCount = blobs.length;
     for (const blob of blobs) {
-      let bestIndex = -1;
-      let bestDistance = 0.18;
-      for (let index = 0; index < previousCount; index++) {
-        if (!this.availableTracks[index]) continue;
-        const previous = this.previous[index];
-        const distance = Math.hypot(blob.x - previous.x, blob.y - previous.y);
-        if (distance < bestDistance) {
-          bestDistance = distance;
-          bestIndex = index;
-        }
-      }
-
-      if (bestIndex >= 0) {
-        const previous = this.previous[bestIndex];
-        this.availableTracks[bestIndex] = 0;
-        blob.id = previous.id;
-        blob.speed = Math.min(1, bestDistance / Math.max(dt, 0.02) / 2);
-      } else {
-        blob.id = this.nextId++;
-        blob.speed = 0;
-      }
       blob.area = blob.pixels / (width * height);
       blob.width = blob.right - blob.left;
       blob.height = blob.bottom - blob.top;
     }
-    for (let i = 0; i < blobs.length; i++) {
-      const blob = blobs[i];
-      let previous = this.previous[i];
-      if (!previous) this.previous[i] = previous = { id: blob.id, x: blob.x, y: blob.y };
-      previous.id = blob.id;
-      previous.x = blob.x;
-      previous.y = blob.y;
+    this.matchedTracks.fill(0);
+    this.matchedBlobs.fill(0);
+    this.trackForBlob.fill(-1);
+    const gateSquared = 0.18 * 0.18;
+
+    // Greedy global assignment: select the cheapest remaining blob/track pair.
+    for (let assignment = 0; assignment < Math.min(blobCount, trackCount); assignment++) {
+      let bestBlob = -1, bestTrack = -1, bestCost = Infinity;
+      for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
+        if (this.matchedBlobs[blobIndex]) continue;
+        const blob = blobs[blobIndex];
+        for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
+          if (this.matchedTracks[trackIndex]) continue;
+          const track = this.tracks[trackIndex];
+          if (!track.alive || track.miss > 3) continue;
+          const predictedX = track.x + track.vx * (track.miss + 1);
+          const predictedY = track.y + track.vy * (track.miss + 1);
+          const dx = blob.x - predictedX;
+          const dy = blob.y - predictedY;
+          const distanceSquared = dx * dx + dy * dy;
+          if (distanceSquared > gateSquared) continue;
+          const predictedLeft = track.left + predictedX - track.x;
+          const predictedTop = track.top + predictedY - track.y;
+          const predictedRight = track.right + predictedX - track.x;
+          const predictedBottom = track.bottom + predictedY - track.y;
+          const left = Math.max(blob.left, predictedLeft);
+          const top = Math.max(blob.top, predictedTop);
+          const right = Math.min(blob.right, predictedRight);
+          const bottom = Math.min(blob.bottom, predictedBottom);
+          const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
+          const trackBoxArea = (track.right - track.left) * (track.bottom - track.top);
+          const union = blob.width * blob.height + trackBoxArea - intersection;
+          const iou = union > 0 ? intersection / union : 0;
+          const areaDelta = Math.abs(blob.area - track.area) / Math.max(blob.area, track.area, 1e-6);
+          const cost = 0.55 * distanceSquared / gateSquared + 0.25 * (1 - iou) + 0.20 * areaDelta;
+          if (cost < bestCost) {
+            bestCost = cost;
+            bestBlob = blobIndex;
+            bestTrack = trackIndex;
+          }
+        }
+      }
+      if (bestBlob < 0) break;
+      this.matchedBlobs[bestBlob] = 1;
+      this.matchedTracks[bestTrack] = 1;
+      this.trackForBlob[bestBlob] = bestTrack;
     }
-    this.previous.length = blobs.length;
+
+    for (let i = 0; i < trackCount; i++) {
+      const track = this.tracks[i];
+      if (!track.alive || this.matchedTracks[i]) continue;
+      track.miss++;
+      if (track.miss > 3) track.alive = false;
+    }
+
+    for (let i = 0; i < blobCount; i++) {
+      const blob = blobs[i];
+      let trackIndex = this.trackForBlob[i];
+      if (trackIndex < 0) {
+        for (let j = 0; j < trackCount; j++) {
+          if (!this.tracks[j].alive) { trackIndex = j; break; }
+        }
+        if (trackIndex < 0) continue;
+        const track = this.tracks[trackIndex];
+        track.id = this.nextId++;
+        track.x = blob.x;
+        track.y = blob.y;
+        track.vx = 0;
+        track.vy = 0;
+        track.age = 1;
+        track.miss = 0;
+        track.alive = true;
+        blob.speed = 0;
+      } else {
+        const track = this.tracks[trackIndex];
+        const dx = blob.x - track.x;
+        const dy = blob.y - track.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        blob.speed = Math.min(1, distance / Math.max(dt, 0.02) / 2);
+        track.vx = track.vx * 0.5 + dx * 0.5;
+        track.vy = track.vy * 0.5 + dy * 0.5;
+        track.x = blob.x;
+        track.y = blob.y;
+        track.age++;
+        track.miss = 0;
+      }
+      const track = this.tracks[trackIndex];
+      track.left = blob.left;
+      track.top = blob.top;
+      track.right = blob.right;
+      track.bottom = blob.bottom;
+      track.area = blob.area;
+      blob.id = track.id;
+      blob.age = track.age;
+    }
   }
 }
