@@ -118,13 +118,13 @@ test('createRender mapVideoPoint with user camera mirrors X', (t) => {
   assert.ok(out1[0] > out2[0]);
 });
 
-test('createRender mapVideoPoint with flip mirrors Y', (t) => {
+test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   const state = makeState({ camera: 'environment', flip: true });
   const render = createRender({ state, video: { videoWidth: 640, videoHeight: 360 } });
   const out1 = new Float32Array(2);
   const out2 = new Float32Array(2);
-  render.mapVideoPoint(0, 0, 320, 320, out1);
-  render.mapVideoPoint(0, 1, 320, 320, out2);
-  // flip mirrors: y=0 -> 1, y=1 -> 0
-  assert.ok(out1[1] > out2[1]);
+  render.mapVideoPoint(0.2, 0.25, 320, 240, out1);
+  render.mapVideoPoint(0.8, 0.75, 320, 240, out2);
+  assert.ok(Math.abs(out1[0] - (1 - out2[0])) < 1e-6);
+  assert.ok(out1[1] < out2[1]);
 });

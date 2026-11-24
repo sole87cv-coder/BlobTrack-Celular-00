@@ -40,6 +40,13 @@ export function createRender({
   sendAudioOptions,
   fmt,
 }) {
+  const distancePairCapacity = TRAIL_SLOTS * (TRAIL_SLOTS - 1) / 2;
+  const distancePairA = new Uint8Array(distancePairCapacity);
+  const distancePairB = new Uint8Array(distancePairCapacity);
+  const distancePairSquared = new Float64Array(distancePairCapacity);
+  const distancePairUsed = new Uint8Array(distancePairCapacity);
+  const distanceDegree = new Uint8Array(TRAIL_SLOTS);
+
   // ---------- geometria pura ----------
 
   function calculateCoverCrop(sourceWidth, sourceHeight, viewWidth, viewHeight, out) {
@@ -103,8 +110,8 @@ export function createRender({
       const visible = sourceAspect / viewAspect;
       y = (y - (1 - visible) / 2) / visible;
     }
-    out[0] = state.camera === 'user' ? 1 - x : x;
-    out[1] = state.flip ? 1 - y : y;
+    out[0] = (state.camera === 'user') !== state.flip ? 1 - x : x;
+    out[1] = y;
     return out;
   }
 
@@ -291,6 +298,83 @@ export function createRender({
     c.restore();
   }
 
+  function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0) {
+    if (!state.distanceTelemetry || state.performance?.effectsPaused) return 0;
+    const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight);
+    if (count < 2) return 0;
+    const minDistance = Math.min(viewWidth, viewHeight) * clamp(state.maxConnectionDistance, 0.08, 0.5);
+    const minDistanceSquared = minDistance * minDistance;
+    distanceDegree.fill(0);
+    distancePairUsed.fill(0);
+    let pairCount = 0;
+    for (let i = 0; i < count; i++) {
+      const x1 = blobViewPoints[i * 2] * viewWidth;
+      const y1 = blobViewPoints[i * 2 + 1] * viewHeight;
+      for (let j = i + 1; j < count; j++) {
+        const dx = blobViewPoints[j * 2] * viewWidth - x1;
+        const dy = blobViewPoints[j * 2 + 1] * viewHeight - y1;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > minDistanceSquared) continue;
+        distancePairA[pairCount] = i;
+        distancePairB[pairCount] = j;
+        distancePairSquared[pairCount] = d2;
+        pairCount++;
+      }
+    }
+    if (!pairCount) return 0;
+
+    c.save();
+    c.strokeStyle = '#b8f36a';
+    c.fillStyle = 'rgba(0,0,0,.55)';
+    c.lineWidth = 1;
+    c.font = '10px monospace';
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    let drawn = 0;
+    for (let edge = 0; edge < pairCount; edge++) {
+      let nearest = -1;
+      let nearestSquared = Infinity;
+      for (let candidate = 0; candidate < pairCount; candidate++) {
+        if (distancePairUsed[candidate]) continue;
+        const a = distancePairA[candidate];
+        const b = distancePairB[candidate];
+        if (distanceDegree[a] >= 3 || distanceDegree[b] >= 3) continue;
+        if (distancePairSquared[candidate] < nearestSquared) {
+          nearest = candidate;
+          nearestSquared = distancePairSquared[candidate];
+        }
+      }
+      if (nearest < 0) break;
+      distancePairUsed[nearest] = 1;
+      const i = distancePairA[nearest];
+      const j = distancePairB[nearest];
+      distanceDegree[i]++;
+      distanceDegree[j]++;
+      const x1 = blobViewPoints[i * 2] * viewWidth;
+      const y1 = blobViewPoints[i * 2 + 1] * viewHeight;
+      const x2 = blobViewPoints[j * 2] * viewWidth;
+      const y2 = blobViewPoints[j * 2 + 1] * viewHeight;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const distance = Math.sqrt(nearestSquared);
+      c.beginPath();
+      c.moveTo(offsetX + x1, y1);
+      c.lineTo(offsetX + x2, y2);
+      c.stroke();
+      const label = `${Math.round(distance)}px`;
+      const labelX = offsetX + (x1 + x2) * .5 - dy / distance * 8;
+      const labelY = (y1 + y2) * .5 + dx / distance * 8;
+      const labelWidth = c.measureText(label).width + 8;
+      c.fillRect(labelX - labelWidth * .5, labelY - 7, labelWidth, 14);
+      c.fillStyle = '#f4fff0';
+      c.fillText(label, labelX, labelY);
+      c.fillStyle = 'rgba(0,0,0,.55)';
+      drawn++;
+    }
+    c.restore();
+    return drawn;
+  }
+
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
@@ -312,15 +396,17 @@ export function createRender({
     c.clip();
     if (state.gearVr) {
       calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-      c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
-      c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+      const mirrorX = (state.camera === 'user') !== state.flip;
+      c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+      c.scale(mirrorX ? -1 : 1, 1);
       c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
       c.restore();
       return;
     }
     calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-    c.translate(offsetX + (state.camera === 'user' ? viewWidth : 0), state.flip ? viewHeight : 0);
-    c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+    const mirrorX = (state.camera === 'user') !== state.flip;
+    c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+    c.scale(mirrorX ? -1 : 1, 1);
     c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
     c.restore();
   }
@@ -348,11 +434,9 @@ export function createRender({
           fallbackContext.beginPath();
           fallbackContext.rect(x, 0, width, canvas.height);
           fallbackContext.clip();
-          fallbackContext.translate(
-            x + (state.camera === 'user' ? width : 0),
-            state.flip ? canvas.height : 0
-          );
-          fallbackContext.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+          const mirrorX = (state.camera === 'user') !== state.flip;
+          fallbackContext.translate(x + (mirrorX ? width : 0), 0);
+          fallbackContext.scale(mirrorX ? -1 : 1, 1);
           if (state.gearVr) {
             drawContainedSource(fallbackContext, source, width, canvas.height);
           } else {
@@ -471,11 +555,9 @@ export function createRender({
         }
         c.save();
         c.globalAlpha = .7;
-        c.translate(
-          offsetX + (state.camera === 'user' ? viewWidth : 0),
-          state.flip ? viewHeight : 0
-        );
-        c.scale(state.camera === 'user' ? -1 : 1, state.flip ? -1 : 1);
+        const mirrorX = (state.camera === 'user') !== state.flip;
+        c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+        c.scale(mirrorX ? -1 : 1, 1);
         if (state.gearVr) {
           c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
         } else {
@@ -490,6 +572,9 @@ export function createRender({
       }
       if (state.networkEffect && !state.performance.effectsPaused) {
         drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX);
+      }
+      if (state.distanceTelemetry && !state.performance.effectsPaused) {
+        drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX);
       }
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;
@@ -533,11 +618,6 @@ export function createRender({
           c.strokeRect(offsetX + r.x * viewWidth, r.y * viewHeight, r.w * viewWidth, r.h * viewHeight);
         }
       }
-      if (state.drawingRect && state.keyboardPoint) {
-        const point=state.keyboardPoint,x=offsetX+point.x*viewWidth,y=point.y*viewHeight;
-        c.globalAlpha=1;c.strokeStyle='#74eaff';c.lineWidth=2;c.beginPath();c.arc(x,y,9,0,Math.PI*2);c.stroke();
-        c.beginPath();c.moveTo(x-14,y);c.lineTo(x+14,y);c.moveTo(x,y-14);c.lineTo(x,y+14);c.stroke();
-      }
       c.restore();
     }
     c.restore();
@@ -563,6 +643,7 @@ export function createRender({
     deformGridPoint,
     drawMesh,
     drawBlobNetwork,
+    drawDistanceTelemetry,
     drawRawVideoWindows,
     renderFrame,
     drawMaskOverlay,

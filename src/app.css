@@ -78,7 +78,8 @@ button:focus-visible,input:focus-visible { outline:2px solid var(--mint);outline
   min-height:44px
 }
 .brand { display:flex;align-items:center;gap:7px;font-size:12px }
-.brand-mark { font-size:16px;color:var(--mint);filter:drop-shadow(0 0 8px #6ee7bc88) }
+.brand-mark { display:inline-flex;width:20px;height:20px;color:var(--mint);filter:drop-shadow(0 0 5px #6ee7bc88) }
+.brand-mark svg { width:100%;height:100% }
 .brand strong { letter-spacing:.02em }
 .status { display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;margin-left:auto;margin-right:4px }
 @media (max-width:359px) { .status span { display:inline } }
@@ -167,7 +168,10 @@ button:focus-visible,input:focus-visible { outline:2px solid var(--mint);outline
 .stage-message h1 { font-size:clamp(19px,5vw,26px);line-height:1.15;max-width:330px;margin:12px 0 5px }
 .stage-message p { margin:0 0 12px;color:#b9c4cf;font-size:13px }
 .stage-message .welcome-help { max-width:340px;margin:-4px 0 12px;color:#c4ced8;font-size:12px;line-height:1.4 }
-.pulse-icon { display:grid;place-items:center;width:48px;height:48px;border:1px solid #6ee7bc50;border-radius:50%;color:var(--mint);font-size:21px;box-shadow:0 0 35px #6ee7bc15 }
+.pulse-icon { display:grid;place-items:center;width:64px;height:64px;color:var(--mint);filter:drop-shadow(0 0 16px #6ee7bc40) }
+.pulse-icon svg { width:100%;height:100% }
+html:not(.reduce-motion) .pulse-icon svg { animation:logo-breathe 4s ease-in-out infinite }
+@keyframes logo-breathe { 50% { transform:scale(1.06);opacity:.84 } }
 .primary-button {
   min-height:48px;min-width:150px;padding:0 24px;
   border:0;border-radius:16px;
@@ -299,6 +303,7 @@ input[type=range] { width:100%;height:44px;margin:0;accent-color:var(--mint);tou
 .effect-toggle#waveEffectButton.active { border-color:#74eaff75;background:#102a32;color:var(--cyan) }
 .effect-toggle#meshEffectButton.active { border-color:#ed72ff75;background:#2b1830;color:var(--magenta) }
 .effect-toggle#blobNetworkButton.active { border-color:#74eaff75;background:#102a32;color:var(--cyan) }
+.effect-toggle#distanceTelemetryButton.active { border-color:#b8f36a75;background:#222d16;color:#b8f36a }
 .effect-toggle:active,.effect-button:active { transform:scale(.98) }
 
 .hint { display:block;margin:8px 2px;color:#a9b4c0;font-size:12px;line-height:1.45 }
@@ -563,6 +568,10 @@ body.focus-mode .focus-hint::after { content:'' }
 .segmented-setting button[aria-pressed="true"] { border-color:var(--mint);background:#183128 }
 .about-subheading { font-weight:700;color:#e7fff5!important }
 .about-version { font-size:13px }
+.about-credit { margin:0 0 6px!important;color:#c4ced8;font-size:12px }
+.credit-link { display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 9px;border:1px solid #ffffff35;border-radius:9px;color:var(--mint);font-size:12px;text-decoration:none }
+.stage-credit { position:absolute;z-index:2;right:14px;bottom:calc(42px + var(--safe-bottom));margin:0;color:#f4fff0;opacity:.45;font:11px system-ui,sans-serif;pointer-events:none }
+body.gear-vr .stage-credit,body.focus-mode .stage-credit { display:none }
 .stage-action-bar { position:absolute;z-index:4;left:50%;bottom:calc(12px + var(--safe-bottom));transform:translateX(-50%);display:flex;gap:8px;max-width:calc(100% - 24px) }
 .stage-action-bar .page-button { min-width:112px;text-align:center;box-shadow:0 4px 16px #0008 }
 .stage-message { bottom:calc(68px + var(--safe-bottom)) }

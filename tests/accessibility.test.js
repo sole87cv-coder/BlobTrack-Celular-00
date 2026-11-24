@@ -140,3 +140,12 @@ test('PWA brand icons include a scalable SVG and maskable PNG sizes', async () =
   }
   assert.ok(manifest.icons.some(item => item.type === 'image/svg+xml'));
 });
+
+test('credit stays separate from the mark and is hidden in Gear VR and focus mode', () => {
+  assert.match(html, /<html lang="pt-BR">/);
+  assert.match(html, /<title>Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem<\/title>/);
+  assert.match(html, /<p class="stage-credit" aria-hidden="true">@V1su4rt<\/p>/);
+  assert.match(css, /body\.gear-vr \.stage-credit,body\.focus-mode \.stage-credit \{ display:none \}/);
+  assert.match(html, /href="https:\/\/www\.instagram\.com\/v1su4rt\/" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, /<p class="about-credit">@V1su4rt<\/p>/);
+});

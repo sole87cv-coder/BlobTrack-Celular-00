@@ -14,13 +14,87 @@ import { loadPreferences } from './preferences.js';
 import { createScaleRouter } from './audio/scale-router.js';
 import { createRoiMask } from './core/roiMask.js';
 import { attachScalesUI } from './ui/scales-ui.js';
-import { strings } from './ui/i18n/pt-BR.js';
+import { strings as defaultStrings } from './ui/i18n/pt-BR.js';
 import { createNavigation } from './ui/navigation.js';
 const $ = (id) => document.getElementById(id);
+const saved = loadPreferences();
+const savedLocale = ['pt-BR','es','en','fr'].includes(saved.locale) ? saved.locale : 'pt-BR';
+let locale = 'pt-BR';
+let strings = defaultStrings;
+let localeApi = null;
+let translateText = value => String(value ?? '');
+const getLocaleIndexUrl = () => './ui/i18n/index.js';
+function translateSubtree(root) {
+  if (root.nodeType === Node.TEXT_NODE) {
+    const translated = translateText(root.nodeValue, locale);
+    if (translated !== root.nodeValue) root.nodeValue = translated;
+    return;
+  }
+  if (root.nodeType !== Node.ELEMENT_NODE && root !== document) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let textNode;
+  while ((textNode = walker.nextNode())) {
+    const translated = translateText(textNode.nodeValue, locale);
+    if (translated !== textNode.nodeValue) textNode.nodeValue = translated;
+  }
+  if (root.nodeType === Node.ELEMENT_NODE) {
+    for (const name of ['aria-label','title']) {
+      if (root.hasAttribute(name)) {
+        const translated = translateText(root.getAttribute(name), locale);
+        if (translated !== root.getAttribute(name)) root.setAttribute(name, translated);
+      }
+    }
+  }
+}
+function applyLocale(nextLocale = locale) {
+  locale = ['pt-BR','es','en','fr'].includes(nextLocale) ? nextLocale : 'pt-BR';
+  strings = localeApi?.getStrings(locale) || defaultStrings;
+  document.documentElement.lang = locale;
+  document.title = strings.app.title;
+  document.querySelector('meta[name=description]')?.setAttribute('content', strings.app.description);
+  translateSubtree(document.body);
+  const localeLabel = $('localeLabel');
+  if (localeLabel) localeLabel.textContent = strings.ui.language;
+  const invite = $('creditLink');
+  if (invite) { invite.querySelector('.credit-link-label').textContent = strings.credit.link; invite.setAttribute('aria-label', strings.credit.aria); }
+  document.querySelectorAll('[data-locale-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.localeChoice === locale)));
+}
+const localeObserver = new MutationObserver(records => {
+  for (const record of records) {
+    if (record.type === 'characterData') translateSubtree(record.target);
+    else for (const node of record.addedNodes) translateSubtree(node);
+    if (record.type === 'attributes' && ['aria-label','title'].includes(record.attributeName)) {
+      const element = record.target;
+      const translated = translateText(element.getAttribute(record.attributeName), locale);
+      if (translated !== element.getAttribute(record.attributeName)) element.setAttribute(record.attributeName, translated);
+    }
+  }
+});
+localeObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['aria-label','title'] });
+applyLocale();
+async function activateLocale(nextLocale, persist = false) {
+  if (nextLocale === 'pt-BR') {
+    translateText = localeApi?.translateText || (value => String(value ?? ''));
+    applyLocale('pt-BR');
+  } else {
+    try {
+      localeApi ||= await import(getLocaleIndexUrl());
+      translateText = localeApi.translateText;
+      applyLocale(nextLocale);
+    } catch {
+      localeApi = null;
+      translateText = value => String(value ?? '');
+      applyLocale('pt-BR');
+    }
+  }
+  if (persist) savePreferences();
+}
+document.querySelectorAll('[data-locale-choice]').forEach(button => button.addEventListener('click', () => {
+  void activateLocale(button.dataset.localeChoice, true);
+}));
+if (savedLocale !== 'pt-BR') void activateLocale(savedLocale);
 const deviceProfile = createDeviceProfile();
 const audioScaleRouter = createScaleRouter();
-document.title = strings.app.title;
-document.querySelector('meta[name=description]')?.setAttribute('content', strings.app.description);
 const isAppleMobile = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandaloneApp = navigator.standalone === true || window.matchMedia?.('(display-mode: standalone)').matches === true;
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
@@ -37,8 +111,8 @@ const recordingContext = recordingCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
-  effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
-  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, visualOnly: false,
+  effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
+  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lowLightNoticeShown: false,
@@ -59,7 +133,6 @@ const recorder = createRecorder({
 });
 let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
 let pendingRecording = null;
-const saved = loadPreferences();
 let themeChoice = ['system','dark','light'].includes(saved.theme) ? saved.theme : 'system';
 let reduceMotion = saved.reduceMotion === true;
 let hapticsEnabled = saved.hapticsEnabled === true;
@@ -76,6 +149,8 @@ if (typeof saved.trailEffect === 'boolean') state.trailEffect = saved.trailEffec
 if (typeof saved.waveEffect === 'boolean') state.waveEffect = saved.waveEffect;
 if (typeof saved.meshEffect === 'boolean') state.meshEffect = saved.meshEffect;
 if (typeof saved.networkEffect === 'boolean') state.networkEffect = saved.networkEffect;
+if (typeof saved.distanceTelemetry === 'boolean') state.distanceTelemetry = saved.distanceTelemetry;
+if (Number.isFinite(saved.maxConnectionDistance)) state.maxConnectionDistance = clamp(saved.maxConnectionDistance,0.08,0.5);
 if (typeof saved.visualOnly === 'boolean') state.visualOnly = saved.visualOnly;
 if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
 if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
@@ -124,16 +199,16 @@ const wakeLockService = createWakeLock({
   onError: error => log('Tela: Wake Lock indisponível (' + error.message + ')'),
 });
 function log(message) { $('logLine').textContent = message; }
-function showToast(message) { const el = $('toast'); el.textContent = message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
-function announceStatus(message) { $('appStatus').textContent = message; }
-function setStatus(text, on = false) { $('statusText').textContent = text; $('statusLight').parentElement.classList.toggle('on', on); announceStatus(text); }
+function showToast(message) { const el = $('toast'); el.textContent = translateText(message,locale); el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
+function announceStatus(message) { $('appStatus').textContent = translateText(message,locale); }
+function setStatus(text, on = false) { $('statusText').textContent = translateText(text,locale); $('statusLight').parentElement.classList.toggle('on', on); announceStatus(text); }
 function showCameraIssue(error) {
   const message = error?.name === 'NotAllowedError' ? strings.errors.permission : error?.name === 'NotFoundError' ? strings.errors.missing : error?.name === 'NotReadableError' ? strings.errors.busy : error?.name === 'SecurityError' ? strings.errors.insecure : strings.errors.generic;
   $('cameraIssueTitle').textContent = error?.name === 'SecurityError' ? 'Conexão segura necessária' : error?.name === 'NotAllowedError' ? 'Acesso à câmera bloqueado' : error?.name === 'NotFoundError' ? 'Câmera não encontrada' : error?.name === 'NotReadableError' ? 'Câmera indisponível' : 'Não foi possível iniciar';
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,visualOnly:state.visualOnly,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let soundSaveTimer = null;
 function saveSoundPreferences() { clearTimeout(soundSaveTimer); soundSaveTimer = setTimeout(savePreferences, 300); }
@@ -210,6 +285,8 @@ toggle($('trailEffectButton'),state.trailEffect);
 toggle($('waveEffectButton'),state.waveEffect);
 toggle($('meshEffectButton'),state.meshEffect);
 toggle($('blobNetworkButton'),state.networkEffect);
+toggle($('distanceTelemetryButton'),state.distanceTelemetry);
+$('maxConnectionDistance').value=String(state.maxConnectionDistance);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;
 toggle($('visualOnlyButton'),state.visualOnly);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';
@@ -223,7 +300,7 @@ void main(){ vUv=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }`;
 const fragmentSource = `#version 300 es
 precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; uniform bool uFit; in vec2 vUv; out vec4 outColor;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror)uv.x=1.0-uv.x;if(uFlip)uv.y=1.0-uv.y;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy*0.75));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
+void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror!=uFlip)uv.x=1.0-uv.x;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else{float n=hash(floor(gl_FragCoord.xy*0.75));float t=clamp(uThreshold+uBias*.14+(n-.5)*.18,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
 function shader(type, source) { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function initRenderer() {
   if (!gl) { $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'Renderização indisponível'; return Boolean(fallbackContext); }
@@ -716,6 +793,8 @@ bindReactiveToggle('trailEffectButton', 'trailEffect');
 bindReactiveToggle('waveEffectButton', 'waveEffect');
 bindReactiveToggle('meshEffectButton', 'meshEffect');
 bindReactiveToggle('blobNetworkButton', 'networkEffect');
+bindReactiveToggle('distanceTelemetryButton', 'distanceTelemetry');
+$('maxConnectionDistance').addEventListener('input',event=>{state.maxConnectionDistance=clamp(Number(event.target.value),0.08,0.5);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;savePreferences();});
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
