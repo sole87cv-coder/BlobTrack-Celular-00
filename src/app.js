@@ -1,6 +1,6 @@
 import { BlobTracker } from './blob-tracker.js';
 import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
-import { adjustTrackingQuality } from './core/qualityController.js';
+import { updateQualityBudgets } from './core/qualityController.js';
 import { clamp, fmt, formatRecordingTime } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
@@ -40,16 +40,19 @@ const state = {
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, visualOnly: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { average: 0, slowFrames: 0, fastFrames: 0, targetFps: deviceProfile.fps, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
+  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0,
   audioEffects: { echo: false, space: false, chorus: false },
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
-  timing: { camera: null, tracking: null, cycle: null, bus: null, composition: null, windows: null },
+  timing: { camera: null, capture: null, tracking: null, analysis: null, render: null, cycle: null, bus: null, composition: null, windows: null },
   focusMode: false,
 };
+const idEventSeconds = new Int32Array(61).fill(-1);
+const idEventCounts = new Uint16Array(61);
+let lastIssuedBlobId = 0, lastMetricsPublishedAt = 0;
 const recorder = createRecorder({
   canvas: recordingCanvas,
   fps: deviceProfile.fps,
@@ -89,7 +92,7 @@ let toastTimer = null, installPrompt = null, glProgram = null, texture = null, p
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
 let maskImage = null;
-const tracker = new BlobTracker();
+const tracker = new BlobTracker({ calibrateFrames: 8, stationaryAbsorbFrames: 8 });
 
 const TRAIL_SLOTS = 12, TRAIL_POINTS = 18;
 const trailIds = new Int32Array(TRAIL_SLOTS).fill(-1);
@@ -342,6 +345,7 @@ window.addEventListener('orientationchange', () => requestAnimationFrame(resize)
 
 // One immutable camera snapshot feeds tracking, the main render and raw blob windows.
 function captureVideoFrame() {
+  const started = performance.now();
   const scale = Math.min(1, deviceProfile.captureWidth / video.videoWidth);
   const width = Math.max(1, Math.round(video.videoWidth * scale));
   const height = Math.max(1, Math.round(video.videoHeight * scale));
@@ -349,6 +353,7 @@ function captureVideoFrame() {
     frameCanvas.width = width; frameCanvas.height = height;
   }
   frameContext.drawImage(video, 0, 0, frameCanvas.width, frameCanvas.height);
+  state.timing.capture = performance.now() - started;
   return frameCanvas;
 }
 
@@ -382,6 +387,7 @@ function analyze(source = video) {
   const result = tracker.update(source, ctx, analysisCanvas, state.trackingWidth, state.threshold, dt, getTrackingRoi(source));
   if (!result) return null;
   state.timing.tracking = performance.now() - t0;
+  state.timing.analysis = state.timing.tracking;
   state.timing.camera = null;
   return { ...result, dt };
 }
@@ -420,14 +426,13 @@ function updateReactiveEffectQuality(now) {
   perf.lastFrameAt = now;
   const fps = elapsed > 0 ? 1000 / elapsed : deviceProfile.fps;
   perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
-  const targetFps = perf.targetFps || deviceProfile.fps;
-  const pauseBelow = Math.max(8, targetFps * 0.55);
-  const resumeAt = Math.max(pauseBelow + 2, targetFps * 0.65);
+  const pauseBelow = Math.max(12, deviceProfile.fps * 0.55);
+  const resumeAt = Math.max(pauseBelow + 2, deviceProfile.fps * 0.65);
   if (!perf.effectsPaused) {
     perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
     if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
   } else {
-    perf.recoveredFrames = perf.fpsAverage >= resumeAt ? perf.recoveredFrames + 1 : 0;
+    perf.recoveredFrames = perf.fpsAverage >= resumeAt && perf.renderAverage < 1000 / deviceProfile.fps * 0.35 ? perf.recoveredFrames + 1 : 0;
     if (perf.recoveredFrames >= 45) { perf.effectsPaused = false; perf.lowFpsFrames = 0; showToast('Efeitos reativos retomados'); }
   }
   const hint = $('effectPerformanceHint');
@@ -437,13 +442,42 @@ function updateReactiveEffectQuality(now) {
   badge.hidden = !perf.effectsPaused;
   if (perf.effectsPaused) badge.textContent = 'Efeitos reativos pausados para proteger o FPS';
 }
+function publishBlobTrackMetrics(now, result) {
+  const second = Math.floor(now / 1000);
+  for (const blob of result.blobs) {
+    if (blob.id <= lastIssuedBlobId) continue;
+    const slot = second % idEventCounts.length;
+    if (idEventSeconds[slot] !== second) {
+      idEventSeconds[slot] = second;
+      idEventCounts[slot] = 0;
+    }
+    idEventCounts[slot]++;
+    lastIssuedBlobId = blob.id;
+  }
+  if (now - lastMetricsPublishedAt < 250) return;
+  lastMetricsPublishedAt = now;
+  let idsNewLast60s = 0;
+  for (let slot = 0; slot < idEventCounts.length; slot++) {
+    const age = second - idEventSeconds[slot];
+    if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
+  }
+  window.__blobtrackMetrics = {
+    fps: state.performance.fpsAverage,
+    tAnalysis: state.performance.analysisAverage,
+    tRender: state.performance.renderAverage,
+    tCapture: state.timing.capture,
+    blobsAtivos: result.blobs.length,
+    idsNovosUltimos60s: idsNewLast60s,
+    recordingState: recordingSnapshot.state,
+    effectsPaused: state.performance.effectsPaused,
+  };
+}
 let frameErrors = 0;
 function frame(now) {
   if (!state.active) return;
   try {
-    const interval = 1000 / state.performance.targetFps;
+    const interval = 1000 / deviceProfile.fps;
     if (video.readyState >= 2 && now - state.lastFrame >= interval) {
-      const started = performance.now();
       state.lastFrame = now;
       try {
         const source = captureVideoFrame();
@@ -453,19 +487,29 @@ function frame(now) {
             state.lowLightNoticeShown = true;
             showToast('Pouca luz: o rastreio pode ficar instável.');
           } else if (!result.raw.lowLight) state.lowLightNoticeShown = false;
+          if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo');
           const applied = updateSignals(result.raw, result.dt, result.blobs);
-          render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite(); updateHud(result.raw, applied, result); updateReactiveEffectQuality(now);
+          const renderStarted = performance.now();
+          render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite();
+          state.timing.render = performance.now() - renderStarted;
+          updateHud(result.raw, applied, result);
+          const perf = state.performance;
+          const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);
+          perf.analysisAverage = next.analysisAverage;
+          perf.renderAverage = next.renderAverage;
+          perf.slowFrames = next.slowFrames;
+          perf.fastFrames = next.fastFrames;
+          perf.renderSlowFrames = next.renderSlowFrames;
+          if (state.autoQuality && next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
+          if (next.renderPause && !perf.effectsPaused) {
+            perf.effectsPaused = true;
+            perf.recoveredFrames = 0;
+            showToast('Efeitos reativos pausados para proteger o FPS');
+          }
+          updateReactiveEffectQuality(now);
+          publishBlobTrackMetrics(now, result);
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
-      if (state.autoQuality) {
-        const perf = state.performance;
-        const next = adjustTrackingQuality(perf, performance.now() - started, interval * 0.7, state.trackingWidth, perf.targetFps, deviceProfile.maxWidth, deviceProfile.fps);
-        perf.average = next.average;
-        perf.slowFrames = next.slowFrames;
-        perf.fastFrames = next.fastFrames;
-        if (next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
-        perf.targetFps = next.targetFps;
-      }
     }
     requestAnimationFrame(frame);
   } catch (e) {
@@ -665,7 +709,7 @@ bindReactiveToggle('blobNetworkButton', 'networkEffect');
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
-$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.targetFps=deviceProfile.fps;state.performance.average=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
+$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;state.performance.renderSlowFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);savePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);savePreferences();});
 

@@ -1,20 +1,25 @@
 // Low-resolution foreground segmentation and connected-component tracking.
-const STATIONARY_ABSORB_AFTER_FRAMES = 8;
-const STATIONARY_BACKGROUND_RATE = 0.35;
+const STATIONARY_BACKGROUND_RATE = 0.02;
 
 export class BlobTrackerCore {
-  constructor({ maxBlobs = 12, minAreaRatio = 0.00025, maxAreaRatio = 0.72 } = {}) {
+  constructor({ maxBlobs = 12, minAreaRatio = 0.00025, maxAreaRatio = 0.72, calibrateFrames = 1, stationaryAbsorbFrames = 0 } = {}) {
     this.maxBlobs = maxBlobs;
     this.minAreaRatio = minAreaRatio;
     this.maxAreaRatio = maxAreaRatio;
+    this.calibrateFrames = Math.max(1, Math.floor(Number(calibrateFrames) || 1));
+    this.stationaryAbsorbFrames = Math.max(0, Math.floor(Number(stationaryAbsorbFrames) || 0));
     this.width = 0;
     this.height = 0;
     this.background = null;
     this.luma = null;
     this.mask = null;
+    this.calibrationSum = null;
+    this.calibrationCount = null;
+    this.calibrationFrameCount = 0;
     this.visited = null;
     this.queue = null;
     this.nextId = 1;
+    this.idsNew = 0;
     this.tracks = Array.from({ length: maxBlobs }, () => ({
       id: 0, x: 0, y: 0, vx: 0, vy: 0,
       left: 0, top: 0, right: 0, bottom: 0, area: 0,
@@ -41,11 +46,18 @@ export class BlobTrackerCore {
     this.lastThreshold = null;
     this.lastRoiMask = null;
     this.lowLight = false;
+    this.sceneShiftFrames = 0;
+    this.sceneShiftLatched = false;
   }
 
   reset() {
     this.background = null;
     this.lastRoiMask = null;
+    this.calibrationFrameCount = 0;
+    this.calibrationSum?.fill(0);
+    this.calibrationCount?.fill(0);
+    this.sceneShiftFrames = 0;
+    this.sceneShiftLatched = false;
     for (const track of this.tracks) track.stationaryFrames = 0;
     for (const track of this.tracks) track.alive = false;
   }
@@ -58,6 +70,9 @@ export class BlobTrackerCore {
     this.background = null;
     this.luma = new Float32Array(count);
     this.mask = new Uint8Array(count);
+    this.calibrationSum = this.calibrateFrames > 1 ? new Float32Array(count) : null;
+    this.calibrationCount = this.calibrateFrames > 1 ? new Uint8Array(count) : null;
+    this.calibrationFrameCount = 0;
     this.visited = new Uint8Array(count);
     this.queue = new Int32Array(count);
     this.zoneColumns = new Uint8Array(width);
@@ -98,6 +113,9 @@ export class BlobTrackerCore {
     }
     let lumaSum = 0;
     let changed = 0;
+    let sceneDifferenceSum = 0;
+    let sceneSampleCount = 0;
+    const calibrating = !!this.calibrationSum && this.calibrationFrameCount < this.calibrateFrames;
     this.zoneHits.fill(0);
     if (roiMask) this.roiZonePixels.fill(0);
 
@@ -106,6 +124,10 @@ export class BlobTrackerCore {
         const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
         this.luma[i] = value;
         lumaSum += value;
+        if (this.calibrationSum) {
+          this.calibrationSum[i] = value;
+          this.calibrationCount[i] = roiMask && !roiMask[i] ? 0 : 1;
+        }
       }
       this.background = this.luma.slice();
       this.mask.fill(0);
@@ -130,26 +152,65 @@ export class BlobTrackerCore {
       }
       let i = 0, p = 0;
       if (!roiMask) {
-        for (let y = 0; y < height; y++) {
-          const zoneRow = this.zoneRows[y] * 3;
-          const tileRow = this.tileRows[y] * 16;
-          for (let x = 0; x < width; x++, i++, p += 4) {
-            const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
-            this.luma[i] = value;
-            lumaSum += value;
-            const difference = Math.abs(value - this.background[i]);
-            const tileColumn = this.tileColumns[x];
-            const tile = tileRow + tileColumn;
-            const active = difference > this.gridThresholds[tile];
-            this.mask[i] = active ? 1 : 0;
-            if (active) {
-              changed++;
-              this.zoneHits[zoneRow + this.zoneColumns[x]]++;
-            } else this.background[i] += (value - this.background[i]) * 0.006;
-            if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
-              this.gridSum[tile] += difference;
-              this.gridSumSq[tile] += difference * difference;
-              this.gridCount[tile]++;
+        if (!calibrating) {
+          for (let y = 0; y < height; y++) {
+            const zoneRow = this.zoneRows[y] * 3;
+            const tileRow = this.tileRows[y] * 16;
+            for (let x = 0; x < width; x++, i++, p += 4) {
+              const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+              this.luma[i] = value;
+              lumaSum += value;
+              const difference = Math.abs(value - this.background[i]);
+              const tileColumn = this.tileColumns[x];
+              const tile = tileRow + tileColumn;
+              const active = difference > this.gridThresholds[tile];
+              this.mask[i] = active ? 1 : 0;
+              if (active) {
+                changed++;
+                this.zoneHits[zoneRow + this.zoneColumns[x]]++;
+              } else this.background[i] += (value - this.background[i]) * 0.006;
+              if ((tileColumn & 3) === sampleColumn) {
+                sceneDifferenceSum += difference;
+                sceneSampleCount++;
+                if (difference <= safeThreshold) {
+                  this.gridSum[tile] += difference;
+                  this.gridSumSq[tile] += difference * difference;
+                  this.gridCount[tile]++;
+                }
+              }
+            }
+          }
+        } else {
+          for (let y = 0; y < height; y++) {
+            const zoneRow = this.zoneRows[y] * 3;
+            const tileRow = this.tileRows[y] * 16;
+            for (let x = 0; x < width; x++, i++, p += 4) {
+              const value = (pixels[p] * 0.299 + pixels[p + 1] * 0.587 + pixels[p + 2] * 0.114) / 255;
+              this.luma[i] = value;
+              lumaSum += value;
+              const difference = Math.abs(value - this.background[i]);
+              const tileColumn = this.tileColumns[x];
+              const tile = tileRow + tileColumn;
+              const active = difference > this.gridThresholds[tile];
+              this.mask[i] = active ? 1 : 0;
+              if (active) {
+                changed++;
+                this.zoneHits[zoneRow + this.zoneColumns[x]]++;
+              }
+              if (difference <= safeThreshold || this.calibrationCount[i] === 0) {
+                this.calibrationSum[i] += value;
+                this.calibrationCount[i] = Math.min(255, this.calibrationCount[i] + 1);
+                this.background[i] = this.calibrationSum[i] / this.calibrationCount[i];
+              }
+              if ((tileColumn & 3) === sampleColumn) {
+                sceneDifferenceSum += difference;
+                sceneSampleCount++;
+                if (difference <= safeThreshold) {
+                  this.gridSum[tile] += difference;
+                  this.gridSumSq[tile] += difference * difference;
+                  this.gridCount[tile]++;
+                }
+              }
             }
           }
         }
@@ -171,11 +232,22 @@ export class BlobTrackerCore {
             if (active) {
               changed++;
               this.zoneHits[zoneRow + this.zoneColumns[x]]++;
-            } else this.background[i] += (value - this.background[i]) * 0.006;
-            if ((tileColumn & 3) === sampleColumn && difference <= safeThreshold) {
-              this.gridSum[tile] += difference;
-              this.gridSumSq[tile] += difference * difference;
-              this.gridCount[tile]++;
+            }
+            if (calibrating) {
+              if (difference <= safeThreshold || this.calibrationCount[i] === 0) {
+                this.calibrationSum[i] += value;
+                this.calibrationCount[i] = Math.min(255, this.calibrationCount[i] + 1);
+                this.background[i] = this.calibrationSum[i] / this.calibrationCount[i];
+              }
+            } else if (!active) this.background[i] += (value - this.background[i]) * 0.006;
+            if ((tileColumn & 3) === sampleColumn) {
+              sceneDifferenceSum += difference;
+              sceneSampleCount++;
+              if (difference <= safeThreshold) {
+                this.gridSum[tile] += difference;
+                this.gridSumSq[tile] += difference * difference;
+                this.gridCount[tile]++;
+              }
             }
           }
         }
@@ -192,13 +264,26 @@ export class BlobTrackerCore {
       }
     }
     const ambient = lumaSum / count;
+    if (this.calibrationFrameCount < this.calibrateFrames) this.calibrationFrameCount++;
+    const sceneShiftCandidate = this.background && sceneDifferenceSum / Math.max(1, sceneSampleCount) > 0.28;
+    let sceneShift = false;
+    if (sceneShiftCandidate) {
+      this.sceneShiftFrames++;
+      if (this.sceneShiftFrames >= 40 && !this.sceneShiftLatched) {
+        sceneShift = true;
+        this.sceneShiftLatched = true;
+      }
+    } else {
+      this.sceneShiftFrames = 0;
+      this.sceneShiftLatched = false;
+    }
     if (ambient < 0.12) this.lowLight = true;
     else if (ambient > 0.20) this.lowLight = false;
     this.frameCount++;
 
     const blobs = this.findComponents(width, height);
     this.assignTracks(blobs, width, height, safeDt);
-    this.absorbStationaryBlobs(blobs, width, height, roiMask);
+    changed = this.absorbStationaryBlobs(blobs, width, height, roiMask, changed);
 
     let occupiedZones = 0, meanSum = 0;
     for (let i = 0; i < 6; i++) {
@@ -238,6 +323,8 @@ export class BlobTrackerCore {
         coherence: mean ? Math.max(0, Math.min(1, 1 - Math.sqrt(varianceSum / 6) / (mean + 0.0001))) : 0,
         ambient,
         lowLight: this.lowLight,
+        sceneShift,
+        idsNew: this.idsNew,
         zones: this.zoneValues,
         blobCount: blobs.length,
       },
@@ -303,10 +390,13 @@ export class BlobTrackerCore {
     return found.sort((a, b) => b.pixels - a.pixels).slice(0, this.maxBlobs);
   }
 
-  absorbStationaryBlobs(blobs, width, height, roiMask) {
-    for (let blobIndex = 0; blobIndex < blobs.length; blobIndex++) {
+  absorbStationaryBlobs(blobs, width, height, roiMask, changed) {
+    if (!this.stationaryAbsorbFrames) return changed;
+    for (let blobIndex = blobs.length - 1; blobIndex >= 0; blobIndex--) {
       const trackIndex = this.trackForBlob[blobIndex];
-      if (trackIndex < 0 || this.tracks[trackIndex].stationaryFrames < STATIONARY_ABSORB_AFTER_FRAMES) continue;
+      if (trackIndex < 0) continue;
+      const track = this.tracks[trackIndex];
+      if (track.age <= 1 || track.miss !== 0 || track.stationaryFrames < this.stationaryAbsorbFrames) continue;
       const blob = blobs[blobIndex];
       const left = Math.max(0, Math.floor(blob.left * width));
       const top = Math.max(0, Math.floor(blob.top * height));
@@ -318,14 +408,21 @@ export class BlobTrackerCore {
           const index = rowStart + x;
           if (!this.mask[index] || (roiMask && !roiMask[index])) continue;
           this.background[index] += (this.luma[index] - this.background[index]) * STATIONARY_BACKGROUND_RATE;
+          this.mask[index] = 0;
+          const zone = this.zoneRows[y] * 3 + this.zoneColumns[x];
+          if (this.zoneHits[zone]) this.zoneHits[zone]--;
+          changed--;
         }
       }
+      blobs.splice(blobIndex, 1);
     }
+    return Math.max(0, changed);
   }
 
   assignTracks(blobs, width, height, dt) {
     const trackCount = this.tracks.length;
     const blobCount = blobs.length;
+    this.idsNew = 0;
     for (const blob of blobs) {
       blob.area = blob.pixels / (width * height);
       blob.width = blob.right - blob.left;
@@ -396,13 +493,14 @@ export class BlobTrackerCore {
         if (trackIndex < 0) continue;
         const track = this.tracks[trackIndex];
         track.id = this.nextId++;
+        this.idsNew++;
         track.x = blob.x;
         track.y = blob.y;
         track.vx = 0;
         track.vy = 0;
         track.age = 1;
         track.miss = 0;
-        track.stationaryFrames = 0;
+        track.stationaryFrames = 1;
         track.alive = true;
         blob.speed = 0;
       } else {
@@ -410,7 +508,8 @@ export class BlobTrackerCore {
         const dx = blob.x - track.x;
         const dy = blob.y - track.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        if (distance <= 0.0025) track.stationaryFrames++;
+        const pixelDisplacement = Math.abs(dx) * width + Math.abs(dy) * height;
+        if (pixelDisplacement < 0.5) track.stationaryFrames++;
         else track.stationaryFrames = 0;
         blob.speed = Math.min(1, distance / Math.max(dt, 0.02) / 2);
         track.vx = track.vx * 0.5 + dx * 0.5;

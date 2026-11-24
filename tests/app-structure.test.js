@@ -35,13 +35,17 @@ test('camera loop initializes the device profile factory before using its FPS', 
   const firstFpsUse = app.indexOf('deviceProfile.fps');
   assert.ok(factoryIndex >= 0);
   assert.ok(profileIndex > factoryIndex && profileIndex < firstFpsUse);
+  assert.ok(app.includes('new BlobTracker({ calibrateFrames: 8, stationaryAbsorbFrames: 8 })'));
 });
 
-test('automatic quality adjusts analysis resolution and FPS within device limits', () => {
-  assert.ok(app.includes("import { adjustTrackingQuality } from './core/qualityController.js';"));
-  assert.ok(app.includes('adjustTrackingQuality(perf, performance.now() - started'));
-  assert.ok(app.includes('1000 / state.performance.targetFps'));
-  assert.ok(app.includes('deviceProfile.maxWidth, deviceProfile.fps'));
+test('automatic quality separates analysis and render budgets', () => {
+  assert.ok(app.includes("import { updateQualityBudgets } from './core/qualityController.js';"));
+  assert.ok(app.includes('updateQualityBudgets(perf, state.timing.analysis, state.timing.render'));
+  assert.ok(app.includes('1000 / deviceProfile.fps'));
+  assert.ok(app.includes('window.__blobtrackMetrics = {'));
+  for (const key of ['tAnalysis:', 'tRender:', 'tCapture:', 'blobsAtivos:', 'idsNovosUltimos60s:', 'recordingState:', 'effectsPaused:']) {
+    assert.ok(app.includes(key), `${key} is published`);
+  }
 });
 
 test('viewport does not prevent user zoom', async () => {

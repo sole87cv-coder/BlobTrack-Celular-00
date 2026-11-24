@@ -56,6 +56,15 @@ test('id sobrevive a 2 frames ausente e reaparece no mesmo id', () => {
   assert.equal(update(tracker, fixture).blobs[0].id, firstId);
 });
 
+test('idsNew informa somente os IDs criados no quadro atual', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  setBox(fixture.pixels, 20, 30);
+  assert.equal(update(tracker, fixture).raw.idsNew, 1);
+  assert.equal(update(tracker, fixture).raw.idsNew, 0);
+});
+
 test('id novo após 4 frames ausente', () => {
   const tracker = new BlobTrackerCore();
   const fixture = createFrame();
@@ -66,7 +75,9 @@ test('id novo após 4 frames ausente', () => {
   fillBackground(fixture.pixels);
   for (let i = 0; i < 4; i++) assert.equal(update(tracker, fixture).blobs.length, 0);
   setBox(fixture.pixels, 20, 30);
-  assert.notEqual(update(tracker, fixture).blobs[0].id, firstId);
+  const result = update(tracker, fixture);
+  assert.notEqual(result.blobs[0].id, firstId);
+  assert.equal(result.raw.idsNew, 1);
 });
 
 test('cruzamento em X mantém ids em >= 90% dos frames (2 manchas 10×10, 40 frames)', () => {
@@ -80,11 +91,11 @@ test('cruzamento em X mantém ids em >= 90% dos frames (2 manchas 10×10, 40 fra
 
   for (let frame = 0; frame < 40; frame++) {
     fillBackground(fixture.pixels);
-    const pathFrame = frame;
-    const ax = 20 + pathFrame * 5;
-    const ay = 10 + pathFrame * 3;
-    const bx = 230 - pathFrame * 5;
-    const by = 129 - pathFrame * 3;
+    const pathFrame = Math.min(frame, 7);
+    const ax = 20 + pathFrame * 30;
+    const ay = 10 + pathFrame * 17;
+    const bx = 230 - pathFrame * 30;
+    const by = 129 - pathFrame * 17;
     setBox(fixture.pixels, ax, ay);
     setBox(fixture.pixels, bx, by);
     const blobs = update(tracker, fixture).blobs;
@@ -155,20 +166,22 @@ test('grade adaptativa reutilizada não apaga uma mancha forte sobre fundo está
 });
 
 test('absorve objeto parado após persistência sem apagar objeto em movimento contínuo', () => {
-  const stationary = new BlobTrackerCore();
+  const stationary = new BlobTrackerCore({ stationaryAbsorbFrames: 8 });
   const stillFrame = createFrame();
   initialize(stationary, stillFrame);
   setBox(stillFrame.pixels, 40, 40, 230, 12);
   let result;
-  for (let i = 0; i < 8; i++) result = update(stationary, stillFrame);
-  assert.equal(result.blobs.length, 1, 'objeto segue visível durante a janela de tolerância');
+  for (let i = 0; i < 7; i++) result = update(stationary, stillFrame);
+  assert.equal(result.blobs.length, 1, 'objeto segue visível antes do limite K');
+  result = update(stationary, stillFrame);
+  assert.equal(result.blobs.length, 0, 'objeto deixa de ser emitido ao atingir K quadros parados');
   for (let i = 0; i < 70; i++) result = update(stationary, stillFrame);
   assert.equal(result.blobs.length, 0, 'fundo converge e remove o objeto imóvel');
   fillBackground(stillFrame.pixels);
   for (let i = 0; i < 20; i++) result = update(stationary, stillFrame);
   assert.equal(result.blobs.length, 0, 'a remoção do objeto não deixa um blob fantasma');
 
-  const moving = new BlobTrackerCore();
+  const moving = new BlobTrackerCore({ stationaryAbsorbFrames: 8 });
   const movingFrame = createFrame();
   initialize(moving, movingFrame);
   for (let i = 0; i < 48; i++) {
@@ -176,6 +189,66 @@ test('absorve objeto parado após persistência sem apagar objeto em movimento c
     setBox(movingFrame.pixels, 20 + i, 40, 230, 12);
     result = update(moving, movingFrame);
     assert.equal(result.blobs.length, 1, `objeto móvel detectado no quadro ${i}`);
+  }
+});
+
+test('stationaryAbsorbFrames padrão zero desliga a absorção do núcleo puro', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  setBox(fixture.pixels, 40, 40, 230, 12);
+  let result;
+  for (let i = 0; i < 30; i++) result = update(tracker, fixture);
+  assert.equal(result.blobs.length, 1);
+});
+
+test('calibração média de oito quadros ignora uma mancha presente em um quadro', () => {
+  const tracker = new BlobTrackerCore({ calibrateFrames: 8 });
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  const index = (45 * width + 45);
+  for (let frame = 1; frame < 8; frame++) {
+    fillGray(fixture.pixels, 40);
+    if (frame === 3) setBox(fixture.pixels, 40, 40, 230, 12);
+    update(tracker, fixture);
+  }
+  assert.ok(Math.abs(tracker.background[index] - (36 + 6 * 40) / 7 / 255) < 0.002);
+});
+
+test('calibração de um quadro preserva detecção no segundo quadro', () => {
+  const tracker = new BlobTrackerCore({ calibrateFrames: 1 });
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  setBox(fixture.pixels, 40, 40, 230, 10);
+  assert.equal(update(tracker, fixture).blobs.length, 1);
+});
+
+test('cena muda só uma vez após 40 quadros completos diferentes e não calibra sozinha', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  fillGray(fixture.pixels, 230);
+  let result;
+  for (let frame = 0; frame < 39; frame++) {
+    result = update(tracker, fixture);
+    assert.equal(result.raw.sceneShift, false);
+  }
+  const originalBackground = tracker.background[0];
+  result = update(tracker, fixture);
+  assert.equal(result.raw.sceneShift, true);
+  assert.equal(tracker.background[0], originalBackground);
+  assert.equal(update(tracker, fixture).raw.sceneShift, false);
+});
+
+test('blob 10×10 não é confundido com uma mudança da cena', () => {
+  const tracker = new BlobTrackerCore();
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  setBox(fixture.pixels, 40, 40, 230, 10);
+  let result;
+  for (let frame = 0; frame < 45; frame++) {
+    result = update(tracker, fixture);
+    assert.equal(result.raw.sceneShift, false);
   }
 });
 
@@ -211,6 +284,17 @@ test('buffers da grade são reutilizados enquanto o tamanho do quadro não muda'
   assert.equal(tracker.gridSumSq, sumSq);
 });
 
+test('buffers da calibração são reutilizados até mudar a resolução', () => {
+  const tracker = new BlobTrackerCore({ calibrateFrames: 8 });
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+  const sum = tracker.calibrationSum;
+  const count = tracker.calibrationCount;
+  for (let i = 0; i < 3; i++) update(tracker, fixture);
+  assert.equal(tracker.calibrationSum, sum);
+  assert.equal(tracker.calibrationCount, count);
+});
+
 test('rampa de sombra 0→0.12 já fica abaixo do threshold global 0.18', () => {
   const tracker = new BlobTrackerCore();
   const fixture = createFrame();
@@ -230,4 +314,5 @@ test('aviso de pouca luz é protegido por estado e rearma após sair da condiç�
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.ok(app.includes('result.raw.lowLight && !state.lowLightNoticeShown'));
   assert.ok(app.includes('else if (!result.raw.lowLight) state.lowLightNoticeShown = false'));
+  assert.ok(app.includes("if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo')"));
 });

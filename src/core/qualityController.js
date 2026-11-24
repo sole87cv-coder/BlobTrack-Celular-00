@@ -1,22 +1,32 @@
-export function adjustTrackingQuality(performanceState, costMs, budgetMs, trackingWidth, targetFps, maxWidth, maxFps) {
-  const average = performanceState.average
-    ? performanceState.average * 0.9 + costMs * 0.1
-    : costMs;
-  let slowFrames = average > budgetMs ? performanceState.slowFrames + 1 : 0;
-  let fastFrames = average < budgetMs * 0.42 ? performanceState.fastFrames + 1 : 0;
+export function updateQualityBudgets(performanceState, analysisMs, renderMs, intervalMs, trackingWidth, maxWidth) {
+  const analysisAverage = performanceState.analysisAverage
+    ? performanceState.analysisAverage * 0.9 + analysisMs * 0.1
+    : analysisMs;
+  const renderAverage = performanceState.renderAverage
+    ? performanceState.renderAverage * 0.9 + renderMs * 0.1
+    : renderMs;
+  let slowFrames = analysisAverage > intervalMs * 0.5 ? performanceState.slowFrames + 1 : 0;
+  let fastFrames = analysisAverage < intervalMs * 0.294 ? performanceState.fastFrames + 1 : 0;
+  const renderSlowFrames = renderAverage > intervalMs * 0.4 ? performanceState.renderSlowFrames + 1 : 0;
+  const renderPause = renderSlowFrames >= 8;
   let nextWidth = trackingWidth;
-  let nextFps = targetFps;
 
-  if (slowFrames >= 12) {
+  if (slowFrames >= 12 && trackingWidth > 160) {
     nextWidth = Math.max(160, trackingWidth - 80);
-    if (nextWidth === trackingWidth) nextFps = Math.max(12, targetFps - 2);
     slowFrames = 0;
     fastFrames = 0;
-  } else if (fastFrames >= 180) {
+  } else if (fastFrames >= 180 && trackingWidth < maxWidth) {
     nextWidth = Math.min(maxWidth, trackingWidth + 80);
-    if (nextWidth === trackingWidth) nextFps = Math.min(maxFps, targetFps + 2);
     fastFrames = 0;
   }
 
-  return { average, slowFrames, fastFrames, trackingWidth: nextWidth, targetFps: nextFps };
+  return {
+    analysisAverage,
+    renderAverage,
+    slowFrames,
+    fastFrames,
+    renderSlowFrames,
+    trackingWidth: nextWidth,
+    renderPause,
+  };
 }
