@@ -188,6 +188,11 @@
                 <button type="button" class="pill small effect-toggle" id="blobNetworkButton" aria-pressed="false" aria-label="Ativar ou desativar a rede geométrica de blobs">Rede de blobs</button>
                 <button type="button" class="pill small effect-toggle" id="distanceTelemetryButton" aria-pressed="false">Distâncias</button>
                 <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Mostrar vídeo original puro dentro dos retângulos dos blobs">Vídeo original</button>
+                <button type="button" class="pill small effect-toggle" id="invertBlendButton" aria-pressed="false" title="Inverter o vídeo dentro dos retângulos dos blobs">Inverter vídeo</button>
+                <div class="dock-row slider-row">
+                  <label for="videoBlend"><span>Mistura vídeo + efeito</span><b id="videoBlendValue">0%</b></label>
+                  <input id="videoBlend" type="range" min="0" max="1" step="0.05" value="0">
+                </div>
                 <button type="button" class="pill small effect-toggle max-effects" id="maxEffectsButton" aria-pressed="false" title="Ativar todos os efeitos reativos de uma vez">Efeitos máximos</button>
                 <button type="button" class="pill small effect-toggle min-effects" id="minEffectsButton" aria-pressed="false" title="Desligar todos os efeitos reativos de uma vez">Efeitos mínimos</button>
               </div>

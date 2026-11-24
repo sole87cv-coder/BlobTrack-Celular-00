@@ -380,14 +380,14 @@ export function createRender({
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
-    // Vídeo original puro dentro dos retângulos dos blobs (opcional via toggle).
-    // Quando originalVideoWindows está desligado, aplica o filtro do estilo visual selecionado.
-    if (!state.originalVideoWindows) {
-      c.filter =
-        state.effect === 'invert' ? 'invert(1)'
-          : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
-            : 'grayscale(1) contrast(2)';
-    }
+    const effectFilter =
+      state.effect === 'invert' ? 'invert(1)'
+        : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+          : 'grayscale(1) contrast(2)';
+    const invertPart = state.invertBlend ? ' invert(1)' : '';
+    const filter = (!state.originalVideoWindows || state.invertBlend || state.videoBlend > 0)
+      ? (effectFilter + invertPart)
+      : 'none';
     c.beginPath();
     for (const blob of blobs) {
       mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
@@ -399,20 +399,42 @@ export function createRender({
       c.rect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
     }
     c.clip();
-    if (state.gearVr) {
-      calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
-      const mirrorX = (state.camera === 'user') !== state.flip;
-      c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
-      c.scale(mirrorX ? -1 : 1, 1);
-      c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-      c.restore();
-      return;
-    }
-    calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
     const mirrorX = (state.camera === 'user') !== state.flip;
-    c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
-    c.scale(mirrorX ? -1 : 1, 1);
-    c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+    const drawSource = () => {
+      if (state.gearVr) {
+        calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+        c.save();
+        c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+        c.scale(mirrorX ? -1 : 1, 1);
+        c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+        c.restore();
+      } else {
+        calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+        c.save();
+        c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+        c.scale(mirrorX ? -1 : 1, 1);
+        c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+        c.restore();
+      }
+    };
+    c.save();
+    drawSource();
+    c.restore();
+    if (state.videoBlend > 0 && filter !== 'none') {
+      c.save();
+      c.globalAlpha = state.videoBlend;
+      c.filter = filter;
+      drawSource();
+      c.restore();
+      c.globalAlpha = 1;
+      c.filter = 'none';
+    } else if (filter !== 'none' && state.videoBlend === 0) {
+      c.save();
+      c.filter = filter;
+      drawSource();
+      c.restore();
+      c.filter = 'none';
+    }
     c.restore();
   }
 
