@@ -291,6 +291,7 @@ input[type=range] { width:100%;height:44px;margin:0;accent-color:var(--mint);tou
 .effect-toggle#trailEffectButton.active { border-color:#b8f36a75;background:#222d16;color:var(--lime) }
 .effect-toggle#waveEffectButton.active { border-color:#74eaff75;background:#102a32;color:var(--cyan) }
 .effect-toggle#meshEffectButton.active { border-color:#ed72ff75;background:#2b1830;color:var(--magenta) }
+.effect-toggle#blobNetworkButton.active { border-color:#74eaff75;background:#102a32;color:var(--cyan) }
 .effect-toggle:active,.effect-button:active { transform:scale(.98) }
 
 .hint { display:block;margin:8px 2px;color:#a9b4c0;font-size:12px;line-height:1.45 }

@@ -258,6 +258,39 @@ export function createRender({
     c.globalAlpha = 1;
   }
 
+  function drawBlobNetwork(c, blobs, viewWidth, viewHeight, offsetX = 0) {
+    const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight);
+    if (!count) return;
+    const maxDistance = Math.min(viewWidth, viewHeight) * 0.28;
+    const maxDistanceSquared = maxDistance * maxDistance;
+    c.save();
+    c.lineWidth = 1.25;
+    c.strokeStyle = '#74eaff';
+    for (let i = 0; i < count; i++) {
+      const x1 = blobViewPoints[i * 2] * viewWidth;
+      const y1 = blobViewPoints[i * 2 + 1] * viewHeight;
+      for (let j = i + 1; j < count; j++) {
+        const dx = (blobViewPoints[j * 2] - blobViewPoints[i * 2]) * viewWidth;
+        const dy = (blobViewPoints[j * 2 + 1] - blobViewPoints[i * 2 + 1]) * viewHeight;
+        const distanceSquared = dx * dx + dy * dy;
+        if (distanceSquared > maxDistanceSquared) continue;
+        c.globalAlpha = 0.2 + 0.65 * (1 - distanceSquared / maxDistanceSquared);
+        c.beginPath();
+        c.moveTo(offsetX + x1, y1);
+        c.lineTo(offsetX + blobViewPoints[j * 2] * viewWidth, blobViewPoints[j * 2 + 1] * viewHeight);
+        c.stroke();
+      }
+    }
+    c.globalAlpha = 1;
+    c.fillStyle = '#f0a8ff';
+    for (let i = 0; i < count; i++) {
+      c.beginPath();
+      c.arc(offsetX + blobViewPoints[i * 2] * viewWidth, blobViewPoints[i * 2 + 1] * viewHeight, 3.2, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+  }
+
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
@@ -455,6 +488,9 @@ export function createRender({
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source);
         windowCost += performance.now() - windowStarted;
       }
+      if (state.networkEffect && !state.performance.effectsPaused) {
+        drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX);
+      }
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;
         const cellH = viewHeight / 2;
@@ -526,6 +562,7 @@ export function createRender({
     drawWaves,
     deformGridPoint,
     drawMesh,
+    drawBlobNetwork,
     drawRawVideoWindows,
     renderFrame,
     drawMaskOverlay,
