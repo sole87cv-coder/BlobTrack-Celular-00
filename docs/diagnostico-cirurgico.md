@@ -20,12 +20,17 @@ Atualizado em 24/11/2026. A validação manual de HTTPS foi informada como concl
 - S5 adicionou ROI geométrica opcional, aplicada somente quando há retângulos de seleção manual. Sem seleção, o processamento usa caminho de quadro inteiro. 170 testes aprovados; duas medições: p95 `1,248 ms` e `0,901 ms`, ambas abaixo do limite de `1,347 ms`.
 - S9: absorção fica desativada por padrão no núcleo puro e usa K=8 na aplicação; o componente deixa de ser emitido após estabilidade, e a taxa de atualização do fundo é 0,02. IDs congelados e cruzamento linear permanecem verdes.
 - S6: calibração da aplicação usa média de 8 quadros, ignora amostras acima do threshold, detecta mudança de cena por 40 quadros sem reset automático e publica métricas de FPS/análise/render/captura. A qualidade automática conserva os limites 12/180, passo de 80 px, piso 160 e teto do perfil; análise e render têm orçamentos separados. Três medições mais recentes: p95 `1,294 ms`, `1,006 ms`, `1,282 ms`; picos `1,669 ms`, `2,490 ms`, `1,787 ms`. Todos abaixo do orçamento.
-- S8 compõe vídeo da janela viva, máscara e efeitos nessa ordem, e adiciona um badge persistente quando os efeitos são pausados. O shell offline foi atualizado para v39.
+- S7 revisou gravação: vídeo sem áudio, limite de cinco minutos, taxa de bits por perfil, estimativa de espaço quando suportada, salvamento sem descarte ao cancelar e pausa automática após cinco segundos em segundo plano. Os testes simulados passaram; aparelhos não foram medidos.
+- Repetição após S7: p95 `1,065 ms`, `1,340 ms`, `1,324 ms`; picos `1,525 ms`, `1,969 ms`, `1,724 ms`. As três execuções ficam abaixo dos limites definidos; a segunda ficou próxima do limite p95, então manter repetição padronizada antes de concluir qualquer ganho marginal.
+- S8 compõe vídeo da janela viva, máscara e efeitos nessa ordem, e adiciona um badge persistente quando os efeitos são pausados. O shell offline foi atualizado para v40.
 - O teste de sombra 0→0,12 não demonstrou redução de 30% contra threshold global 0,18, pois esses valores já ficam abaixo do threshold. Não foi introduzido um limiar relativo sem cenário que valide o benefício.
 
-## Restante
+## Próximas prioridades
 
-Próximas prioridades: S7 revisar gravação e seus limites; S10 consolidar documentação e medições. S5 ROI, S6 calibração/orçamentos, S8 camadas/aviso e S9 absorção configurável foram concluídas.
+1. Validar em aparelhos reais captura, FPS, ROI, IDs, absorção, camadas e alternância da rede geométrica.
+2. Repetir o benchmark controlado se uma mudança do núcleo exceder p95 `1,347 ms` ou pico `16 ms`.
+3. Confirmar gravação e ciclo de vida em navegadores móveis, conforme [`gravacao.md`](gravacao.md) e [`device-matrix.md`](device-matrix.md).
+4. Manter documentação, medições e versão do shell offline sincronizadas.
 
 O inventário de arquivos está em [`faxina-inventario.md`](./faxina-inventario.md). Nenhum arquivo do projeto foi removido ou movido. Os arquivos locais preexistentes de benchmark estão preservados no stash `codex: preserve pre-existing local files before BlobTrack work`.
 
