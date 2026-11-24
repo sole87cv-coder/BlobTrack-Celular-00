@@ -7,7 +7,7 @@ Atualizado em 24/11/2026. A validação manual de HTTPS foi informada como concl
 | Achado | Estado | Evidência / decisão |
 |---|---|---|
 | 1. Efeitos fracos com Janela viva | Pendente | `drawMaskOverlay` desenha os efeitos reativos antes de `drawRawVideoWindows`; a janela pode cobrir o centro das ondas e partes da grade. Prioridade seguinte de correção visual. |
-| 2. Objeto parado continua blob | Pendente | O fundo só se adapta onde `mask[index]` é zero. Próxima correção do núcleo de rastreamento após estabilizar a prioridade visual. |
+| 2. Objeto parado continua blob | Corrigido em S9 | O fundo adapta o componente rastreado após oito quadros estáveis. Movimento contínuo de 1 px/quadro reinicia a janela; testes confirmam absorção e recuperação sem blob fantasma em até 20 quadros após remoção. |
 | 3. IDs perdem estabilidade em ausência/cruzamento | Corrigido em S3 | Associação por custo global com posição e caixa previstas, IoU, área e EMA de velocidade. Permite reidentificação em até três quadros ausentes. Commit `fdef2f0`. Seis novos testes passaram, incluindo cruzamento diagonal entre amostras, retorno e fórmula de velocidade preservada. |
 | 4. Regiões muito pequenas/grandes | Por projeto | `minAreaRatio=0.00025`, piso de 6 pixels, `maxAreaRatio=0.72`. Em 320×180, o arredondamento atual exige pelo menos 14 pixels; componentes acima de 72% do quadro são rejeitados. Contornar aumentando a região no quadro ou enquadrando melhor. Não houve mudança de código. |
 | 5. Efeitos pausam sem aviso visível | Pendente | A lógica pausa em baixa taxa de quadros, mas o aviso existente é um texto auxiliar do painel. Será corrigido junto da ordem de camadas. |
@@ -17,12 +17,13 @@ Atualizado em 24/11/2026. A validação manual de HTTPS foi informada como concl
 - Baseline antes de mudanças funcionais: 148 testes aprovados; Node.js `v26.13.1`; quadro 320×180; duas regiões móveis 14×14; aquecimento 30 e medição 300; p95 `1,171 ms`, pico `3,924 ms`. O teto de comparação é p95 `1,347 ms` e pico `16 ms`.
 - S3: seis testes novos e os testes congelados passaram. Uma medição pós-S3 foi p95 `1,096 ms`, pico `4,459 ms`.
 - S4 de limiar adaptativo foi mantida após otimizar a atualização esparsa da grade. A suíte e medições passaram; evitar comparação com o ensaio inicial que excedeu o teto antes da otimização.
-- S5 adicionou ROI geométrica opcional, aplicada somente quando há retângulos de seleção manual. Sem seleção, o processamento usa caminho de quadro inteiro. 170 testes aprovados; duas medições recentes: p95 `1,248 ms` e `0,901 ms`, ambas abaixo do limite de `1,347 ms` (pico `3,168 ms` e `1,161 ms`). A diferença entre execuções evidencia variação do host.
+- S5 adicionou ROI geométrica opcional, aplicada somente quando há retângulos de seleção manual. Sem seleção, o processamento usa caminho de quadro inteiro. 170 testes aprovados; duas medições: p95 `1,248 ms` e `0,901 ms`, ambas abaixo do limite de `1,347 ms`.
+- S9 substituiu adaptação por pixel por persistência do componente rastreado para não absorver blobs que ainda se deslocam. 171 testes aprovados; duas medições atuais: p95 `0,697 ms` e `0,674 ms`, picos `1,133 ms` e `1,281 ms`.
 - O teste de sombra 0→0,12 não demonstrou redução de 30% contra threshold global 0,18, pois esses valores já ficam abaixo do threshold. Não foi introduzido um limiar relativo sem cenário que valide o benefício.
 
 ## Restante
 
-Próximas prioridades: S8 corrigir ordem visual e exibir aviso de pausa; S9 absorver objetos parados sem perder sensibilidade a movimento; então S6 calibrar resolução/FPS com orçamento por aparelho; S7 revisar gravação; S10 consolidar documentação e medições. S5 ROI foi concluída nesta rodada.
+Próximas prioridades: S6 calibrar resolução/FPS dentro do orçamento adaptativo por aparelho; S8 corrigir ordem visual e exibir aviso de pausa; S7 revisar gravação; S10 consolidar documentação e medições. S5 ROI e S9 adaptação de objetos parados foram concluídas.
 
 O inventário de arquivos está em [`faxina-inventario.md`](./faxina-inventario.md). Nenhum arquivo do projeto foi removido ou movido. Os arquivos locais preexistentes de benchmark estão preservados no stash `codex: preserve pre-existing local files before BlobTrack work`.
 

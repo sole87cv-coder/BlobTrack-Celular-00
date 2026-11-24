@@ -80,11 +80,11 @@ test('cruzamento em X mantém ids em >= 90% dos frames (2 manchas 10×10, 40 fra
 
   for (let frame = 0; frame < 40; frame++) {
     fillBackground(fixture.pixels);
-    const pathFrame = Math.min(frame, 7);
-    const ax = 20 + pathFrame * 30;
-    const ay = 10 + pathFrame * 17;
-    const bx = 230 - pathFrame * 30;
-    const by = 129 - pathFrame * 17;
+    const pathFrame = frame;
+    const ax = 20 + pathFrame * 5;
+    const ay = 10 + pathFrame * 3;
+    const bx = 230 - pathFrame * 5;
+    const by = 129 - pathFrame * 3;
     setBox(fixture.pixels, ax, ay);
     setBox(fixture.pixels, bx, by);
     const blobs = update(tracker, fixture).blobs;
@@ -152,6 +152,31 @@ test('grade adaptativa reutilizada não apaga uma mancha forte sobre fundo está
   let result;
   for (let i = 0; i < 9; i++) result = update(tracker, fixture);
   assert.equal(result.blobs.length, 1);
+});
+
+test('absorve objeto parado após persistência sem apagar objeto em movimento contínuo', () => {
+  const stationary = new BlobTrackerCore();
+  const stillFrame = createFrame();
+  initialize(stationary, stillFrame);
+  setBox(stillFrame.pixels, 40, 40, 230, 12);
+  let result;
+  for (let i = 0; i < 8; i++) result = update(stationary, stillFrame);
+  assert.equal(result.blobs.length, 1, 'objeto segue visível durante a janela de tolerância');
+  for (let i = 0; i < 70; i++) result = update(stationary, stillFrame);
+  assert.equal(result.blobs.length, 0, 'fundo converge e remove o objeto imóvel');
+  fillBackground(stillFrame.pixels);
+  for (let i = 0; i < 20; i++) result = update(stationary, stillFrame);
+  assert.equal(result.blobs.length, 0, 'a remoção do objeto não deixa um blob fantasma');
+
+  const moving = new BlobTrackerCore();
+  const movingFrame = createFrame();
+  initialize(moving, movingFrame);
+  for (let i = 0; i < 48; i++) {
+    fillBackground(movingFrame.pixels);
+    setBox(movingFrame.pixels, 20 + i, 40, 230, 12);
+    result = update(moving, movingFrame);
+    assert.equal(result.blobs.length, 1, `objeto móvel detectado no quadro ${i}`);
+  }
 });
 
 test('ruído de 0.08 não gera blob e uma mancha de 0.45 gera', () => {

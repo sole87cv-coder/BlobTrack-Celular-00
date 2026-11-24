@@ -1,4 +1,7 @@
 // Low-resolution foreground segmentation and connected-component tracking.
+const STATIONARY_ABSORB_AFTER_FRAMES = 8;
+const STATIONARY_BACKGROUND_RATE = 0.35;
+
 export class BlobTrackerCore {
   constructor({ maxBlobs = 12, minAreaRatio = 0.00025, maxAreaRatio = 0.72 } = {}) {
     this.maxBlobs = maxBlobs;
@@ -15,7 +18,7 @@ export class BlobTrackerCore {
     this.tracks = Array.from({ length: maxBlobs }, () => ({
       id: 0, x: 0, y: 0, vx: 0, vy: 0,
       left: 0, top: 0, right: 0, bottom: 0, area: 0,
-      age: 0, miss: 0, alive: false,
+      age: 0, miss: 0, stationaryFrames: 0, alive: false,
     }));
     this.trackForBlob = new Int16Array(maxBlobs);
     this.matchedTracks = new Uint8Array(maxBlobs);
@@ -43,6 +46,7 @@ export class BlobTrackerCore {
   reset() {
     this.background = null;
     this.lastRoiMask = null;
+    for (const track of this.tracks) track.stationaryFrames = 0;
     for (const track of this.tracks) track.alive = false;
   }
 
@@ -194,6 +198,7 @@ export class BlobTrackerCore {
 
     const blobs = this.findComponents(width, height);
     this.assignTracks(blobs, width, height, safeDt);
+    this.absorbStationaryBlobs(blobs, width, height, roiMask);
 
     let occupiedZones = 0, meanSum = 0;
     for (let i = 0; i < 6; i++) {
@@ -298,6 +303,26 @@ export class BlobTrackerCore {
     return found.sort((a, b) => b.pixels - a.pixels).slice(0, this.maxBlobs);
   }
 
+  absorbStationaryBlobs(blobs, width, height, roiMask) {
+    for (let blobIndex = 0; blobIndex < blobs.length; blobIndex++) {
+      const trackIndex = this.trackForBlob[blobIndex];
+      if (trackIndex < 0 || this.tracks[trackIndex].stationaryFrames < STATIONARY_ABSORB_AFTER_FRAMES) continue;
+      const blob = blobs[blobIndex];
+      const left = Math.max(0, Math.floor(blob.left * width));
+      const top = Math.max(0, Math.floor(blob.top * height));
+      const right = Math.min(width, Math.ceil(blob.right * width));
+      const bottom = Math.min(height, Math.ceil(blob.bottom * height));
+      for (let y = top; y < bottom; y++) {
+        const rowStart = y * width;
+        for (let x = left; x < right; x++) {
+          const index = rowStart + x;
+          if (!this.mask[index] || (roiMask && !roiMask[index])) continue;
+          this.background[index] += (this.luma[index] - this.background[index]) * STATIONARY_BACKGROUND_RATE;
+        }
+      }
+    }
+  }
+
   assignTracks(blobs, width, height, dt) {
     const trackCount = this.tracks.length;
     const blobCount = blobs.length;
@@ -377,6 +402,7 @@ export class BlobTrackerCore {
         track.vy = 0;
         track.age = 1;
         track.miss = 0;
+        track.stationaryFrames = 0;
         track.alive = true;
         blob.speed = 0;
       } else {
@@ -384,6 +410,8 @@ export class BlobTrackerCore {
         const dx = blob.x - track.x;
         const dy = blob.y - track.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance <= 0.0025) track.stationaryFrames++;
+        else track.stationaryFrames = 0;
         blob.speed = Math.min(1, distance / Math.max(dt, 0.02) / 2);
         track.vx = track.vx * 0.5 + dx * 0.5;
         track.vy = track.vy * 0.5 + dy * 0.5;
