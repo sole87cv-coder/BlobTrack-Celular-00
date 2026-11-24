@@ -91,6 +91,16 @@ test('instrument mode keeps sustained voices from sweeping between pitches', () 
   }
 });
 
+test('instrument mode removes continuous drone when blobs are still', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'sound', rhythmEnabled: true } });
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .5, speed: 0, ambient: 1, zones: [1,1,1,1,1,1], blobs: [{ id: 1, x: .5, y: .5, speed: 0 }] }, master: 1, muted: false, audioEnabled: true } });
+
+  const output = processBlock(processor);
+  const peak = Math.max(...output[0].map(Math.abs), ...output[1].map(Math.abs));
+  assert.equal(peak, 0);
+});
+
 test('new mallet signals spawn a panned note after blob movement', () => {
   const processor = new RegisteredProcessor();
   processor.port.onmessage({ data: { type: 'preset', preset: 'easy-mallet' } });

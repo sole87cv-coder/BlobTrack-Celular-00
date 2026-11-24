@@ -333,8 +333,8 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     const release = 1 - Math.exp(-1 / (sampleRate * .11));
     const timbreFadeStep = 1 / (sampleRate * .045);
     const lfoHz = .14 + speed * 2.8 + energy * .55;
-    const instrumentBed = this.rhythmEnabled ? .24 : 1;
-    const bendRange = this.rhythmEnabled ? Math.min(this.pitchRange, .12) : this.pitchRange;
+    const instrumentBed = this.rhythmEnabled ? 0 : .24;
+    const bendRange = Math.min(this.pitchRange, .12);
     let voices = 0;
     for (let z = 0; z < 6; z++) {
       const zone = unitAudioSignal(s.zones?.[z]);
@@ -348,7 +348,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < output.length; i++) {
       if (this.timbreFade < 1) this.timbreFade = Math.min(1, this.timbreFade + timbreFadeStep);
       this.gain += (target - this.gain) * (target > this.gain ? gainAttack : gainRelease);
-      let sample = .055 * ambient * Math.sin(this.phase[6]);
+      let sample = this.rhythmEnabled ? 0 : .055 * ambient * Math.sin(this.phase[6]);
       this.phase[6] += 2 * Math.PI * 55 / sampleRate;
       if (this.phase[6] >= Math.PI * 2) this.phase[6] -= Math.PI * 2;
       for (let z = 0; z < 6; z++) {
@@ -371,7 +371,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
         if (this.rhythmPhase >= Math.PI * 2) this.rhythmPhase -= Math.PI * 2;
         this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .06));
       }
-      const air = Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity)) * (this.rhythmEnabled ? .25 : 1);
+      const air = this.rhythmEnabled ? 0 : Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity));
       sample += air * Math.sin(this.phase[7]);
       this.phase[7] += 2 * Math.PI * (180 + 620 * speed + 180 * density) / sampleRate;
       if (this.phase[7] >= Math.PI * 2) this.phase[7] -= Math.PI * 2;
