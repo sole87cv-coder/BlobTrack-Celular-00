@@ -8,7 +8,7 @@ import { createAudio, createAudioBus } from './audio/audio.js';
 import { createRender } from './render/render.js';
 import { createRecorder } from './recorder.js';
 import { drawRecordingFrame, recordingCanvasSize } from './recording-canvas.js';
-import { exportRecording } from './recording-export.js';
+import { exportRecording, shareToInstagramStory } from './recording-export.js';
 import { clearVideoComposition } from './video-crop.js';
 import { loadPreferences } from './preferences.js';
 import { createScaleRouter } from './audio/scale-router.js';
@@ -695,6 +695,7 @@ function updateRecordingControls(snapshot) {
   const hasResult = Boolean(pendingRecording);
   $('recordSaveButton').hidden = !hasResult;
   $('recordSaveButtonPanel').hidden = !hasResult;
+  $('instagramShareButton').hidden = !hasResult;
   $('recordSaveButton').disabled = saving;
   $('recordSaveButtonPanel').disabled = saving;
 }
@@ -794,6 +795,23 @@ $('sessionSaveButton').addEventListener('click',()=>$('recordSaveButtonPanel').c
 function toggleRecordingPause(){const changed=recordingSnapshot.state==='recording'?recorder.pause():recordingSnapshot.state==='paused'?recorder.resume():false;if(!changed)showToast('Pausa indisponível neste estado.');}
 $('sessionPauseButton').addEventListener('click',toggleRecordingPause);$('quickPauseButton').addEventListener('click',toggleRecordingPause);
 ['recordSaveButton', 'recordSaveButtonPanel'].forEach(id => $(id).addEventListener('click', savePendingRecording));
+$('instagramShareButton').addEventListener('click', async () => {
+  if (!pendingRecording || recordingSnapshot.state === 'saving') return;
+  const result = pendingRecording;
+  updateRecordingControls({ ...recordingSnapshot, state: 'saving', result: null });
+  try {
+    await shareToInstagramStory(result);
+    pendingRecording = null;
+    if (result.url) URL.revokeObjectURL(result.url);
+    recorder.releaseResult();
+    showToast('Compartilhado no Instagram Stories');
+  } catch (error) {
+    log(`Gravação: falha ao compartilhar no Instagram (${error.message})`);
+    showToast('Não foi possível compartilhar no Instagram');
+  } finally {
+    updateRecordingControls({ ...recordingSnapshot, state: 'idle', result: null });
+  }
+});
 function resetStartButtons(){['startButton','startButton2'].forEach(id=>{const b=$(id);if(b)b.disabled=false;});}
 async function beginSession(button){
   if(state.active||state.starting){log('beginSession: já ativo ou iniciando');return;}
