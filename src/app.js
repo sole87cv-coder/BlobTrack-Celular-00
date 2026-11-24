@@ -100,6 +100,7 @@ const isStandaloneApp = navigator.standalone === true || window.matchMedia?.('(d
 const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
 const overlayCanvas = $('overlay');
 const stage = $('stage');
+const stageViewport = { width: 0, height: 0 };
 const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPreference: 'high-performance' });
 const fallbackContext = gl ? null : canvas.getContext('2d', { alpha: false });
 const overlayContext = overlayCanvas.getContext('2d');
@@ -112,7 +113,7 @@ Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.widt
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
-  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false,
+  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: false, extremeMode: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lowLightNoticeShown: false,
@@ -152,6 +153,10 @@ if (typeof saved.networkEffect === 'boolean') state.networkEffect = saved.networ
 if (typeof saved.distanceTelemetry === 'boolean') state.distanceTelemetry = saved.distanceTelemetry;
 if (Number.isFinite(saved.maxConnectionDistance)) state.maxConnectionDistance = clamp(saved.maxConnectionDistance,0.08,0.5);
 if (typeof saved.visualOnly === 'boolean') state.visualOnly = saved.visualOnly;
+if (typeof saved.maxEffects === 'boolean') state.maxEffects = saved.maxEffects;
+if (typeof saved.minEffects === 'boolean') state.minEffects = saved.minEffects;
+if (typeof saved.originalVideoWindows === 'boolean') state.originalVideoWindows = saved.originalVideoWindows;
+if (typeof saved.extremeMode === 'boolean') state.extremeMode = saved.extremeMode;
 if (typeof saved.gearVr === 'boolean') state.gearVr = saved.gearVr;
 if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(saved.audioOscillation,0,1);
 if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
@@ -162,6 +167,13 @@ if (saved.audioEffects && typeof saved.audioEffects === 'object') {
   for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
 }
 if (typeof saved.focusMode === 'boolean') state.focusMode = saved.focusMode;
+if (state.extremeMode) {
+  state.videoWindows = false; state.trailEffect = false; state.waveEffect = false;
+  state.meshEffect = false; state.networkEffect = false; state.distanceTelemetry = false;
+  state.maxEffects = false; state.minEffects = false;
+  setTrackingWidth(120);
+  forceFallback = true;
+}
 let toastTimer = null, installPrompt = null, glProgram = null, texture = null, posBuffer = null, uniforms = null;
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
@@ -209,7 +221,7 @@ function showCameraIssue(error) {
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,originalVideoWindows:state.originalVideoWindows,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let soundSaveTimer = null;
 function saveSoundPreferences() { clearTimeout(soundSaveTimer); soundSaveTimer = setTimeout(savePreferences, 300); }
@@ -234,6 +246,7 @@ const render = createRender({
   state,
   canvas,
   overlayCanvas,
+  stageViewport,
   gl,
   glProgram: null,
   texture: null,
@@ -264,6 +277,7 @@ const render = createRender({
   recordingCanvasSize,
   drawRecordingFrame,
   resize,
+  forceFallback: () => forceFallback,
   log,
   showToast,
   onMeter: null,
@@ -288,6 +302,10 @@ toggle($('waveEffectButton'),state.waveEffect);
 toggle($('meshEffectButton'),state.meshEffect);
 toggle($('blobNetworkButton'),state.networkEffect);
 toggle($('distanceTelemetryButton'),state.distanceTelemetry);
+toggle($('originalVideoButton'),state.originalVideoWindows);
+toggle($('maxEffectsButton'),state.maxEffects);
+toggle($('minEffectsButton'),state.minEffects);
+toggle($('extremeModeButton'),state.extremeMode);
 $('maxConnectionDistance').value=String(state.maxConnectionDistance);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;
 toggle($('visualOnlyButton'),state.visualOnly);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
@@ -344,6 +362,7 @@ async function startCamera() {
     const tracks = stream.getVideoTracks(); if (!tracks.length) { log('startCamera: sem tracks de vídeo'); throw new Error('Câmera não forneceu faixa de vídeo.'); }
     const track = tracks[0];
     log(`startCamera: ${tracks.length} track(s) de vídeo encontrada(s), readyState=${track.readyState}`);
+    resize();
     state.active = true; state.starting = false; state.switching = false;
     void wakeLockService.acquire();
     $('stageMessage').hidden = true; if($('permissionDialog').open)$('permissionDialog').close(); $('stagePill').hidden = false; $('switchCamera').disabled = false; $('stopButton').hidden = false; $('startButton2').hidden = true; $('shareButton').hidden = false; setStatus('Sessão ativa', true);
@@ -422,6 +441,8 @@ async function setManualExposure() { const track = state.stream?.getVideoTracks(
 
 function resize() {
   const rect = canvas.getBoundingClientRect(); if (!rect.width || !rect.height) return;
+  stageViewport.width = rect.width;
+  stageViewport.height = rect.height;
   const ratio = Math.min(devicePixelRatio || 1, deviceProfile.pixelRatio, 1.5); const w = Math.round(rect.width * ratio), h = Math.round(rect.height * ratio);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (overlayCanvas.width !== w || overlayCanvas.height !== h) { overlayCanvas.width = w; overlayCanvas.height = h; }
@@ -449,9 +470,8 @@ function getTrackingRoi(source) {
   if (!state.manualRects.length) return null;
   const width = Math.max(1, Math.min(Math.round(state.trackingWidth) || 320, source.videoWidth));
   const height = Math.max(1, Math.round(width * source.videoHeight / source.videoWidth));
-  const rect = overlayCanvas.getBoundingClientRect();
-  const viewWidth = rect.width / (state.gearVr ? 2 : 1);
-  const viewHeight = rect.height;
+  const viewWidth = stageViewport.width / (state.gearVr ? 2 : 1);
+  const viewHeight = stageViewport.height;
   if (roiCache.mask && roiCache.rects === state.manualRects && roiCache.rectCount === state.manualRects.length
     && roiCache.width === width && roiCache.height === height && roiCache.sourceWidth === source.videoWidth
     && roiCache.sourceHeight === source.videoHeight && roiCache.viewWidth === viewWidth && roiCache.viewHeight === viewHeight
@@ -479,7 +499,7 @@ function analyze(source = video) {
   return { ...result, dt };
 }
 function followEnvelope(current, target, dt, attack=.06, decay=.45) { const tau = target > current ? attack : decay; return current + (target - current) * (1 - Math.exp(-dt / tau)); }
-function updateSignals(raw, dt, blobs = []) {
+function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   const e = state.envelopes;
   for (const key of ['energy','density','speed','coherence','ambient']) e[key] = followEnvelope(e[key], raw[key], dt);
   for (let i = 0; i < e.zones.length; i++) e.zones[i] = followEnvelope(e.zones[i],raw.zones[i],dt,.06,.9);
@@ -487,7 +507,7 @@ function updateSignals(raw, dt, blobs = []) {
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:state.visualOnly?[]:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly });
+  audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:state.visualOnly?[]:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, frameTime: now });
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -575,7 +595,7 @@ function frame(now) {
             showToast('Pouca luz: o rastreio pode ficar instável.');
           } else if (!result.raw.lowLight) state.lowLightNoticeShown = false;
           if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo');
-          const applied = updateSignals(result.raw, result.dt, result.blobs);
+          const applied = updateSignals(result.raw, result.dt, result.blobs, now);
           const renderStarted = performance.now();
           render.renderFrame(applied, source); render.drawMaskOverlay(result, source); render.drawRecordingComposite();
           state.timing.render = performance.now() - renderStarted;
@@ -823,6 +843,60 @@ bindReactiveToggle('waveEffectButton', 'waveEffect');
 bindReactiveToggle('meshEffectButton', 'meshEffect');
 bindReactiveToggle('blobNetworkButton', 'networkEffect');
 bindReactiveToggle('distanceTelemetryButton', 'distanceTelemetry');
+bindReactiveToggle('originalVideoButton', 'originalVideoWindows');
+
+function setAllEffects(on) {
+  state.videoWindows = on;
+  state.trailEffect = on;
+  state.waveEffect = on;
+  state.meshEffect = on;
+  state.networkEffect = on;
+  state.distanceTelemetry = on;
+  toggle($('blobWindowButton'), on);
+  toggle($('trailEffectButton'), on);
+  toggle($('waveEffectButton'), on);
+  toggle($('meshEffectButton'), on);
+  toggle($('blobNetworkButton'), on);
+  toggle($('distanceTelemetryButton'), on);
+  savePreferences();
+}
+$('maxEffectsButton').addEventListener('click', () => {
+  if (state.maxEffects) return;
+  state.minEffects = false;
+  toggle($('minEffectsButton'), false);
+  state.maxEffects = true;
+  toggle($('maxEffectsButton'), true);
+  setAllEffects(true);
+});
+$('minEffectsButton').addEventListener('click', () => {
+  if (state.minEffects) return;
+  state.maxEffects = false;
+  toggle($('maxEffectsButton'), false);
+  state.minEffects = true;
+  toggle($('minEffectsButton'), true);
+  setAllEffects(false);
+});
+let forceFallback = false;
+$('extremeModeButton').addEventListener('click', () => {
+  state.extremeMode = !state.extremeMode;
+  toggle($('extremeModeButton'), state.extremeMode);
+  if (state.extremeMode) {
+    state.videoWindows = false; state.trailEffect = false; state.waveEffect = false;
+    state.meshEffect = false; state.networkEffect = false; state.distanceTelemetry = false;
+    state.maxEffects = false; state.minEffects = false;
+    toggle($('blobWindowButton'), false); toggle($('trailEffectButton'), false);
+    toggle($('waveEffectButton'), false); toggle($('meshEffectButton'), false);
+    toggle($('blobNetworkButton'), false); toggle($('distanceTelemetryButton'), false);
+    toggle($('maxEffectsButton'), false); toggle($('minEffectsButton'), false);
+    setTrackingWidth(120);
+    forceFallback = true;
+    showToast('Modo leve extremo ativado');
+  } else {
+    forceFallback = false;
+    showToast('Modo leve extremo desativado');
+  }
+  savePreferences();
+});
 $('maxConnectionDistance').addEventListener('input',event=>{state.maxConnectionDistance=clamp(Number(event.target.value),0.08,0.5);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;savePreferences();});
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
