@@ -19,11 +19,12 @@ Atualizado em 24/11/2026. A validação manual de HTTPS foi informada como concl
 - S4 de limiar adaptativo foi mantida após otimizar a atualização esparsa da grade. A suíte e medições passaram; evitar comparação com o ensaio inicial que excedeu o teto antes da otimização.
 - S5 adicionou ROI geométrica opcional, aplicada somente quando há retângulos de seleção manual. Sem seleção, o processamento usa caminho de quadro inteiro. 170 testes aprovados; duas medições: p95 `1,248 ms` e `0,901 ms`, ambas abaixo do limite de `1,347 ms`.
 - S9 substituiu adaptação por pixel por persistência do componente rastreado para não absorver blobs que ainda se deslocam. 171 testes aprovados; duas medições atuais: p95 `0,697 ms` e `0,674 ms`, picos `1,133 ms` e `1,281 ms`.
+- S6 calibra resolução e FPS de análise em conjunto: reduz resolução primeiro após 12 quadros acima do orçamento; no mínimo de 160 px reduz FPS em passos de 2 até 12; recupera resolução após 180 quadros rápidos e FPS só no limite máximo da resolução. 175 testes aprovados; benchmark-base recente p95 `0,677 ms`, pico `1,341 ms`.
 - O teste de sombra 0→0,12 não demonstrou redução de 30% contra threshold global 0,18, pois esses valores já ficam abaixo do threshold. Não foi introduzido um limiar relativo sem cenário que valide o benefício.
 
 ## Restante
 
-Próximas prioridades: S6 calibrar resolução/FPS dentro do orçamento adaptativo por aparelho; S8 corrigir ordem visual e exibir aviso de pausa; S7 revisar gravação; S10 consolidar documentação e medições. S5 ROI e S9 adaptação de objetos parados foram concluídas.
+Próximas prioridades: S8 corrigir ordem visual e exibir aviso de pausa; S7 revisar gravação; S10 consolidar documentação e medições. S5 ROI, S6 qualidade adaptativa e S9 adaptação de objetos parados foram concluídas.
 
 O inventário de arquivos está em [`faxina-inventario.md`](./faxina-inventario.md). Nenhum arquivo do projeto foi removido ou movido. Os arquivos locais preexistentes de benchmark estão preservados no stash `codex: preserve pre-existing local files before BlobTrack work`.
 

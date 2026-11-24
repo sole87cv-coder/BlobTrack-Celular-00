@@ -1,5 +1,6 @@
 import { BlobTracker } from './blob-tracker.js';
 import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
+import { adjustTrackingQuality } from './core/qualityController.js';
 import { clamp, fmt, formatRecordingTime } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
@@ -39,7 +40,7 @@ const state = {
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, visualOnly: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { average: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
+  performance: { average: 0, slowFrames: 0, fastFrames: 0, targetFps: deviceProfile.fps, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
@@ -419,8 +420,9 @@ function updateReactiveEffectQuality(now) {
   perf.lastFrameAt = now;
   const fps = elapsed > 0 ? 1000 / elapsed : deviceProfile.fps;
   perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
-  const pauseBelow = Math.max(12, deviceProfile.fps * 0.55);
-  const resumeAt = Math.max(pauseBelow + 2, deviceProfile.fps * 0.65);
+  const targetFps = perf.targetFps || deviceProfile.fps;
+  const pauseBelow = Math.max(8, targetFps * 0.55);
+  const resumeAt = Math.max(pauseBelow + 2, targetFps * 0.65);
   if (!perf.effectsPaused) {
     perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
     if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
@@ -436,7 +438,7 @@ let frameErrors = 0;
 function frame(now) {
   if (!state.active) return;
   try {
-    const interval = 1000 / deviceProfile.fps;
+    const interval = 1000 / state.performance.targetFps;
     if (video.readyState >= 2 && now - state.lastFrame >= interval) {
       const started = performance.now();
       state.lastFrame = now;
@@ -453,13 +455,13 @@ function frame(now) {
         }
       } catch (e) { if (++frameErrors % 30 === 1) log(`Ciclo: ${e.message}`); }
       if (state.autoQuality) {
-        const perf = state.performance, cost = performance.now() - started;
-        perf.average = perf.average ? perf.average * 0.9 + cost * 0.1 : cost;
-        const budget = interval * 0.7;
-        perf.slowFrames = perf.average > budget ? perf.slowFrames + 1 : 0;
-        perf.fastFrames = perf.average < budget * 0.42 ? perf.fastFrames + 1 : 0;
-        if (perf.slowFrames >= 12 && state.trackingWidth > 160) { setTrackingWidth(Math.max(160, state.trackingWidth - 80)); perf.slowFrames = perf.fastFrames = 0; }
-        else if (perf.fastFrames >= 180 && state.trackingWidth < deviceProfile.maxWidth) { setTrackingWidth(Math.min(deviceProfile.maxWidth, state.trackingWidth + 80)); perf.fastFrames = 0; }
+        const perf = state.performance;
+        const next = adjustTrackingQuality(perf, performance.now() - started, interval * 0.7, state.trackingWidth, perf.targetFps, deviceProfile.maxWidth, deviceProfile.fps);
+        perf.average = next.average;
+        perf.slowFrames = next.slowFrames;
+        perf.fastFrames = next.fastFrames;
+        if (next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
+        perf.targetFps = next.targetFps;
       }
     }
     requestAnimationFrame(frame);
@@ -660,7 +662,7 @@ bindReactiveToggle('blobNetworkButton', 'networkEffect');
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();savePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
-$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
+$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.targetFps=deviceProfile.fps;state.performance.average=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);savePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);savePreferences();});
 

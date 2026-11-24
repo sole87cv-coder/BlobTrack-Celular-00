@@ -37,6 +37,13 @@ test('camera loop initializes the device profile factory before using its FPS', 
   assert.ok(profileIndex > factoryIndex && profileIndex < firstFpsUse);
 });
 
+test('automatic quality adjusts analysis resolution and FPS within device limits', () => {
+  assert.ok(app.includes("import { adjustTrackingQuality } from './core/qualityController.js';"));
+  assert.ok(app.includes('adjustTrackingQuality(perf, performance.now() - started'));
+  assert.ok(app.includes('1000 / state.performance.targetFps'));
+  assert.ok(app.includes('deviceProfile.maxWidth, deviceProfile.fps'));
+});
+
 test('viewport does not prevent user zoom', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /user-scalable\s*=\s*no/i);
