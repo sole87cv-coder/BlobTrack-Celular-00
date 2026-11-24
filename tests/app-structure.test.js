@@ -25,8 +25,10 @@ test('recording follows the mobile recording limits', () => {
   assert.ok(app.includes('hasRecordingStorageHeadroom(navigator.storage)'));
   assert.ok(app.includes('videoBitsPerSecond: deviceProfile.recordingBitrate'));
   assert.ok(app.includes('beforeunload'));
-  assert.ok(!app.includes('connectRecordingAudio'));
-  assert.ok(!app.includes('disconnectRecordingAudio'));
+  assert.ok(app.includes('audioStream: audioDestination?.stream'));
+  assert.ok(app.includes('recordingCanvasSize(canvas.width, canvas.height, deviceProfile.captureWidth)'));
+  assert.ok(app.includes('recordingOwnsFocusMode'));
+  assert.ok(app.includes('recorder.releaseResult()'));
 });
 
 test('production app uses the tested audio and session factories', () => {

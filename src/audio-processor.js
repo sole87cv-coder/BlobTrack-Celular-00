@@ -22,6 +22,16 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.muted = false;
     this.sensitivity = 1;
     this.audioEnabled = true;
+    this.rhythmEnabled = true;
+    this.rhythmClock = 0;
+    this.rhythmNextAt = 0;
+    this.rhythmActive = false;
+    this.rhythmPhase = 0;
+    this.rhythmEnvelope = 0;
+    this.rhythmFrequency = 220;
+    this.rhythmVelocity = .7;
+    this.rhythmStep = 0;
+    this.rhythmRandomState = (Math.random() * 0xffffffff) >>> 0 || 1;
     this.oscillation = .4;
     this.pitchRange = 2;
     this.key = 0;
@@ -47,6 +57,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.gain = 0;
     this.peak = 0;
     this.meterFrames = 0;
+    this.scaleDegrees = degreesForZones('live');
     this.updateFrequencies();
     this.port.onmessage = ({ data }) => {
       if (data.type === 'signals') {
@@ -80,6 +91,53 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.scaleId = selection.id;
     this.scaleDegrees = selection.degrees;
     this.baseFrequency.set(selection.frequencies);
+  }
+
+  nextRhythmRandom() {
+    let value = this.rhythmRandomState;
+    value ^= value << 13;
+    value ^= value >>> 17;
+    value ^= value << 5;
+    this.rhythmRandomState = value >>> 0 || 1;
+    return this.rhythmRandomState / 0x100000000;
+  }
+
+  scheduleRhythmicNote(signals, energy, speed, density) {
+    if (!this.rhythmEnabled || this.muted || !this.audioEnabled || this.master <= .001) {
+      this.rhythmActive = false;
+      return;
+    }
+    const blobs = Array.isArray(signals.blobs) ? signals.blobs : [];
+    let movingBlob = false;
+    for (let index = 0; index < blobs.length; index++) {
+      if (blobs[index] && Number(blobs[index].speed) > .025) { movingBlob = true; break; }
+    }
+    const active = speed > .035 || movingBlob;
+    if (!active) {
+      this.rhythmActive = false;
+      this.rhythmNextAt = this.rhythmClock + .08;
+      return;
+    }
+    const bpm = Math.min(126, Math.max(56, 62 + energy * 28 + speed * 22 + density * 14));
+    if (!this.rhythmActive) {
+      this.rhythmActive = true;
+      this.rhythmNextAt = this.rhythmClock;
+    }
+    if (this.rhythmClock + 1 / sampleRate < this.rhythmNextAt) return;
+
+    const scale = this.scaleDegrees?.length ? this.scaleDegrees : degreesForZones('live');
+    const blob = blobs.length ? blobs[Math.floor(this.nextRhythmRandom() * blobs.length)] : null;
+    const anchor = blob && Number.isFinite(blob.x) ? Math.round(Math.max(0, Math.min(1, blob.x)) * (scale.length - 1)) : Math.floor(this.nextRhythmRandom() * scale.length);
+    const nearbyStep = Math.floor(this.nextRhythmRandom() * 3) - 1;
+    const degreeIndex = (anchor + nearbyStep + scale.length) % scale.length;
+    const octave = this.nextRhythmRandom() < .16 ? -1 : this.nextRhythmRandom() > .84 ? 1 : 0;
+    const key = Number.isFinite(this.key) ? this.key : 0;
+    this.rhythmFrequency = Math.max(70, Math.min(1500, 130.8128 * 2 ** ((key + scale[degreeIndex] + octave * 12) / 12)));
+    this.rhythmVelocity = .58 + this.nextRhythmRandom() * .28 + (this.rhythmStep % 4 === 0 ? .1 : 0);
+    this.rhythmEnvelope = .48;
+    this.rhythmPhase = 0;
+    this.rhythmStep++;
+    this.rhythmNextAt = this.rhythmClock + 60 / bpm;
   }
   setPreset(name) {
     if (!PRESETS[name]) return;
@@ -220,6 +278,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
   }
 
   setSoundOptions(options) {
+    if (typeof options.rhythmEnabled === 'boolean') this.rhythmEnabled = options.rhythmEnabled;
     if (Number.isFinite(options.oscillation)) this.oscillation = Math.min(1, Math.max(0, options.oscillation));
     if (Number.isFinite(options.pitchRange)) this.pitchRange = Math.min(7, Math.max(0, options.pitchRange));
     if (Number.isFinite(options.timbre)) {
@@ -249,6 +308,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     if (!output) return true;
     const s = this.signals;
     const energy = unitAudioSignal(s.energy), density = unitAudioSignal(s.density), speed = unitAudioSignal(s.speed), ambient = unitAudioSignal(s.ambient);
+    this.scheduleRhythmicNote(s, energy, speed, density);
     const target = (this.muted || !this.audioEnabled) ? 0 : Math.min(2, Math.max(0, Number.isFinite(this.master) ? this.master : 1));
     const gainAttack = 1 - Math.exp(-1 / (sampleRate * .035));
     const gainRelease = 1 - Math.exp(-1 / (sampleRate * .12));
@@ -284,6 +344,13 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
         if (this.phase[z] >= Math.PI * 2) this.phase[z] -= Math.PI * 2;
         this.modPhase[z] += 2 * Math.PI * lfoHz * (1 + z * .045) / sampleRate;
         if (this.modPhase[z] >= Math.PI * 2) this.modPhase[z] -= Math.PI * 2;
+      }
+      if (this.rhythmEnvelope > .0005) {
+        const beat = Math.sin(this.rhythmPhase);
+        sample += beat * this.rhythmEnvelope * .15 * this.rhythmVelocity;
+        this.rhythmPhase += 2 * Math.PI * this.rhythmFrequency / sampleRate;
+        if (this.rhythmPhase >= Math.PI * 2) this.rhythmPhase -= Math.PI * 2;
+        this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .075));
       }
       const air = Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity));
       sample += air * Math.sin(this.phase[7]);
@@ -323,6 +390,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       peak = Math.max(peak, Math.abs(value));
     }
     this.peak = Math.max(this.peak * .96, peak);
+    this.rhythmClock += output.length / sampleRate;
     this.meterFrames += output.length;
     if (this.meterFrames >= sampleRate * .12) {
       this.port.postMessage({ type: 'meter', peak: this.peak, voices, cost: Math.max(0, Date.now() - processStart) });

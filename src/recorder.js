@@ -142,6 +142,7 @@ export function createRecorder({
       extension: recordingExtension(mimeType),
       reason: stopReason,
     } : null;
+    chunks = [];
     cleanup();
     setState('idle');
     const resolve = resolveStop;
@@ -317,6 +318,14 @@ export function createRecorder({
     return () => errorListeners.delete(listener);
   }
 
+  function releaseResult() {
+    if (state !== 'idle') return false;
+    lastResult = null;
+    chunks = [];
+    totalBytes = 0;
+    return true;
+  }
+
   async function dispose() {
     if (state !== 'idle') await stop('disposed');
     cleanup();
@@ -333,6 +342,7 @@ export function createRecorder({
     resume,
     onState,
     onError,
+    releaseResult,
     dispose,
   };
 }

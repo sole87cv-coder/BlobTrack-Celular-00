@@ -362,6 +362,7 @@ body.focus-mode .dock,
 body.focus-mode .stage-bottom {
   opacity:0;pointer-events:none
 }
+body.focus-mode .primary-nav { opacity:0;pointer-events:none }
 body.focus-mode .dock { visibility:hidden }
 body.focus-mode .stage-shade { opacity:0 }
 body.focus-mode .stage-pill { opacity:0 }
@@ -376,6 +377,7 @@ body.focus-mode .stage-pill { opacity:0 }
 }
 body.focus-mode .focus-hint { opacity:1 }
 body.focus-mode .focus-hint::after { content:'' }
+body.recording-active .focus-hint { display:none }
 
 /* Telas muito pequenas (iPhone SE, 320px) */
 @media (max-width:359px) {

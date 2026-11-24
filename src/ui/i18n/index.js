@@ -32,14 +32,21 @@ export function translateText(value, locale = 'pt-BR') {
     [/^Limite de tamanho · gravado (.+) · (.+) MB$/, 'maxBytes', ['duration','size']],
     [/^Memória alta · gravação encerrada em (.+)$/, 'memoryLimit', ['duration']],
     [/^Gravado · (.+) · (.+) MB · use Salvar$/, 'recordingReady', ['duration','size']],
-    [/^Gravando (.+) · (\d+)×(\d+) · sem áudio · até 5 min$/, 'recordingStart', ['format','width','height']],
+    [/^Gravando (.+) · (\d+)×(\d+) · (sem áudio|com áudio do app) · até 5 min$/, 'recordingStart', ['format','width','height','audio']],
     [/^Duração: (.+)$/, 'duration', ['duration']],
   ];
   for (const [pattern, key, fields] of dynamicMessages) {
     const match = trimmed.match(pattern);
     if (!match) continue;
     let translated = target.messages[key];
-    fields.forEach((field, index) => { translated = translated.replace(`{${field}}`, match[index + 1]); });
+    fields.forEach((field, index) => {
+      const value = field === 'audio'
+        ? (match[index + 1] === 'sem áudio' ? target.ui.audioNotIncluded : target.ui.audioIncluded)
+        : match[index + 1];
+      const placeholder = `{${field}}`;
+      if (translated.includes(placeholder)) translated = translated.replace(placeholder, value);
+      else if (field === 'audio') translated = translated.replace(/sem áudio|no audio|sin audio|sans son/, value);
+    });
     return translated;
   }
   const flatten = (object, prefix = '') => Object.entries(object || {}).flatMap(([key, item]) =>

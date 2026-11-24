@@ -31,6 +31,36 @@ test('legacy sound message still updates timbre and effects', () => {
   assert.equal(processor.effects.chorus, false);
 });
 
+test('rhythmic notes stay in the selected key and scale', () => {
+  const processor = new RegisteredProcessor();
+  const degrees = [0, 2, 3, 7, 8, 10];
+  processor.port.onmessage({ data: { type: 'scale', id: 'minor', degrees } });
+  processor.port.onmessage({ data: { type: 'sound', key: 2, rhythmEnabled: true } });
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .5, density: .3, speed: .4, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 1, x: .5, y: .5, speed: .4 }] }, master: 1, muted: false, audioEnabled: true } });
+
+  processBlock(processor);
+
+  const semitones = Math.round(12 * Math.log2(processor.rhythmFrequency / 130.8128));
+  assert.ok(degrees.includes(((semitones - 2) % 12 + 12) % 12));
+  assert.ok(processor.rhythmEnvelope > 0);
+});
+
+test('rhythmic layer can be disabled and its tempo follows blob activity', () => {
+  const makeActive = speed => {
+    const processor = new RegisteredProcessor();
+    processor.port.onmessage({ data: { type: 'sound', rhythmEnabled: true } });
+    processor.port.onmessage({ data: { type: 'signals', signals: { energy: speed, density: speed, speed, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 1, x: .5, y: .5, speed }] }, master: 1, muted: false, audioEnabled: true } });
+    processBlock(processor);
+    return processor;
+  };
+  const slow = makeActive(.1), fast = makeActive(.8);
+  assert.ok(fast.rhythmNextAt < slow.rhythmNextAt);
+
+  fast.port.onmessage({ data: { type: 'sound', rhythmEnabled: false } });
+  processBlock(fast);
+  assert.equal(fast.rhythmActive, false);
+});
+
 test('new mallet signals spawn a panned note after blob movement', () => {
   const processor = new RegisteredProcessor();
   processor.port.onmessage({ data: { type: 'preset', preset: 'easy-mallet' } });

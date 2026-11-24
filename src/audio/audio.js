@@ -119,7 +119,7 @@ export function createAudioBus({
   };
   const sameOptions = (a, b) => Boolean(a && b
     && a.oscillation === b.oscillation && a.pitchRange === b.pitchRange
-    && a.key === b.key && a.timbre === b.timbre
+    && a.key === b.key && a.timbre === b.timbre && a.rhythmEnabled === b.rhythmEnabled
     && a.soundEffects?.echo === b.soundEffects?.echo
     && a.soundEffects?.space === b.soundEffects?.space
     && a.soundEffects?.chorus === b.soundEffects?.chorus);

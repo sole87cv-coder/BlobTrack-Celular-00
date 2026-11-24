@@ -118,7 +118,7 @@ const state = {
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
-  audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0,
+  audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0, rhythmEnabled: true,
   audioEffects: { echo: false, space: false, chorus: false },
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
   timing: { camera: null, capture: null, tracking: null, analysis: null, render: null, cycle: null, bus: null, composition: null, windows: null },
@@ -157,6 +157,7 @@ if (Number.isFinite(saved.audioOscillation)) state.audioOscillation = clamp(save
 if (Number.isFinite(saved.audioPitchRange)) state.audioPitchRange = clamp(saved.audioPitchRange,0,7);
 if (Number.isFinite(saved.audioKey)) state.audioKey = clamp(saved.audioKey,0,11);
 if (Number.isFinite(saved.audioTimbre)) state.audioTimbre = clamp(saved.audioTimbre,0,2);
+if (typeof saved.rhythmEnabled === 'boolean') state.rhythmEnabled = saved.rhythmEnabled;
 if (saved.audioEffects && typeof saved.audioEffects === 'object') {
   for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
 }
@@ -208,11 +209,11 @@ function showCameraIssue(error) {
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let soundSaveTimer = null;
 function saveSoundPreferences() { clearTimeout(soundSaveTimer); soundSaveTimer = setTimeout(savePreferences, 300); }
-function soundOptions() { return {oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,soundEffects:state.audioEffects}; }
+function soundOptions() { return {oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,soundEffects:state.audioEffects}; }
 function postAudioScale(scale) { state.worklet?.port.postMessage({type:'scale',id:scale.id,degrees:scale.degrees}); }
 function sendAudioOptions(debounce = false) { if(debounce) audioBus.scheduleOptions(soundOptions(),80); else audioBus.sendOptions(soundOptions()); if(!debounce && audioScaleRouter.hasStoredChoice()) postAudioScale(audioScaleRouter.getScale()); }
 const scalesUi = attachScalesUI({ root:$('audioScales'), router:audioScaleRouter, onSelect:postAudioScale, getAudioContext:()=>state.audio, getKey:()=>state.audioKey, isAudible:()=>state.audioEnabled&&!state.muted&&state.reacting&&state.master>0 });
@@ -227,7 +228,7 @@ const audioService = createAudio({
     $('audioReadout').textContent = 'WebAudio · ' + fmt(peak, 3) + ' pico · ' + voices + ' vozes · ' + fmt(cost, 2) + ' ms';
   },
 });
-const { makeAudio, ensureAudioAlive, watchAudio, handleAudioInterruption } = audioService;
+const { makeAudio, connectRecordingAudio, disconnectRecordingAudio, ensureAudioAlive, watchAudio, handleAudioInterruption } = audioService;
 
 const render = createRender({
   state,
@@ -280,6 +281,7 @@ $('audioTimbre').value=String(state.audioTimbre);
 toggle($('audioEchoButton'),state.audioEffects.echo);
 toggle($('audioSpaceButton'),state.audioEffects.space);
 toggle($('audioChorusButton'),state.audioEffects.chorus);
+toggle($('audioRhythmButton'),state.rhythmEnabled);
 toggle($('blobWindowButton'),state.videoWindows);
 toggle($('trailEffectButton'),state.trailEffect);
 toggle($('waveEffectButton'),state.waveEffect);
@@ -610,6 +612,12 @@ function updateRecordingControls(snapshot) {
   const previousState = recordingSnapshot.state;
   Object.assign(recordingSnapshot, snapshot);
   if (previousState !== 'idle' && snapshot.state === 'idle') {
+    document.body.classList.remove('recording-active');
+    disconnectRecordingAudio();
+    if (recordingOwnsFocusMode) {
+      recordingOwnsFocusMode = false;
+      setFocusMode(false);
+    }
     if (snapshot.result) {
       pendingRecording = snapshot.result;
       const duration = formatRecordingTime(snapshot.result.durationMs);
@@ -683,7 +691,8 @@ async function savePendingRecording() {
     });
     if (method === 'shared' || method === 'saved' || method === 'downloaded') {
       pendingRecording = null;
-      if (result.url) setTimeout(() => URL.revokeObjectURL(result.url), 30_000);
+      if (result.url) URL.revokeObjectURL(result.url);
+      recorder.releaseResult();
       if (method === 'shared') showToast('Gravação compartilhada');
       else if (method === 'saved') showToast('Arquivo de gravação salvo');
       else showToast('Download da gravação iniciado');
@@ -700,19 +709,39 @@ async function startRecording() {
   if (recordingSnapshot.state === 'stopping') { showToast('Gravação já está sendo finalizada'); return; }
   if (!recorder.isSupported()) { showToast('Gravação não suportada neste navegador'); return; }
   if (!recordingContext) { showToast('Composição de gravação indisponível neste navegador'); return; }
-  if (!await hasRecordingStorageHeadroom(navigator.storage)) { showToast('Espaço livre abaixo de 100 MB; libere espaço antes de gravar.'); return; }
+  navigation.navigate('stage');
+  if (!focusMode) {
+    recordingOwnsFocusMode = true;
+    setFocusMode(true);
+  }
+  document.body.classList.add('recording-active');
+  if (!await hasRecordingStorageHeadroom(navigator.storage)) {
+    document.body.classList.remove('recording-active');
+    if (recordingOwnsFocusMode) { recordingOwnsFocusMode = false; setFocusMode(false); }
+    showToast('Espaço livre abaixo de 100 MB; libere espaço antes de gravar.');
+    return;
+  }
   resize();
-  if (!canvas.width || !canvas.height) { showToast('Palco indisponível para gravação'); return; }
-  const size = recordingCanvasSize(canvas.width, canvas.height);
+  if (!canvas.width || !canvas.height) {
+    document.body.classList.remove('recording-active');
+    if (recordingOwnsFocusMode) { recordingOwnsFocusMode = false; setFocusMode(false); }
+    showToast('Palco indisponível para gravação');
+    return;
+  }
+  const size = recordingCanvasSize(canvas.width, canvas.height, deviceProfile.captureWidth);
   recordingCanvas.width = size.width;
   recordingCanvas.height = size.height;
   render.drawRecordingComposite(true);
+  const audioDestination = connectRecordingAudio();
   try {
-    const recordInfo = recorder.start({ videoBitsPerSecond: deviceProfile.recordingBitrate });
+    const recordInfo = recorder.start({ audioStream: audioDestination?.stream, videoBitsPerSecond: deviceProfile.recordingBitrate });
     releasePendingRecording();
     updateRecordingControls(recordingSnapshot);
-    showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · sem áudio · até 5 min`);
+    showToast(`Gravando ${recordInfo.extension.toUpperCase()} · ${recordingCanvas.width}×${recordingCanvas.height} · ${recordInfo.includesAudio ? 'com áudio do app' : 'sem áudio'} · até 5 min`);
   } catch (error) {
+    disconnectRecordingAudio(audioDestination);
+    document.body.classList.remove('recording-active');
+    if (recordingOwnsFocusMode) { recordingOwnsFocusMode = false; setFocusMode(false); }
     log(`Gravação: ${error.message}`);
     showToast(`Não foi possível iniciar a gravação: ${error.message}`);
   }
@@ -839,6 +868,12 @@ $('audioTimbre').addEventListener('change',e=>{
   state.audioTimbre=clamp(Number(e.target.value),0,2);
   sendAudioOptions(true);saveSoundPreferences();
 });
+$('audioRhythmButton').addEventListener('click',event=>{
+  state.rhythmEnabled=!state.rhythmEnabled;
+  toggle(event.currentTarget,state.rhythmEnabled);
+  sendAudioOptions();
+  saveSoundPreferences();
+});
 function bindAudioEffect(id, key) {
   $(id).addEventListener('click',event=>{
     state.audioEffects[key]=!state.audioEffects[key];
@@ -910,6 +945,7 @@ $('shareButton').addEventListener('click',shareStage);
 
 /* Um único controle liga/desliga o modo palco; duplo toque no palco também alterna. */
 let focusMode=false;
+let recordingOwnsFocusMode=false;
 let overlayBeforeFocusMode=state.overlay;
 function setFocusMode(on){
   focusMode=on;
@@ -923,7 +959,9 @@ function setFocusMode(on){
   if(on){
     overlayBeforeFocusMode=state.overlay;
     if(!isFullscreen())enterFullscreen().catch(()=>{});
-    state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
+    if (!recordingOwnsFocusMode) {
+      state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
+    }
   } else {
     if(isFullscreen())exitFullscreen().catch(()=>{});
     state.overlay=overlayBeforeFocusMode;
