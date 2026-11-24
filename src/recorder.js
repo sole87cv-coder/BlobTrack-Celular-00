@@ -1,9 +1,11 @@
 const MIME_TYPES = [
+  'video/mp4;codecs=avc1.42E01E',   // H.264 Baseline · mais compatível com Android
+  'video/mp4;codecs=avc1.42001E',   // H.264 Main
+  'video/mp4;codecs=avc1.64001E',   // H.264 High
+  'video/mp4',                       // MP4 genérico
   'video/webm;codecs=vp9',
   'video/webm;codecs=vp8',
   'video/webm',
-  'video/mp4;codecs=avc1.42E01E',
-  'video/mp4',
 ];
 
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000;
