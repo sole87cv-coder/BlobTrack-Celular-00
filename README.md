@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v55`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v55`; a próxima versão sobe para `v56`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -105,7 +105,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v55` → `v56`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v56` → `v57`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -119,17 +119,16 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
 | `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
 
-#### Exemplo prático: ajustar o Pontilhado (halftone)
+#### Exemplo prático: ajustar o Pontilhado (pontos nas formas)
 
-Este é um bom primeiro trabalho porque toca só nas 🟢. Em `src/render/render.js` você encontra:
+O Pontilhado não pinta mais o quadro inteiro. A base fica limpa e os pontos nascem **dentro da máscara dos blobs**, no overlay. Em `src/render/render.js` você encontra:
 
 ```js
-const HALFTONE_MAX_WIDTH = 320, HALFTONE_MAX_HEIGHT = 240;
-const HALFTONE_MAX_PIXELS = HALFTONE_MAX_WIDTH * HALFTONE_MAX_HEIGHT;
-const HALFTONE_CELL = 10;
+const DOT_CELL = 14;
+const DOT_RADIUS_SQ = 0.55;
 ```
 
-A imagem **vira pontos**: cada célula vira um círculo branco cujo raio cresce com a luminosidade. Não há pontos desenhados por cima da imagem. No WebGL, o quadro original vai direto para a textura e o branch `uEffect==2` do shader em `src/app.js` desenha círculos de `14 px`; no Canvas 2D, um mini-canvas reaproveitado faz o mesmo serviço com `HALFTONE_CELL`. Não há `putImageData` por quadro. Para pontos maiores, aumente a célula; para mais finos, diminua. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+`DOT_CELL` é a célula medida no palco; o código converte para pixels de rastreio usando o mesmo crop da máscara. Para pontos maiores, aumente a célula; para mais finos, diminua. `DOT_RADIUS_SQ` controla o diâmetro do ponto dentro da célula. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
 #### Reaproveitamento de buffers (Pacote 1)
 
@@ -137,13 +136,13 @@ Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32A
 
 Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo dos efeitos no canvas de overlay) e `tComposition` (tempo total de montar o overlay). As chaves antigas (`fps`, `tAnalysis`, `tRender`, `tCapture`, `blobsAtivos`, `idsNovosUltimos60s`, `recordingState`, `effectsPaused`) continuam iguais. Abra o console do navegador e rode `window.__blobtrackMetrics` para comparar.
 
-#### Pontilhado em cena escura (cache v55)
+#### Pontilhado de formas e janelas vivas (cache v56)
 
-Antes, o raio do ponto era calculado direto da luminosidade: `mix(0.10, 0.62, luma * fator)`. Num quarto escuro ou com a câmera do celular subexposta, a luminosidade ficava perto de zero e os pontos encolhiam a quase nada — o palco parecia **tela preta**, como se o botão **Pontilhado** não funcionasse.
+Até a `v55`, o Pontilhado era um halftone da luminosidade do quadro inteiro: toda célula ganhava um ponto, inclusive no fundo. Isso enchia a tela e, com câmera subexposta, o palco podia parecer preto. Agora o branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam só a base limpa; os pontos brancos são gerados no laço que já empacota a máscara (`drawMaskOverlay`), sem novo `getImageData` e sem tocar no contrato congelado.
 
-Agora o raio tem um piso (`0.16`) e usa uma raiz quadrada suave da luminosidade (`pow(l, 0.65)`), no shader WebGL e no fallback 2D. O ponto continua crescendo com a luz, mas nunca desaparece. Com uma câmera falsa escura (luma `22/255`), a medição headless passou de **5,5%** de pixels brancos e centro `[5,5,5]` para **19,7%** e centro `[253,253,253]`; no fallback 2D ficou em **15,3%**. Isso é navegador headless, não aparelho físico: confirme no celular antes de afirmar ganho.
+Efeito colateral desejado: **Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura voltam a funcionar com Pontilhado — as janelas são compostas antes dos pontos. Os três rótulos de vídeo também passaram a ter tradução real em pt-BR, en, es e fr.
 
-🟡 Mexa na fórmula só se medir: `src/app.js` (shader `uEffect==2`) e `src/render/render.js` (`getHalftoneFrame`) precisam mudar **juntos**, senão WebGL e Canvas 2D mostram pontos diferentes. O teste `halftone continua visível com câmera escura` protege o fallback.
+🟡 Mexa só com medição: `DOT_CELL`/`DOT_RADIUS_SQ` em `src/render/render.js` definem a grade; a base limpa vive em `src/app.js` (`uEffect==2`) e no fallback. O teste `Pontilhado desenha pontos somente dentro da máscara dos blobs` protege o comportamento. Em navegador headless com câmera falsa, o `#visual` ficou com **0%** de branco e os pontos apareceram só no `#overlay`; isso não é medição em aparelho físico.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 

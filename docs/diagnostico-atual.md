@@ -55,7 +55,7 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 - **Pacote 2:** compartilhar o readback de `analyze`, usar `texSubImage2D` e marcar `dirty` da máscara. São caminhos de CPU, mas tocam no contrato congelado: só com medição e aprovação.
 - **Pacote 3:** medir em aparelho real FPS, bateria, tamanho do halftone, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
-- Confirmar no aparelho o Pontilhado em cena escura (`v55` mostrou 19,7% de branco no headless, contra 5,5% antes) e o overlay ocioso.
+- Confirmar no aparelho o Pontilhado de formas (`v56`): base limpa, pontos só nos blobs e janelas de vídeo ativas. O comportamento anterior (`v55`, 19,7% de branco no headless) foi substituído; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
 
@@ -82,4 +82,15 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-Esta rodada alterou **documentação, atalhos de desenvolvimento e a localização de quatro relatórios históricos**, não o app em execução. Por isso o cache permanece `v55` e não há deploy pendente. Se arquivos de runtime forem alterados depois, aí sim: subir `v56`, atualizar README e testes, e publicar.
+A rodada de documentação foi publicada no commit `525de4d`, sem deploy. A mudança de runtime do Pontilhado (`v56`) ainda não foi publicada: quando for, exige commit, push e deploy para atualizar o service worker. Até lá, `https://blobtrak.vercel.app` continua servindo `v55`.
+
+## 7. Pontilhado de formas (cache v56)
+
+Opção A aprovada pelo V1su4rt e implementada:
+
+- O branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam só base limpa. O halftone de quadro inteiro (`getHalftoneFrame`) foi removido.
+- Os pontos são gerados no laço que já empacota a máscara em `drawMaskOverlay` (`DOT_CELL = 14`, `DOT_RADIUS_SQ = 0.55`), convertendo a célula do palco para pixels de rastreio. Sem novo `getImageData` e sem nova textura.
+- O guard `state.effect === 'dither'` saiu de `drawRawVideoWindows`. Janela viva, Vídeo original, Inverter vídeo e mistura voltam a atuar com Pontilhado.
+- Os três rótulos de vídeo ganharam chaves nos quatro idiomas; antes ficavam presos em pt-BR.
+- Contrato congelado intacto: `src/domain/blobTrackerCore.js` e a assinatura de `src/blob-tracker.js` não foram tocados.
+- Verificação: `npm test` 222/222, `node --check` limpo, `git diff --check` limpo. No headless em `http://localhost:8000`, `#visual` ficou com 0% de branco, `#overlay` mostrou pontos só nas formas e não houve erro de console. CPU, FPS, bateria e aparência no aparelho físico: **não medidos**.

@@ -129,17 +129,33 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(out1[1] < out2[1]);
 });
 
-test('dither não desenha janelas que cubram o dither do quadro inteiro', () => {
-  const state = makeState({ effect: 'dither' });
-  const render = createRender({ state, video: { videoWidth: 640, videoHeight: 360 } });
-  const calls = [];
-  const c = {
-    save() { calls.push('save'); },
-    restore() {}, beginPath() {}, rect() {}, clip() {},
-    translate() {}, scale() {}, drawImage() {}, fillRect() {},
-  };
-  render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, state.video);
-  assert.equal(calls.length, 0);
+test('Pontilhado mantém Janela Viva, Vídeo original e o filtro das janelas', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
+  function run(originalVideoWindows) {
+    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows, invertBlend: false, videoBlend: 0 });
+    const render = createRender({
+      state, video,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    let images = 0;
+    const filters = [];
+    const c = {
+      save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {}, drawImage() { images++; },
+    };
+    Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { filters.push(value); } });
+    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
+    return { images, filters };
+  }
+  const raw = run(true);
+  assert.equal(raw.images, 1);
+  assert.deepEqual(raw.filters, []);
+  const filtered = run(false);
+  assert.equal(filtered.images, 1);
+  assert.ok(filtered.filters.includes('grayscale(1) contrast(2)'));
 });
 
 test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
@@ -187,115 +203,88 @@ test('ondas reaproveitam os pontos de view já calculados para o olho', () => {
   assert.ok(arcs.every(([x, y]) => Math.abs(x - 80) < 1e-6 && Math.abs(y - 120) < 1e-6));
 });
 
-test('fallback de dither desenha círculos de halftone e reaproveita o canvas', () => {
-  const previousDocument = globalThis.document;
-  let canvasesCreated = 0;
-  const arcs = [];
-  let fills = 0;
-  const offscreenContext = {
+test('fallback do Pontilhado pinta base preta, sem halftone no quadro inteiro', () => {
+  const state = makeState({ effect: 'dither', timing: {} });
+  const fills = [];
+  const c = {
+    filter: '',
     fillStyle: '',
-    drawImage(...args) { this.lastDraw = args; },
-    getImageData(x, y, width, height) {
-      const data = new Uint8ClampedArray(width * height * 4).fill(200);
-      for (let i = 3; i < data.length; i += 4) data[i] = 255;
-      return { data, width, height };
-    },
-    fillRect(...args) { this.lastFillRect = args; },
-    beginPath() {},
-    arc(...args) { arcs.push(args); },
-    fill() { fills++; },
-    putImageData() { throw new Error('halftone não deve usar putImageData'); },
+    save() {}, restore() {},
+    fillRect(...args) { fills.push(args); },
+    drawImage() { throw new Error('base do Pontilhado não deve desenhar o quadro inteiro'); },
+    beginPath() {}, rect() {}, clip() {}, translate() {}, scale() {},
   };
-  const halftoneCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
-  globalThis.document = {
-    createElement(tag) { assert.equal(tag, 'canvas'); canvasesCreated++; return halftoneCanvas; },
-  };
-  try {
-    const state = makeState({ effect: 'dither', timing: {} });
-    const video = { videoWidth: 640, videoHeight: 360 };
-    const draws = [];
-    const c = {
-      filter: '',
-      save() {}, restore() {},
-      beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {},
-      drawImage(...args) { draws.push(args); },
-    };
-    const render = createRender({
-      state, video,
-      canvas: { width: 320, height: 240 },
-      fallbackContext: c,
-      cropRect: new Float32Array(4),
-      mapPointA: new Float32Array(2),
-      mapPointB: new Float32Array(2),
-      gridPoint: new Float32Array(2),
-    });
+  const render = createRender({
+    state,
+    video: { videoWidth: 640, videoHeight: 360 },
+    canvas: { width: 320, height: 240 },
+    fallbackContext: c,
+    cropRect: new Float32Array(4),
+    mapPointA: new Float32Array(2),
+    mapPointB: new Float32Array(2),
+    gridPoint: new Float32Array(2),
+  });
 
-    render.renderFrame({ dither: 0.1 }, video);
-    render.renderFrame({ dither: 0.1 }, video);
+  render.renderFrame({}, { videoWidth: 640, videoHeight: 360 });
+  render.renderFrame({}, { videoWidth: 640, videoHeight: 360 });
 
-    assert.equal(canvasesCreated, 1);
-    assert.equal(halftoneCanvas.width, 320);
-    assert.equal(halftoneCanvas.height, 180);
-    assert.deepEqual(offscreenContext.lastDraw, [video, 0, 0, 640, 360, 0, 0, 320, 180]);
-    assert.deepEqual(offscreenContext.lastFillRect, [0, 0, 320, 180]);
-    assert.equal(arcs.length, 2 * 32 * 18);
-    assert.equal(fills, arcs.length);
-    assert.ok(arcs.every(([, , radius]) => radius > 0 && radius <= 6.2));
-    assert.equal(draws.length, 2);
-    assert.deepEqual(draws[0], [halftoneCanvas, 40, 0, 240, 180, 0, 0, 320, 240]);
-    assert.deepEqual(draws[1], draws[0]);
-  } finally {
-    globalThis.document = previousDocument;
-  }
+  assert.deepEqual(fills, [[0, 0, 320, 240], [0, 0, 320, 240]]);
+  assert.equal(c.filter, 'none');
 });
 
-test('halftone continua visível com câmera escura', () => {
-  const previousDocument = globalThis.document;
-  const arcs = [];
-  const offscreenContext = {
-    fillStyle: '',
-    drawImage() {},
-    fillRect() {},
-    getImageData(x, y, width, height) {
-      // luma 22/255: cena escura de celular, sem o ganho de gama virava quase preto.
-      const data = new Uint8ClampedArray(width * height * 4);
-      for (let i = 0; i < data.length; i += 4) {
-        data[i] = 22; data[i + 1] = 22; data[i + 2] = 22; data[i + 3] = 255;
+test('Pontilhado desenha pontos somente dentro da máscara dos blobs', () => {
+  const width = 40, height = 24;
+  const mask = new Uint8Array(width * height);
+  for (let y = 10; y < 12; y++) {
+    for (let x = 10; x < 12; x++) mask[y * width + x] = 1;
+  }
+  let image = null;
+  let puts = 0;
+  const maskCanvas = { width: 0, height: 0 };
+  const maskContext = {
+    createImageData(w, h) {
+      image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
+      return image;
+    },
+    putImageData() { puts++; },
+  };
+  const state = makeState({ effect: 'dither', timing: {} });
+  const render = createRender({
+    state,
+    overlayContext: {
+      clearRect() {}, save() {}, restore() {}, scale() {}, beginPath() {},
+      rect() {}, clip() {}, translate() {}, drawImage() {}, globalAlpha: 1,
+    },
+    overlayCanvas: { width: 320, height: 240 },
+    stageViewport: { width: 320, height: 240 },
+    video: { videoWidth: 640, videoHeight: 360 },
+    maskCanvas, maskContext, maskImage: null, maskView: null,
+    cropRect: new Float32Array(4),
+    mapPointA: new Float32Array(2),
+    mapPointB: new Float32Array(2),
+  });
+
+  render.drawMaskOverlay({ blobs: [], width, height, mask }, { videoWidth: 640, videoHeight: 360 }, {});
+
+  assert.equal(maskCanvas.width, width);
+  assert.equal(puts, 1);
+  const packed = new Uint32Array(image.data.buffer);
+  let inside = 0, outside = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const value = packed[y * width + x];
+      if (mask[y * width + x]) {
+        if (value === 0xFFFFFFFF) inside++;
+      } else if (value !== 0) {
+        outside++;
       }
-      return { data, width, height };
-    },
-    beginPath() {},
-    arc(...args) { arcs.push(args); },
-    fill() {},
-  };
-  const halftoneCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
-  globalThis.document = { createElement() { return halftoneCanvas; } };
-  try {
-    const state = makeState({ effect: 'dither', timing: {} });
-    const render = createRender({
-      state,
-      video: { videoWidth: 960, videoHeight: 540 },
-      canvas: { width: 320, height: 240 },
-      fallbackContext: {
-        filter: '', save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
-        translate() {}, scale() {}, drawImage() {},
-      },
-      cropRect: new Float32Array(4),
-      mapPointA: new Float32Array(2),
-      mapPointB: new Float32Array(2),
-      gridPoint: new Float32Array(2),
-    });
-    render.renderFrame({}, { videoWidth: 960, videoHeight: 540 });
-    assert.ok(arcs.length > 0);
-    assert.ok(arcs.every(([, , radius]) => radius >= 1.6 && radius <= 6.2));
-    assert.ok(arcs.some(([, , radius]) => radius >= 2));
-  } finally {
-    globalThis.document = previousDocument;
+    }
   }
+  assert.ok(inside > 0 && inside <= 4, `pontos dentro do blob: ${inside}`);
+  assert.equal(outside, 0);
 });
 
-test('WebGL usa o shader de halftone com o programa e textura compartilhados', () => {
+test('WebGL mantém uEffect 2 para a base limpa do Pontilhado', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
     'uImageAspect', 'uViewportAspect', 'uMirror', 'uFlip', 'uFit',

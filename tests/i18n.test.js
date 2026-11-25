@@ -26,6 +26,9 @@ test('getStrings seleciona o idioma e usa pt-BR como fallback', () => {
 test('texto da interface traduz entre idiomas sem alterar a marca pública', () => {
   assert.equal(translateText('Palco', 'en'), 'Stage');
   assert.equal(translateText('Distâncias', 'fr'), 'Distances');
+  assert.equal(translateText('Vídeo original', 'en'), 'Original video');
+  assert.equal(translateText('Inverter vídeo', 'fr'), 'Inverser la vidéo');
+  assert.equal(translateText('Mistura vídeo + efeito', 'es'), 'Mezcla vídeo + efecto');
   assert.equal(translateText('@V1su4rt', 'en'), '@V1su4rt');
   assert.equal(translateText('@V1su4rt', 'es'), '@V1su4rt');
 });

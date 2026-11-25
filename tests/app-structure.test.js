@@ -23,23 +23,23 @@ test('binary mask renderer receives the live mask context', () => {
   assert.ok(!app.includes('maskContext: null'));
 });
 
-test('Pontilhado é halftone no quadro inteiro, com shader WebGL e fallback 2D', async () => {
+test('Pontilhado desenha só as formas: base limpa e pontos na máscara', async () => {
   assert.ok(!app.includes('bayer8'));
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
-  // Cena escura não pode virar tela preta: o raio tem piso e ganho de gama.
-  assert.ok(app.includes('mix(0.16,0.62,clamp(pow(l,0.65)*(0.9+t*0.35),0.0,1.0))'));
-  assert.ok(!app.includes('mix(0.10,0.62'));
+  assert.ok(app.includes('else if(uEffect==2){rgb=vec3(0.0);}'));
+  assert.ok(!app.includes('mix(0.16,0.62'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const HALFTONE_CELL = 10;'));
-  assert.ok(render.includes('Math.pow(luma, 0.65) * (0.9 + t * 0.35)'));
-  assert.ok(!render.includes('0.52 * clamp(luma * factor'));
-  assert.ok(render.includes('getHalftoneFrame(source, applied)'));
+  assert.ok(render.includes('const DOT_CELL = 14;'));
+  assert.ok(render.includes('DOT_RADIUS_SQ'));
+  assert.ok(render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
+  assert.ok(!render.includes('getHalftoneFrame'));
+  assert.ok(!render.includes('HALFTONE_MAX_PIXELS'));
   assert.ok(render.includes("uniforms.uEffect, state.effect === 'dither' ? 2 : 3"));
-  assert.ok(render.includes("state.effect === 'dither') return;"));
+  assert.ok(!render.includes("state.effect === 'dither') return;"));
+  assert.ok(render.includes("const dotted = state.effect === 'dither';"));
   assert.ok(!render.includes('getDitherPattern'));
   assert.ok(!render.includes('diffuseFloydSteinberg'));
-  assert.ok(!render.includes("grayscale(1) contrast(24)"));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
 });

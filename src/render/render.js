@@ -1,9 +1,8 @@
 import { clamp } from '../core/utils.js';
 
-const HALFTONE_MAX_WIDTH = 320, HALFTONE_MAX_HEIGHT = 240;
-const HALFTONE_MAX_PIXELS = HALFTONE_MAX_WIDTH * HALFTONE_MAX_HEIGHT;
-const HALFTONE_CELL = 10;
-const HALFTONE_TAU = Math.PI * 2;
+// Pontilhado de formas: a célula é medida no palco e convertida para pixels de rastreio.
+const DOT_CELL = 14;
+const DOT_RADIUS_SQ = 0.55; // raio de 0,74 × meia-célula: ponto visível mesmo com máscara pequena.
 
 export function createRender({
   state,
@@ -53,65 +52,9 @@ export function createRender({
   const distancePairSquared = new Float64Array(distancePairCapacity);
   const distancePairUsed = new Uint8Array(distancePairCapacity);
   const distanceDegree = new Uint8Array(TRAIL_SLOTS);
-  let halftoneCanvas = null;
-  let halftoneContext2d = null;
-  let halftoneWarned = false;
+  const maskCropRect = new Float32Array(4);
   let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
   let overlayDirty = false;
-
-  // Fallback 2D do Pontilhado: cada célula vira um círculo branco cujo raio segue a luma.
-  // No caminho WebGL o mesmo efeito vive no shader; aqui não há putImageData por quadro.
-  function getHalftoneFrame(source, applied = {}) {
-    const srcWidth = source?.videoWidth || source?.width || 0;
-    const srcHeight = source?.videoHeight || source?.height || 0;
-    if (!srcWidth || !srcHeight || typeof document === 'undefined') return source;
-    try {
-      if (!halftoneCanvas) {
-        halftoneCanvas = document.createElement('canvas');
-        halftoneContext2d = halftoneCanvas.getContext('2d', { willReadFrequently: true, alpha: false });
-        if (!halftoneContext2d) return source;
-      }
-      const scale = Math.min(
-        1,
-        HALFTONE_MAX_WIDTH / srcWidth,
-        HALFTONE_MAX_HEIGHT / srcHeight,
-        Math.sqrt(HALFTONE_MAX_PIXELS / (srcWidth * srcHeight))
-      );
-      const width = Math.max(1, Math.round(srcWidth * scale));
-      const height = Math.max(1, Math.round(srcHeight * scale));
-      if (halftoneCanvas.width !== width || halftoneCanvas.height !== height) {
-        halftoneCanvas.width = width;
-        halftoneCanvas.height = height;
-      }
-      halftoneContext2d.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
-      const image = halftoneContext2d.getImageData(0, 0, width, height);
-      const data = image.data;
-      halftoneContext2d.fillStyle = '#000';
-      halftoneContext2d.fillRect(0, 0, width, height);
-      halftoneContext2d.fillStyle = '#fff';
-      const t = clamp(0.5 + (applied.threshold || 0) + (state.bias || 0) * 0.14, 0, 1);
-      const half = HALFTONE_CELL / 2;
-      for (let y = 0; y < height; y += HALFTONE_CELL) {
-        for (let x = 0; x < width; x += HALFTONE_CELL) {
-          const sx = Math.min(width - 1, x + half);
-          const sy = Math.min(height - 1, y + half);
-          const i = (sy * width + sx) * 4;
-          const luma = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) / 65536;
-          const radius = HALFTONE_CELL * (0.16 + 0.46 * clamp(Math.pow(luma, 0.65) * (0.9 + t * 0.35), 0, 1));
-          halftoneContext2d.beginPath();
-          halftoneContext2d.arc(x + half, y + half, radius, 0, HALFTONE_TAU);
-          halftoneContext2d.fill();
-        }
-      }
-      return halftoneCanvas;
-    } catch (e) {
-      if (!halftoneWarned && typeof log === 'function') {
-        log(`Halftone indisponível: ${e.message}`);
-        halftoneWarned = true;
-      }
-      return source;
-    }
-  }
 
   // ---------- geometria pura ----------
 
@@ -456,7 +399,7 @@ export function createRender({
   }
 
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}) {
-    if (!source?.videoWidth || !blobs.length || state.effect === 'dither') return;
+    if (!source?.videoWidth || !blobs.length) return;
     c.save();
     const effectFilter =
       state.effect === 'invert' ? 'invert(1)'
@@ -529,42 +472,50 @@ export function createRender({
     const useFallback = !gl || !glProgram || ((typeof forceFallback === 'function' && forceFallback()) && fallbackContext);
     if (useFallback) {
       if (fallbackContext) {
-        const ditherSource = state.effect === 'dither' ? getHalftoneFrame(source, applied) : source;
-        const frameWidth = ditherSource.videoWidth || ditherSource.width;
-        const frameHeight = ditherSource.videoHeight || ditherSource.height;
-        fallbackContext.save();
-        fallbackContext.filter = 'none'; // invert/threshold vivem nas janelas; o halftone já vem no quadro
-        const eyes = state.gearVr ? 2 : 1;
-        const eyeWidth = canvas.width / eyes;
-        for (let eye = 0; eye < eyes; eye++) {
-          const x = Math.floor(eye * eyeWidth);
-          const width = Math.ceil((eye + 1) * eyeWidth) - x;
+        if (state.effect === 'dither') {
+          // Base limpa: os pontos agora vivem na máscara do overlay, não no quadro inteiro.
           fallbackContext.save();
-          fallbackContext.beginPath();
-          fallbackContext.rect(x, 0, width, canvas.height);
-          fallbackContext.clip();
-          const mirrorX = (state.camera === 'user') !== state.flip;
-          fallbackContext.translate(x + (mirrorX ? width : 0), 0);
-          fallbackContext.scale(mirrorX ? -1 : 1, 1);
-          if (state.gearVr) {
-            drawContainedSource(fallbackContext, ditherSource, width, canvas.height);
-          } else {
-            calculateCoverCrop(frameWidth, frameHeight, width, canvas.height, cropRect);
-            fallbackContext.drawImage(
-              ditherSource,
-              cropRect[0],
-              cropRect[1],
-              cropRect[2],
-              cropRect[3],
-              0,
-              0,
-              width,
-              canvas.height
-            );
+          fallbackContext.filter = 'none';
+          fallbackContext.fillStyle = '#000';
+          fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
+          fallbackContext.restore();
+        } else {
+          const frameWidth = source.videoWidth || source.width;
+          const frameHeight = source.videoHeight || source.height;
+          fallbackContext.save();
+          fallbackContext.filter = 'none'; // invert/threshold vivem nas janelas.
+          const eyes = state.gearVr ? 2 : 1;
+          const eyeWidth = canvas.width / eyes;
+          for (let eye = 0; eye < eyes; eye++) {
+            const x = Math.floor(eye * eyeWidth);
+            const width = Math.ceil((eye + 1) * eyeWidth) - x;
+            fallbackContext.save();
+            fallbackContext.beginPath();
+            fallbackContext.rect(x, 0, width, canvas.height);
+            fallbackContext.clip();
+            const mirrorX = (state.camera === 'user') !== state.flip;
+            fallbackContext.translate(x + (mirrorX ? width : 0), 0);
+            fallbackContext.scale(mirrorX ? -1 : 1, 1);
+            if (state.gearVr) {
+              drawContainedSource(fallbackContext, source, width, canvas.height);
+            } else {
+              calculateCoverCrop(frameWidth, frameHeight, width, canvas.height, cropRect);
+              fallbackContext.drawImage(
+                source,
+                cropRect[0],
+                cropRect[1],
+                cropRect[2],
+                cropRect[3],
+                0,
+                0,
+                width,
+                canvas.height
+              );
+            }
+            fallbackContext.restore();
           }
           fallbackContext.restore();
         }
-        fallbackContext.restore();
       }
       state.timing.camera = performance.now() - t0;
       state.timing.cycle = performance.now() - t0;
@@ -616,7 +567,8 @@ export function createRender({
     // Nada a pintar: só limpa se o quadro anterior deixou algo no overlay.
     const reactive = !state.performance.effectsPaused
       && (state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry);
-    const needsDrawing = state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
+    const dotted = state.effect === 'dither';
+    const needsDrawing = dotted || state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
     if (!needsDrawing) {
       if (overlayDirty) {
         c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -640,7 +592,7 @@ export function createRender({
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
-    if (state.showMask) {
+    if (state.showMask || dotted) {
       if (maskCanvas.width !== result.width || maskCanvas.height !== result.height) {
         maskCanvas.width = result.width;
         maskCanvas.height = result.height;
@@ -650,8 +602,33 @@ export function createRender({
       const image = maskImage;
       const mask = result.mask;
       const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
-      const ON = 0xFFFFFFFF, OFF = 0xFF000000;
-      for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
+      const ON = 0xFFFFFFFF;
+      if (dotted) {
+        // A célula do palco vira célula do rastreio usando o mesmo crop da máscara.
+        if (state.gearVr && source.videoWidth && source.videoHeight) {
+          calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, maskCropRect);
+        } else {
+          calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, maskCropRect);
+        }
+        const cellW = Math.max(2, DOT_CELL * maskCropRect[2] / viewWidth);
+        const cellH = Math.max(2, DOT_CELL * maskCropRect[3] / viewHeight);
+        const halfW = cellW * .5;
+        for (let y = 0; y < result.height; y++) {
+          const cy = (Math.floor(y / cellH) + .5) * cellH;
+          const dy = (y + .5 - cy) / (cellH * .5);
+          const dy2 = dy * dy;
+          for (let x = 0; x < result.width; x++) {
+            const i = y * result.width + x;
+            if (!mask[i]) { packed[i] = 0; continue; }
+            const cx = (Math.floor(x / cellW) + .5) * cellW;
+            const dx = (x + .5 - cx) / halfW;
+            packed[i] = (dx * dx + dy2 <= DOT_RADIUS_SQ) ? ON : 0;
+          }
+        }
+      } else {
+        const OFF = 0xFF000000;
+        for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
+      }
       maskContext.putImageData(image, 0, 0);
     }
     let windowCost = 0, overlayCost = 0;
@@ -672,14 +649,14 @@ export function createRender({
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
       }
-      if (state.showMask) {
+      if (state.showMask || dotted) {
         if (state.gearVr) {
           calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
         } else {
           calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
         }
         c.save();
-        c.globalAlpha = .7;
+        c.globalAlpha = dotted ? 1 : .7;
         const mirrorX = (state.camera === 'user') !== state.flip;
         c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
         c.scale(mirrorX ? -1 : 1, 1);
