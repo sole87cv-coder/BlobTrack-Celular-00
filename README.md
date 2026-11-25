@@ -1,4 +1,4 @@
-# BlobTrack Celular
+# @V1su4rt
 
 O BlobTrack transforma movimento visto pela câmera em manchas chamadas blobs. Os centros e as trajetórias dos blobs movem efeitos visuais e instrumentos de áudio reativo. É um instrumento audiovisual para navegador móvel; não identifica pessoas nem mede profundidade.
 
@@ -80,6 +80,21 @@ O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação
 | Região de interesse | `src/core/roiMask.js`, integração em `src/app.js` e `docs/ROI-decisao.md`. |
 | Rede entre blobs | controle persistido em `src/app.js` e desenho em `src/render/`. |
 
+### Alterações de título e marca (manutenção manual)
+
+O nome público exibido no app é **@V1su4rt**. Se precisar alterar o título ou a marca, atualize manualmente nos seguintes locais:
+
+| Arquivo | O que mudar |
+|---|---|
+| `index.html` (linha 40) | `<strong>@V1su4rt</strong>` na barra de navegação |
+| `index.html` (metas) | `<title>`, `application-name`, `apple-mobile-web-app-title`, `og:title`, `twitter:title` |
+| `manifest.webmanifest` | `name` e `short_name` |
+| `src/ui/i18n/*.js` | `title`, `name`, `shortName`, `motionTitle` em todos os idiomas (pt-BR, es, en, fr) |
+| `src/app.css` | `content:"@V1su4rt"` no media query de telas estreitas (linha ~643) |
+| `README.md` | Título principal e referências ao nome do projeto |
+
+**Importante**: os testes de acessibilidade e i18n verificam a consistência do título entre idiomas. Rode `npm test` após qualquer alteração de marca para garantir que todos os idiomas estejam sincronizados.
+
 ### Receita segura
 
 1. Crie uma branch para a alteração.
@@ -105,7 +120,7 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 187 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 201 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 
