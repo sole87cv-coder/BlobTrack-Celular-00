@@ -102,7 +102,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v54` → `v55`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v55` → `v56`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -134,6 +134,18 @@ Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32A
 
 Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo dos efeitos no canvas de overlay) e `tComposition` (tempo total de montar o overlay). As chaves antigas (`fps`, `tAnalysis`, `tRender`, `tCapture`, `blobsAtivos`, `idsNovosUltimos60s`, `recordingState`, `effectsPaused`) continuam iguais. Abra o console do navegador e rode `window.__blobtrackMetrics` para comparar.
 
+#### Pontilhado em cena escura (cache v55)
+
+Antes, o raio do ponto era calculado direto da luminosidade: `mix(0.10, 0.62, luma * fator)`. Num quarto escuro ou com a câmera do celular subexposta, a luminosidade ficava perto de zero e os pontos encolhiam a quase nada — o palco parecia **tela preta**, como se o botão **Pontilhado** não funcionasse.
+
+Agora o raio tem um piso (`0.16`) e usa uma raiz quadrada suave da luminosidade (`pow(l, 0.65)`), no shader WebGL e no fallback 2D. O ponto continua crescendo com a luz, mas nunca desaparece. Com uma câmera falsa escura (luma `22/255`), a medição headless passou de **5,5%** de pixels brancos e centro `[5,5,5]` para **19,7%** e centro `[253,253,253]`; no fallback 2D ficou em **15,3%**. Isso é navegador headless, não aparelho físico: confirme no celular antes de afirmar ganho.
+
+🟡 Mexa na fórmula só se medir: `src/app.js` (shader `uEffect==2`) e `src/render/render.js` (`getHalftoneFrame`) precisam mudar **juntos**, senão WebGL e Canvas 2D mostram pontos diferentes. O teste `halftone continua visível com câmera escura` protege o fallback.
+
+#### Overlay ocioso e traços agrupados (cache v55)
+
+Quando não há máscara, janela viva, rastro, efeito reativo nem grade ligados, o overlay não faz mais `clearRect`, `save`, `clip` e volta por olho a cada quadro: ele só limpa **uma vez**, se o quadro anterior tinha deixado algo desenhado. A malha passou a acumular todas as linhas num único `beginPath`/`stroke` (antes eram dezenas), e os vértices da rede num único `fill`. A imagem é a mesma; o que mudou foi o número de chamadas de desenho.
+
 #### Rotina de segurança antes de publicar
 
 Copie e rode nesta ordem, na raiz do projeto:
@@ -146,7 +158,7 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 214 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 222 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
@@ -160,7 +172,7 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
 4. Peça ajuda antes de mexer na zona 🔴.
 
-Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `perf: reaproveita buffers do overlay e sobe cache v54`.
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: corrige Pontilhado em cena escura e sobe cache v55`.
 
 ### Alterações de título e marca (manutenção manual)
 
@@ -198,7 +210,7 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 214 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,502`, `1,310` e `1,333 ms`; duas ficaram abaixo do teto e uma acima, sem mudança no núcleo — trate como ruído da máquina e repita antes de falar em regressão. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 222 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 

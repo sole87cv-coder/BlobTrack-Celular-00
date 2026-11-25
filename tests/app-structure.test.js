@@ -27,8 +27,13 @@ test('Pontilhado é halftone no quadro inteiro, com shader WebGL e fallback 2D',
   assert.ok(!app.includes('bayer8'));
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
+  // Cena escura não pode virar tela preta: o raio tem piso e ganho de gama.
+  assert.ok(app.includes('mix(0.16,0.62,clamp(pow(l,0.65)*(0.9+t*0.35),0.0,1.0))'));
+  assert.ok(!app.includes('mix(0.10,0.62'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const HALFTONE_CELL = 10;'));
+  assert.ok(render.includes('Math.pow(luma, 0.65) * (0.9 + t * 0.35)'));
+  assert.ok(!render.includes('0.52 * clamp(luma * factor'));
   assert.ok(render.includes('getHalftoneFrame(source, applied)'));
   assert.ok(render.includes("uniforms.uEffect, state.effect === 'dither' ? 2 : 3"));
   assert.ok(render.includes("state.effect === 'dither') return;"));

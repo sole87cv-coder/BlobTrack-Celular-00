@@ -57,6 +57,7 @@ export function createRender({
   let halftoneContext2d = null;
   let halftoneWarned = false;
   let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
+  let overlayDirty = false;
 
   // Fallback 2D do Pontilhado: cada célula vira um círculo branco cujo raio segue a luma.
   // No caminho WebGL o mesmo efeito vive no shader; aqui não há putImageData por quadro.
@@ -89,7 +90,6 @@ export function createRender({
       halftoneContext2d.fillRect(0, 0, width, height);
       halftoneContext2d.fillStyle = '#fff';
       const t = clamp(0.5 + (applied.threshold || 0) + (state.bias || 0) * 0.14, 0, 1);
-      const factor = 0.65 + t * 0.6;
       const half = HALFTONE_CELL / 2;
       for (let y = 0; y < height; y += HALFTONE_CELL) {
         for (let x = 0; x < width; x += HALFTONE_CELL) {
@@ -97,7 +97,7 @@ export function createRender({
           const sy = Math.min(height - 1, y + half);
           const i = (sy * width + sx) * 4;
           const luma = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) / 65536;
-          const radius = HALFTONE_CELL * (0.1 + 0.52 * clamp(luma * factor, 0, 1));
+          const radius = HALFTONE_CELL * (0.16 + 0.46 * clamp(Math.pow(luma, 0.65) * (0.9 + t * 0.35), 0, 1));
           halftoneContext2d.beginPath();
           halftoneContext2d.arc(x + half, y + half, radius, 0, HALFTONE_TAU);
           halftoneContext2d.fill();
@@ -320,24 +320,25 @@ export function createRender({
       meshSteps = { width: viewWidth, height: viewHeight, spacing, x: xSteps, y: ySteps };
     }
     const xSteps = meshSteps.x, ySteps = meshSteps.y;
+    // Mesmo estilo em todas as linhas: um único path evita dezenas de strokes por olho.
+    c.beginPath();
     for (const y of ySteps) {
-      c.beginPath();
-      for (const x of xSteps) {
-        deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint);
-        if (x === xSteps[0]) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
-        else c.lineTo(offsetX + gridPoint[0], gridPoint[1]);
+      for (let i = 0; i < xSteps.length; i++) {
+        deformGridPoint(xSteps[i], y, blobs, count, viewWidth, viewHeight, gridPoint);
+        const px = offsetX + gridPoint[0];
+        if (i === 0) c.moveTo(px, gridPoint[1]);
+        else c.lineTo(px, gridPoint[1]);
       }
-      c.stroke();
     }
     for (const x of xSteps) {
-      c.beginPath();
-      for (const y of ySteps) {
-        deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint);
-        if (y === ySteps[0]) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
-        else c.lineTo(offsetX + gridPoint[0], gridPoint[1]);
+      for (let i = 0; i < ySteps.length; i++) {
+        deformGridPoint(x, ySteps[i], blobs, count, viewWidth, viewHeight, gridPoint);
+        const px = offsetX + gridPoint[0];
+        if (i === 0) c.moveTo(px, gridPoint[1]);
+        else c.lineTo(px, gridPoint[1]);
       }
-      c.stroke();
     }
+    c.stroke();
     c.globalAlpha = 1;
   }
 
@@ -366,11 +367,14 @@ export function createRender({
     }
     c.globalAlpha = 1;
     c.fillStyle = '#f0a8ff';
+    c.beginPath();
     for (let i = 0; i < count; i++) {
-      c.beginPath();
-      c.arc(offsetX + blobViewPoints[i * 2] * viewWidth, blobViewPoints[i * 2 + 1] * viewHeight, 3.2, 0, Math.PI * 2);
-      c.fill();
+      const x = offsetX + blobViewPoints[i * 2] * viewWidth;
+      const y = blobViewPoints[i * 2 + 1] * viewHeight;
+      c.moveTo(x + 3.2, y);
+      c.arc(x, y, 3.2, 0, Math.PI * 2);
     }
+    c.fill();
     c.restore();
   }
 
@@ -609,9 +613,27 @@ export function createRender({
     const started = performance.now();
     const c = overlayContext;
     if (!c) return;
+    // Nada a pintar: só limpa se o quadro anterior deixou algo no overlay.
+    const reactive = !state.performance.effectsPaused
+      && (state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry);
+    const needsDrawing = state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
+    if (!needsDrawing) {
+      if (overlayDirty) {
+        c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        overlayDirty = false;
+      }
+      state.timing.windows = 0;
+      state.timing.overlay = 0;
+      state.timing.composition = performance.now() - started;
+      return;
+    }
+    overlayDirty = true;
     const rect = stageViewport || overlayCanvas.getBoundingClientRect();
     c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-    if (!rect.width || !rect.height) return;
+    if (!rect.width || !rect.height) {
+      overlayDirty = false;
+      return;
+    }
     c.save();
     c.scale(overlayCanvas.width / rect.width, overlayCanvas.height / rect.height);
     const eyeCount = state.gearVr ? 2 : 1;

@@ -250,6 +250,51 @@ test('fallback de dither desenha círculos de halftone e reaproveita o canvas', 
   }
 });
 
+test('halftone continua visível com câmera escura', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [];
+  const offscreenContext = {
+    fillStyle: '',
+    drawImage() {},
+    fillRect() {},
+    getImageData(x, y, width, height) {
+      // luma 22/255: cena escura de celular, sem o ganho de gama virava quase preto.
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let i = 0; i < data.length; i += 4) {
+        data[i] = 22; data[i + 1] = 22; data[i + 2] = 22; data[i + 3] = 255;
+      }
+      return { data, width, height };
+    },
+    beginPath() {},
+    arc(...args) { arcs.push(args); },
+    fill() {},
+  };
+  const halftoneCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
+  globalThis.document = { createElement() { return halftoneCanvas; } };
+  try {
+    const state = makeState({ effect: 'dither', timing: {} });
+    const render = createRender({
+      state,
+      video: { videoWidth: 960, videoHeight: 540 },
+      canvas: { width: 320, height: 240 },
+      fallbackContext: {
+        filter: '', save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+        translate() {}, scale() {}, drawImage() {},
+      },
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+      gridPoint: new Float32Array(2),
+    });
+    render.renderFrame({}, { videoWidth: 960, videoHeight: 540 });
+    assert.ok(arcs.length > 0);
+    assert.ok(arcs.every(([, , radius]) => radius >= 1.6 && radius <= 6.2));
+    assert.ok(arcs.some(([, , radius]) => radius >= 2));
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('WebGL usa o shader de halftone com o programa e textura compartilhados', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
@@ -286,4 +331,77 @@ test('WebGL usa o shader de halftone com o programa e textura compartilhados', (
   assert.ok(calls.some(([name, , , , , , source]) => name === 'texImage2D' && source === video));
   assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === 2));
   assert.ok(calls.some(([name]) => name === 'drawArrays'));
+});
+
+test('malha desenha todas as linhas com um único stroke', () => {
+  const state = makeState({ meshEffect: true, timing: {} });
+  const blobViewPoints = new Float32Array(24);
+  blobViewPoints[0] = 0.5;
+  blobViewPoints[1] = 0.5;
+  let paths = 0, strokes = 0;
+  const moves = [], lines = [];
+  const c = {
+    globalAlpha: 1, strokeStyle: '', lineWidth: 1,
+    beginPath() { paths++; },
+    moveTo(...args) { moves.push(args); },
+    lineTo(...args) { lines.push(args); },
+    stroke() { strokes++; },
+  };
+  const render = createRender({ state, gridPoint: new Float32Array(2), blobViewPoints });
+  render.drawMesh(c, [{ speed: 0 }], 320, 240, 0, 1);
+  assert.equal(paths, 1);
+  assert.equal(strokes, 1);
+  assert.ok(moves.length >= 2);
+  assert.ok(lines.length > moves.length);
+});
+
+test('vértices da rede são preenchidos em um único caminho sem linhas entre círculos', () => {
+  const state = makeState({ timing: {} });
+  const blobViewPoints = new Float32Array(24);
+  blobViewPoints.set([0.2, 0.3, 0.5, 0.6, 0.8, 0.25]);
+  const arcs = [], moves = [];
+  let fills = 0;
+  const c = {
+    save() {}, restore() {},
+    globalAlpha: 1, strokeStyle: '', lineWidth: 1, fillStyle: '',
+    beginPath() {}, moveTo(...args) { moves.push(args); }, lineTo() {}, stroke() {},
+    arc(...args) { arcs.push(args); }, fill() { fills++; },
+  };
+  const render = createRender({ state, blobViewPoints });
+  render.drawBlobNetwork(c, [{ speed: 0 }, { speed: 0 }, { speed: 0 }], 320, 240, 0, 3);
+  assert.equal(fills, 1);
+  assert.equal(arcs.length, 3);
+  assert.equal(moves.length, 3);
+  arcs.forEach(([x, y, radius], i) => {
+    assert.equal(radius, 3.2);
+    assert.ok(Math.abs(moves[i][0] - (x + radius)) < 1e-6);
+    assert.equal(moves[i][1], y);
+  });
+});
+
+test('overlay ocioso não repete clearRect e limpa uma vez ao desligar o último efeito', () => {
+  const state = makeState({ overlay: true, timing: {} });
+  const clears = [];
+  const c = {
+    clearRect(...args) { clears.push(args); },
+    save() {}, restore() {}, scale() {}, beginPath() {}, rect() {}, clip() {},
+    stroke() {}, strokeRect() {}, fillText() {},
+    globalAlpha: 1, strokeStyle: '', fillStyle: '', lineWidth: 1, font: '',
+  };
+  const render = createRender({
+    state,
+    overlayContext: c,
+    overlayCanvas: { width: 320, height: 240 },
+    stageViewport: { width: 320, height: 240 },
+  });
+  const result = { blobs: [], width: 320, height: 180 };
+  const source = { videoWidth: 640, videoHeight: 360 };
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(clears.length, 1);
+  state.overlay = false;
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(clears.length, 2);
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(clears.length, 2);
+  assert.ok(Number.isFinite(state.timing.composition));
 });
