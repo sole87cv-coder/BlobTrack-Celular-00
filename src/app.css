@@ -19,6 +19,9 @@
   --space-3:12px;
   --space-4:16px;
   --space-5:24px;
+  --radius-sm:10px;
+  --radius-md:16px;
+  --radius-lg:24px;
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bottom:env(safe-area-inset-bottom,0px);
   font-family:'DM Sans',system-ui,sans-serif;
@@ -234,6 +237,48 @@ html:not(.reduce-motion) .pulse-icon svg { animation:logo-breathe 4s ease-in-out
 .advanced-controls summary { min-height:44px;display:flex;align-items:center;padding:0 10px;border:1px solid #ffffff18;border-radius:12px;background:#ffffff08;color:#e1e8ed;font-size:12px;font-weight:650;cursor:pointer;list-style:none }
 .advanced-controls summary::-webkit-details-marker { display:none }
 .advanced-controls[open] summary { margin-bottom:8px;border-color:#6ee7bc55;color:#b5f4d7 }
+
+/* ===== Módulos do dock: agrupamento visual com respiro ===== */
+.dock-module {
+  margin:var(--space-3) 0;
+  padding:var(--space-2) var(--space-3);
+  border:1px solid #ffffff12;
+  border-radius:var(--radius-md);
+  background:linear-gradient(145deg,#ffffff06,#ffffff02);
+  box-shadow:inset 0 1px #ffffff08;
+}
+.dock-module + .dock-module { margin-top:var(--space-2) }
+.dock-module-title {
+  display:block;
+  margin:0 0 var(--space-2);
+  color:#c1ccd6;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+}
+.dock-module .dock-row { margin:var(--space-2) 0 }
+.dock-module .dock-row.wrap { gap:var(--space-2) }
+.dock-module .slider-row label { margin:8px 2px 0 }
+
+/* Unificação de border-radius em componentes */
+.pill,.tab-button,.effect-button,.effect-toggle,.audio-effect-button,.chip-button,.primary-nav button,.segmented-setting button,.quick-filter-row button,.page-button,.audio-param,.advanced-controls summary,.audio-scale-button,.audio-select,.camera-issue,.help-topic,.help-steps li,.page-card,.session-card,.quick-sheet,.record-indicator,.stage-pill,.float-bar {
+  border-radius:var(--radius-md) !important;
+}
+.stage-message,.stage-welcome,.dock,.primary-nav { border-radius:var(--radius-lg) !important; }
+.effect-row { border-radius:var(--radius-sm) !important; }
+
+/* Contraste elevado em textos secundários (>=4.5:1) */
+.dock-module-title,.dock-actions-hint,.dock-scroll-hint,.hint,.status,.stage-bottom,.stage-pill span,.zone span,.readout-list span,.log-line,.audio-section-title,.audio-param label span,.signal-card span,.audio-scale-button small,.gear-vr-hint,.welcome-help,.stage-message p,.page-heading p,.page-card p,.session-card p,.help-steps li span,.help-topic p,.about-subheading,.about-version,.about-credit,.settings-shortcuts button span {
+  color:#b9c4cf !important;
+}
+.dock-module-title { color:#c9d2dc !important }
+
+/* Reduzir backdrop-filter pesado para desempenho percebido */
+.float-bar,.dock,.stage-pill,.stage-message,.stage-welcome {
+  backdrop-filter:blur(12px) saturate(120%) !important;
+  -webkit-backdrop-filter:blur(12px) saturate(120%) !important;
+}
 
 .pill {
   min-height:44px;
