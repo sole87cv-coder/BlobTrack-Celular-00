@@ -834,7 +834,7 @@ $('startButton2').addEventListener('click',e=>beginSession(e.currentTarget));
 $('switchCamera').addEventListener('click',switchCamera);$('exposureButton').addEventListener('click',setManualExposure);$('stopButton').addEventListener('click',stopSession);
 /* Painel deslizante: alça e gesto de arrasto */
 const dock=$('dock');
-function setDock(open){dock.classList.toggle('closed',!open);$('dockHandle').setAttribute('aria-expanded',String(open));$('dockPeek').textContent=open?'▾':'▴';$('dockLabel').textContent=open?'Controles':'Ajustes';}
+function setDock(open){dock.classList.toggle('closed',!open);document.body.classList.toggle('dock-open',open);$('dockHandle').setAttribute('aria-expanded',String(open));$('dockPeek').textContent=open?'▾':'▴';$('dockLabel').textContent=open?'Controles':'Ajustes';}
 $('dockHandle').addEventListener('click',()=>setDock(dock.classList.contains('closed')));
 let dockDragY=null;
 $('dockHandle').addEventListener('touchstart',e=>{dockDragY=e.changedTouches[0].clientY;},{passive:true});
@@ -1162,6 +1162,7 @@ function applyUiPreferences(){
   $('hapticsButton').textContent='Feedback tátil · '+(hapticsEnabled?'ligado':'desligado');
 }
 applyUiPreferences();
+document.body.classList.add('dock-open');
 window.matchMedia?.('(prefers-color-scheme: light)').addEventListener?.('change',()=>{if(themeChoice==='system')applyUiPreferences();});
 const navigation = createNavigation({
   pages: [{name:'stage',element:$('pageStage')},{name:'session',element:$('pageSession')},{name:'settings',element:$('pageSettings')},{name:'help',element:$('pageHelp')}],

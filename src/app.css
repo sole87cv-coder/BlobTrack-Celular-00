@@ -593,9 +593,9 @@ body.gear-vr .stage-credit,body.focus-mode .stage-credit { display:none }
 .stage-action-bar .page-button { min-width:112px;text-align:center;box-shadow:0 4px 16px #0008 }
 .stage-message { bottom:calc(68px + var(--safe-bottom)) }
 .stage-bottom { bottom:calc(72px + var(--safe-bottom)) }
-#pageStage:has(.dock:not(.closed)) .stage-message { bottom:calc(min(52dvh, 420px) + 68px + var(--safe-bottom)) }
-#pageStage:has(.dock:not(.closed)) .stage-bottom { bottom:calc(min(52dvh, 420px) + 72px + var(--safe-bottom)) }
-#pageStage:has(.dock:not(.closed)) .stage-action-bar { bottom:calc(min(52dvh, 420px) + 12px + var(--safe-bottom)) }
+body.dock-open .stage-message { bottom:calc(min(52dvh, 420px) + 68px + var(--safe-bottom)) }
+body.dock-open .stage-bottom { bottom:calc(min(52dvh, 420px) + 72px + var(--safe-bottom)) }
+body.dock-open .stage-action-bar { bottom:calc(min(52dvh, 420px) + 12px + var(--safe-bottom)) }
 .camera-issue { position:fixed;z-index:20;left:50%;top:50%;transform:translate(-50%,-50%);margin:0;width:min(90%,420px);max-height:85dvh;overflow:auto;padding:18px;border:2px solid #ff8585;border-radius:18px;background:#101720f5;color:#f0f4f7;box-shadow:0 12px 40px #000a }
 .camera-issue::backdrop { background:#03060ac9 }
 .camera-issue h2 { margin:0 0 8px;font-size:20px }
