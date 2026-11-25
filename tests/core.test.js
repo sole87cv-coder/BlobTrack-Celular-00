@@ -265,6 +265,31 @@ test('recording composition letterboxes, shades, and layers the overlay last', (
   assert.deepEqual(calls.at(-1), ['restore']);
 });
 
+test('recording watermark is drawn over the overlay without changing composition order', () => {
+  const calls = [];
+  const context = {
+    save: () => calls.push(['save']),
+    restore: () => calls.push(['restore']),
+    clearRect: () => {},
+    fillRect: () => {},
+    createLinearGradient: () => ({ addColorStop: () => {} }),
+    drawImage: (...args) => calls.push(['image', ...args]),
+    fillText: (...args) => calls.push(['text', ...args]),
+  };
+  const visual = { width: 480, height: 640 };
+  const overlay = { width: 480, height: 640 };
+
+  drawRecordingFrame(context, visual, overlay, 1280, 720, false, '@V1su4rt');
+
+  const visualIndex = calls.findIndex(([type, image]) => type === 'image' && image === visual);
+  const overlayIndex = calls.findIndex(([type, image]) => type === 'image' && image === overlay);
+  const textIndex = calls.findIndex(([type]) => type === 'text');
+  assert.ok(visualIndex >= 0 && overlayIndex > visualIndex);
+  assert.ok(textIndex > overlayIndex, 'watermark must be the last visible layer');
+  assert.equal(calls[textIndex][1], '@V1su4rt');
+  assert.deepEqual(calls.at(-1), ['restore']);
+});
+
 test('recording export prefers file sharing and respects user cancellation', async () => {
   const operations = [];
   class FakeFile {

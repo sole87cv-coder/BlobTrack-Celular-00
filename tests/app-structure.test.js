@@ -63,3 +63,72 @@ test('viewport does not prevent user zoom', async () => {
   assert.doesNotMatch(html, /user-scalable\s*=\s*no/i);
   assert.doesNotMatch(html, /maximum-scale\s*=\s*1(?:\.0+)?/i);
 });
+
+test('slider changes debounce preference writes and flush on lifecycle', () => {
+  assert.ok(app.includes('function scheduleSavePreferences(delay = 300)'));
+  assert.ok(app.includes('function flushPendingPreferences()'));
+  assert.ok(!app.includes('saveSoundPreferences'));
+  for (const id of ['videoBlend', 'maxConnectionDistance', 'motionThreshold', 'master', 'bias', 'trackingWidth']) {
+    const start = app.indexOf(`$('${id}').addEventListener('input'`);
+    assert.ok(start >= 0, `${id} has an input handler`);
+    const block = app.slice(start, start + 400);
+    assert.ok(block.includes('scheduleSavePreferences()') || block.includes('setTrackingWidth('), `${id} must not write preferences synchronously`);
+  }
+  assert.equal(app.split('flushPendingPreferences();').length - 1, 3);
+});
+
+test('active session drops backdrop blur using the existing opaque fallback', async () => {
+  const css = await readFile(new URL('../src/app.css', import.meta.url), 'utf8');
+  assert.ok(app.includes("document.body.classList.add('session-active')"));
+  assert.ok(app.includes("document.body.classList.remove('session-active')"));
+  assert.ok(css.includes('@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px)))'));
+  assert.ok(css.includes('body.session-active .float-bar'));
+  assert.ok(css.includes('body.session-active .stage-pill'));
+  assert.ok(css.includes('body.session-active .dock'));
+  assert.ok(css.includes('body.session-active .toast'));
+  assert.ok(css.includes('body.session-active .record-indicator'));
+  assert.ok(css.includes('background-color:#111720f5'));
+  const navRule = css.split('\n').find(line => line.startsWith('.primary-nav {'));
+  assert.ok(navRule && !navRule.includes('backdrop-filter'), 'primary navigation must not request GPU blur');
+});
+
+test('locale observer pauses while the HUD is updating during a session', () => {
+  assert.ok(app.includes('const LOCALE_OBSERVER_OPTIONS'));
+  assert.ok(app.includes('function suspendLocaleObserver() { localeObserver.disconnect(); }'));
+  assert.ok(app.includes('function resumeLocaleObserver() { localeObserver.observe(document.body, LOCALE_OBSERVER_OPTIONS); }'));
+  assert.ok(app.includes("localeObserver.observe(document.body, LOCALE_OBSERVER_OPTIONS);"));
+  const start = app.indexOf("document.body.classList.add('session-active')");
+  assert.ok(start >= 0);
+  assert.ok(app.slice(start, start + 160).includes('suspendLocaleObserver()'));
+  const stop = app.indexOf("document.body.classList.remove('session-active')");
+  assert.ok(stop >= 0);
+  assert.ok(app.slice(stop, stop + 160).includes('resumeLocaleObserver()'));
+  assert.ok(app.includes('function updateHud('), 'HUD updates remain available');
+});
+
+test('recording watermark is wired from the app into the renderer', () => {
+  assert.ok(app.includes('RECORDING_WATERMARK'));
+  assert.ok(app.includes('recordingWatermark: RECORDING_WATERMARK'));
+});
+
+test('Tom base keyboard mirrors the eight selectable keys without bypassing audio options', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../src/app.css', import.meta.url), 'utf8');
+  const select = html.match(/<select id="audioKey"[\s\S]*?<\/select>/)?.[0] || '';
+  const values = [...select.matchAll(/<option value="(\d+)"/g)].map(match => match[1]);
+  assert.deepEqual(values, ['0', '2', '4', '5', '7', '9', '10', '11']);
+  const buttons = [...html.matchAll(/data-audio-key="(\d+)"/g)].map(match => match[1]);
+  assert.deepEqual(buttons, values);
+  assert.match(select, /class="sr-only" tabindex="-1"/);
+  assert.ok(html.includes('<label for="audioKey"'));
+  assert.ok(html.includes('class="audio-keyboard"'));
+  assert.match(html, /data-audio-key="0" aria-pressed="true"/);
+  const keyRule = css.split('\n').find(line => line.startsWith('.audio-key {'));
+  assert.ok(keyRule && keyRule.includes('min-height:44px'), 'keys keep an accessible touch target');
+  assert.ok(css.includes('.audio-keyboard {'));
+  assert.ok(app.includes('function syncAudioKey()'));
+  assert.ok(app.includes("syncAudioKey();"));
+  assert.ok(app.includes("dispatchEvent(new Event('change',{bubbles:true}))"));
+  const changeHandler = app.indexOf("$('audioKey').addEventListener('change'");
+  assert.ok(app.slice(changeHandler, changeHandler + 200).includes('syncAudioKey()'));
+});

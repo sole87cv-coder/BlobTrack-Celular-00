@@ -59,6 +59,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.gain = 0;
     this.peak = 0;
     this.meterFrames = 0;
+    this.silenceLatched = false;
     this.scaleDegrees = degreesForZones('live');
     this.updateFrequencies();
     this.port.onmessage = ({ data }) => {
@@ -201,6 +202,27 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     voice.wet = Math.max(0, Math.min(1, Number(command.wet) || 0));
   }
 
+  renderSilence(outputs) {
+    const channels = outputs[0];
+    if (!channels || !channels.length) return;
+    for (const channel of channels) channel.fill(0);
+    if (!this.silenceLatched) {
+      this.delayBuffer.fill(0);
+      this.chorusBuffer.fill(0);
+      for (const voice of this.polyVoices) voice.active = false;
+      this.rhythmEnvelope = 0;
+      this.rhythmActive = false;
+      this.gain = 0;
+      this.peak = 0;
+      this.silenceLatched = true;
+    }
+    this.meterFrames += channels[0].length;
+    if (this.meterFrames >= sampleRate * .12) {
+      this.port.postMessage({ type: 'meter', peak: 0, voices: 0, cost: 0 });
+      this.meterFrames = 0;
+    }
+  }
+
   renderPreset(outputs) {
     const left = outputs[0]?.[0], right = outputs[0]?.[1];
     if (!left) return true;
@@ -319,6 +341,11 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
+    if (this.muted || !this.audioEnabled) {
+      this.renderSilence(outputs);
+      return true;
+    }
+    this.silenceLatched = false;
     if (this.preset) return this.renderPreset(outputs);
     const output = outputs[0]?.[0];
     const right = outputs[0]?.[1];

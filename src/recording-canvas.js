@@ -1,3 +1,5 @@
+export const RECORDING_WATERMARK = '@V1su4rt';
+
 export function recordingCanvasSize(width, height, maxEdge = 1280) {
   if (![width, height, maxEdge].every(Number.isFinite) || width <= 0 || height <= 0 || maxEdge <= 0) {
     throw new RangeError('Dimensões de gravação inválidas.');
@@ -9,7 +11,7 @@ export function recordingCanvasSize(width, height, maxEdge = 1280) {
   };
 }
 
-export function drawRecordingFrame(context, visual, overlay, width, height, includeShade = true) {
+export function drawRecordingFrame(context, visual, overlay, width, height, includeShade = true, watermark = '') {
   if (!context || !visual?.width || !visual?.height || !width || !height) return null;
   const scale = Math.min(width / visual.width, height / visual.height);
   const drawWidth = visual.width * scale;
@@ -32,6 +34,16 @@ export function drawRecordingFrame(context, visual, overlay, width, height, incl
     context.fillRect(left, top, drawWidth, drawHeight);
   }
   if (overlay?.width && overlay?.height) context.drawImage(overlay, left, top, drawWidth, drawHeight);
+  if (watermark) {
+    const pad = Math.max(10, Math.round(Math.min(drawWidth, drawHeight) * 0.018));
+    const size = Math.max(10, Math.round(Math.min(drawWidth, drawHeight) * 0.022));
+    context.globalAlpha = 0.35;
+    context.fillStyle = '#eafff6';
+    context.font = `600 ${size}px system-ui,sans-serif`;
+    context.textAlign = 'right';
+    context.textBaseline = 'bottom';
+    context.fillText(watermark, left + drawWidth - pad, top + drawHeight - pad);
+  }
   context.restore();
   return { left, top, width: drawWidth, height: drawHeight };
 }

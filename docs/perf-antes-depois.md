@@ -11,6 +11,11 @@ O script `scripts/bench-blobtrack.js` mede somente `BlobTrackerCore.updatePixels
 | S5 ROI, duas amostras | — | 1,248 / 0,901 | — | Caminho padrão sem ROI também coberto |
 | S6–S9, três medições registradas | 0,676 / 0,569 / 0,669 | 1,294 / 1,006 / 1,282 | 1,669 / 2,490 / 1,787 | Histórico deste ciclo |
 | Execução final após S7 | 0,676 / 0,675 / 0,687 | 1,065 / 1,340 / 1,324 | 1,525 / 1,969 / 1,724 | Três execuções; abaixo do teto, uma próxima dele |
+| P0-1 e P0-2, uma amostra por etapa | 0,713 / 0,740 | 1,646 / 1,380 | 2,562 / 2,857 | p95 acima do teto nas duas amostras isoladas; o baseline já havia registrado 1,680 e 1,391, então não foi atribuído ganho ou regressão causal |
+| P0-3 e P1-1, três medições finais | 0,701 / 0,708 / 0,545 | 1,340 / 1,367 / 1,200 | 1,731 / 2,240 / 1,674 | Duas abaixo do teto; a segunda ficou 0,020 ms acima. Núcleo do tracker inalterado nessas etapas |
+
+- O P0-1 teve ainda um microbenchmark isolado do processador de áudio silencioso: 20.000 blocos passaram de `1238,6 ms` para `2,7 ms`. Esse número mede outro caminho e não é comparável à tabela acima.
+- P0-3 (blur) e P1-1 (observer de idioma/HUD) não têm medição de GPU, bateria ou FPS em aparelho: a checagem foi sintática e por testes estáticos. O cache offline subiu para `v48` para forçar a atualização do shell, incluindo a marca d'água `@V1su4rt` apenas na gravação e o teclado de 8 teclas do Tom base.
 
 Não existe medição isolada “com gravação” nem “com S9” neste script. Ele não cria câmera, não compõe canvas e não grava vídeo. Não atribuir a esses recursos os tempos de `updatePixels` nem declarar ganho causal a partir de amostras em máquinas carregadas.
 

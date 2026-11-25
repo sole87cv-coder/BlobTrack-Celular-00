@@ -22,6 +22,25 @@ test('legacy zone signals without blobs still produce six-voice sound', () => {
   assert.ok(peak > 0);
 });
 
+test('muted processor writes silence and resumes without restarting the context', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .8, density: .8, speed: .4, ambient: .2, zones: [1,1,1,1,1,1] }, master: 1, sensitivity: 1, audioEnabled: true, muted: true } });
+  for (let i = 0; i < 48; i++) {
+    for (const channel of processBlock(processor)) {
+      for (const sample of channel) assert.equal(sample, 0);
+    }
+  }
+  assert.ok(processor.port.messages.every(message => message.type !== 'meter' || message.peak === 0));
+  processor.port.onmessage({ data: { type: 'mute', muted: false } });
+  let peak = 0;
+  for (let i = 0; i < 24; i++) {
+    for (const channel of processBlock(processor)) {
+      for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+    }
+  }
+  assert.ok(peak > 0);
+});
+
 test('legacy sound message still updates timbre and effects', () => {
   const processor = new RegisteredProcessor();
   processor.port.onmessage({ data: { type: 'sound', oscillation: .7, pitchRange: 3, key: 2, timbre: 2, soundEffects: { echo: true, space: true, chorus: false } } });

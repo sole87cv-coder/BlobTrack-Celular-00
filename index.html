@@ -130,16 +130,6 @@
                 <label for="audioPitchRange"><span>Variação de altura</span><b id="audioPitchRangeValue">2,0 semitons</b></label>
                 <input id="audioPitchRange" type="range" min="0" max="7" step="0.5" value="2">
               </div>
-              <div class="audio-param audio-select-param">
-                <label for="audioKey"><span>Tom base</span>
-                <select id="audioKey" class="audio-select">
-                  <option value="0">Dó (C)</option><option value="2">Ré (D)</option>
-                  <option value="4">Mi (E)</option><option value="5">Fá (F)</option>
-                  <option value="7">Sol (G)</option><option value="9">Lá (A)</option>
-                  <option value="10">Si♭ (B♭)</option><option value="11">Si (B)</option>
-                </select>
-                </label>
-              </div>
               <div class="audio-scale-chooser">
                 <span class="audio-section-title">Escala</span>
                 <div id="audioScales" class="audio-scale-grid" role="radiogroup" aria-label="Escala musical">
@@ -170,6 +160,25 @@
               </div>
             </div>
             <small class="hint">Os blobs conduzem a altura e a oscilação. Combine um timbre e ligue os efeitos ao seu gosto.</small>
+            <div class="audio-keyboard-block">
+              <label for="audioKey" class="audio-section-title">Tom base</label>
+              <select id="audioKey" class="sr-only" tabindex="-1">
+                <option value="0">Dó (C)</option><option value="2">Ré (D)</option>
+                <option value="4">Mi (E)</option><option value="5">Fá (F)</option>
+                <option value="7">Sol (G)</option><option value="9">Lá (A)</option>
+                <option value="10">Si♭ (B♭)</option><option value="11">Si (B)</option>
+              </select>
+              <div class="audio-keyboard" role="group" aria-label="Tom base">
+                <button type="button" class="audio-key" data-audio-key="0" aria-pressed="true" aria-label="Dó">C</button>
+                <button type="button" class="audio-key" data-audio-key="2" aria-pressed="false" aria-label="Ré">D</button>
+                <button type="button" class="audio-key" data-audio-key="4" aria-pressed="false" aria-label="Mi">E</button>
+                <button type="button" class="audio-key" data-audio-key="5" aria-pressed="false" aria-label="Fá">F</button>
+                <button type="button" class="audio-key" data-audio-key="7" aria-pressed="false" aria-label="Sol">G</button>
+                <button type="button" class="audio-key" data-audio-key="9" aria-pressed="false" aria-label="Lá">A</button>
+                <button type="button" class="audio-key audio-key-black" data-audio-key="10" aria-pressed="false" aria-label="Si bemol">B♭</button>
+                <button type="button" class="audio-key" data-audio-key="11" aria-pressed="false" aria-label="Si">B</button>
+              </div>
+            </div>
           </div>
 
           <div class="dock-panel active" id="panelEffects" role="tabpanel" aria-labelledby="tabEffects" tabindex="0">

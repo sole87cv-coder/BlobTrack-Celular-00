@@ -294,6 +294,13 @@ input[type=range] { width:100%;height:44px;margin:0;accent-color:var(--mint);tou
 .audio-select-param label { display:block }
 .audio-select-param label span { display:block }
 .audio-param .audio-select { min-height:44px }
+.audio-keyboard-block { margin:10px 0 2px;padding:10px 2px 2px;border-top:1px solid #ffffff18 }
+.audio-keyboard-block .audio-section-title { margin-bottom:5px }
+.audio-keyboard { display:flex;gap:4px;overflow-x:auto;padding:2px 0 6px;touch-action:pan-x;scrollbar-width:thin }
+.audio-key { flex:1 0 38px;min-width:38px;min-height:44px;display:flex;align-items:flex-end;justify-content:center;padding:0 2px 6px;border:1px solid #ffffff24;border-radius:0 0 var(--radius-md) var(--radius-md);background:linear-gradient(180deg,#f2f6f8,#cdd6de);color:#18212b;font:700 12px 'DM Mono',monospace;transition:background .15s var(--ease-out),color .15s var(--ease-out) }
+.audio-key.active { background:linear-gradient(180deg,#68e5ef,#00694d);color:#04120e;border-color:#68e5ef }
+.audio-key-black { background:linear-gradient(180deg,#37404a,#141a21);color:#dbe4ec;border-color:#ffffff2b }
+.audio-key-black.active { background:linear-gradient(180deg,#ed72ff,#6b237c);color:#fff;border-color:#ed72ff }
 .audio-effect-block { margin:10px 0 4px;padding:10px 2px 2px;border-top:1px solid #ffffff18 }
 .audio-section-title { display:block;margin:0 0 7px;color:#c1ccd6;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase }
 .audio-effect-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px }
@@ -471,6 +478,19 @@ body.recording-active .focus-hint { display:none }
   .float-bar,.dock,.stage-pill { background-color:#111720f5 }
 }
 
+/* Sessão ativa: sem blur de GPU sobre o canvas animado; usa o fallback opaco acima. */
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))) {
+  body.session-active .float-bar,
+  body.session-active .stage-pill,
+  body.session-active .dock,
+  body.session-active .toast,
+  body.session-active .record-indicator {
+    backdrop-filter:none;
+    -webkit-backdrop-filter:none;
+    background-color:#111720f5
+  }
+}
+
 /* ===== Paisagem: priorizar visual, UI compacta ===== */
 @media (orientation:landscape) {
   .float-bar { top:max(4px,var(--safe-top));padding:3px 6px;gap:4px;min-height:36px }
@@ -613,7 +633,7 @@ body.recording-active .focus-hint { display:none }
 .help-topic { max-width:760px;margin:8px auto;padding:12px;border:1px solid #ffffff20;border-radius:14px;background:#101720 }
 .help-topic summary { min-height:44px;display:flex;align-items:center;font-weight:650;cursor:pointer }
 .help-topic p { color:#b5c0cb;line-height:1.5 }
-.primary-nav { position:absolute;z-index:15;left:0;right:0;bottom:0;min-height:calc(64px + var(--safe-bottom));padding:4px max(8px,var(--safe-right)) calc(4px + var(--safe-bottom)) max(8px,var(--safe-left));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;border-top:1px solid #ffffff20;background:#0c1119f5;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px) }
+.primary-nav { position:absolute;z-index:15;left:0;right:0;bottom:0;min-height:calc(64px + var(--safe-bottom));padding:4px max(8px,var(--safe-right)) calc(4px + var(--safe-bottom)) max(8px,var(--safe-left));display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;border-top:1px solid #ffffff20;background:#0c1119f5 }
 .primary-nav button { min-width:0;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;border:1px solid transparent;border-radius:12px;background:transparent;color:#c3ccd4;font:600 12px/1.15 system-ui,sans-serif }
 .primary-nav button span { font-size:18px }
 .primary-nav button[aria-current="page"] { color:#eafff6;background:#183128;border-color:#6ee7bc80 }
@@ -681,7 +701,7 @@ body.dock-open .stage-action-bar { bottom:calc(min(52dvh, 420px) + 12px + var(--
 :root[data-theme="light"] #settingsControls .pill.active,:root[data-theme="light"] #settingsControls .effect-button.active { color:#004b37;background:#d9f2e9;border-color:#00694d }
 :root[data-theme="light"] #settingsControls .audio-select { background:#fff;color:#18212b;border-color:#64717c }
 @media (prefers-color-scheme:light) { :root:not([data-theme="dark"]):not([data-theme="light"]) { color-scheme:light;--bg:#f6f8fa;--panel:#fff;--line:#cbd4dc;--text:#18212b;--muted:#43515f;--mint:#00694d } }
-@media (prefers-contrast:more), (forced-colors:active) { .page-button,.primary-nav button,.quick-filter-row button,.pill,.tab-button { border:2px solid currentColor!important;box-shadow:none!important } .primary-nav,.quick-sheet,.page-card,.session-card { backdrop-filter:none;background:Canvas;color:CanvasText } :focus-visible { outline:3px solid Highlight!important;outline-offset:3px } }
+@media (prefers-contrast:more), (forced-colors:active) { .page-button,.primary-nav button,.quick-filter-row button,.pill,.tab-button,.audio-key { border:2px solid currentColor!important;box-shadow:none!important } .primary-nav,.quick-sheet,.page-card,.session-card { backdrop-filter:none;background:Canvas;color:CanvasText } :focus-visible { outline:3px solid Highlight!important;outline-offset:3px } }
 @media (max-width:380px) { .settings-shortcuts { grid-template-columns:1fr } .stage-action-bar .page-button { min-width:104px;padding:8px;font-size:13px } }
 @media (orientation:landscape) and (max-height:520px) { .primary-nav { min-height:calc(56px + var(--safe-bottom)) } .workspace.app-page { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar { bottom:calc(4px + var(--safe-bottom)) } .stage-message { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar .page-button { min-height:44px } }
 @media (max-width:359px) { .brand::after { content:"@V1su4rt";font-size:11px;font-weight:700 } }
