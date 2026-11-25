@@ -16,6 +16,22 @@ test('renderer factory initializes after all captured values', () => {
   ]) assert.ok(app.indexOf(declaration) < renderIndex, `${declaration} must precede the renderer`);
 });
 
+test('binary mask renderer receives the live mask context', () => {
+  assert.ok(/maskCanvas,\r?\n\s*maskContext,\r?\n\s*maskImage: null,/.test(app));
+  assert.ok(!app.includes('maskContext: null'));
+});
+
+test('dither usa célula grande e repassa os gains ao overlay', async () => {
+  assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
+  assert.ok(app.includes('float cellSize=16.0;'));
+  assert.ok(app.includes('float radius=mix(0.08,0.5,l*(0.7+t*0.5));'));
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  assert.ok(render.includes('const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;'));
+  assert.ok(render.includes("c.createPattern(tile, 'repeat')"));
+  assert.ok(render.includes('c.fillRect(offsetX, 0, viewWidth, viewHeight)'));
+  assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
+});
+
 test('recording snapshot retains identity shared with renderer', () => {
   assert.ok(app.includes('Object.assign(recordingSnapshot, snapshot);'));
   assert.ok(!app.includes('recordingSnapshot = snapshot;'));

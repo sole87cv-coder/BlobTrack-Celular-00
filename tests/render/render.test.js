@@ -128,3 +128,71 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(Math.abs(out1[0] - (1 - out2[0])) < 1e-6);
   assert.ok(out1[1] < out2[1]);
 });
+
+test('dither desenha pontos grandes e cacheia o pattern', () => {
+  const previousDocument = globalThis.document;
+  let tilesCreated = 0;
+  const tileContext = {
+    fillStyle: '',
+    beginPath() {},
+    arc(x, y, radius) { this.arc = { x, y, radius }; },
+    fill() { this.filled = true; },
+  };
+  const tile = {
+    width: 0,
+    height: 0,
+    getContext() { return tileContext; },
+  };
+  globalThis.document = {
+    createElement(tag) {
+      assert.equal(tag, 'canvas');
+      tilesCreated++;
+      return tile;
+    },
+  };
+  try {
+    const state = makeState({ effect: 'dither' });
+    const video = { videoWidth: 640, videoHeight: 360 };
+    const render = createRender({
+      state,
+      video,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+      gridPoint: new Float32Array(2),
+    });
+    const pattern = { __dither: true };
+    const fills = [];
+    let alphaAtFill = null;
+    const c = {
+      globalAlpha: 1,
+      fillStyle: '',
+      filter: '',
+      save() {}, restore() {},
+      beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {}, drawImage() {},
+      createPattern(source, repeat) {
+        assert.equal(source, tile);
+        assert.equal(repeat, 'repeat');
+        return pattern;
+      },
+      fillRect(...args) { fills.push(args); alphaAtFill = this.globalAlpha; },
+    };
+    const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
+
+    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video, { dither: 0.1 });
+    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video, { dither: 0.1 });
+
+    assert.equal(tilesCreated, 1);
+    assert.equal(tile.width, 16);
+    assert.equal(tile.height, 16);
+    assert.deepEqual(tileContext.arc, { x: 8, y: 8, radius: 5.5 });
+    assert.equal(tileContext.filled, true);
+    assert.equal(fills.length, 2);
+    assert.deepEqual(fills[0], [0, 0, 320, 240]);
+    assert.equal(c.fillStyle, pattern);
+    assert.ok(Math.abs(alphaAtFill - 0.65) < 1e-6);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});

@@ -49,6 +49,26 @@ export function createRender({
   const distancePairSquared = new Float64Array(distancePairCapacity);
   const distancePairUsed = new Uint8Array(distancePairCapacity);
   const distanceDegree = new Uint8Array(TRAIL_SLOTS);
+  const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;
+  const ditherPatterns = new WeakMap();
+
+  function getDitherPattern(c) {
+    if (typeof document === 'undefined') return null;
+    let pattern = ditherPatterns.get(c);
+    if (pattern) return pattern;
+    const tile = document.createElement('canvas');
+    tile.width = DITHER_CELL;
+    tile.height = DITHER_CELL;
+    const tileContext = tile.getContext('2d');
+    if (!tileContext) return null;
+    tileContext.fillStyle = '#05070c';
+    tileContext.beginPath();
+    tileContext.arc(DITHER_CELL / 2, DITHER_CELL / 2, DITHER_DOT_RADIUS, 0, Math.PI * 2);
+    tileContext.fill();
+    pattern = c.createPattern(tile, 'repeat');
+    if (pattern) ditherPatterns.set(c, pattern);
+    return pattern;
+  }
 
   // ---------- geometria pura ----------
 
@@ -385,7 +405,7 @@ export function createRender({
     return drawn;
   }
 
-  function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source) {
+  function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
     const effectFilter =
@@ -442,6 +462,16 @@ export function createRender({
       drawSource();
       c.restore();
       c.filter = 'none';
+    }
+    if (state.effect === 'dither') {
+      const pattern = getDitherPattern(c);
+      if (pattern) {
+        c.save();
+        c.globalAlpha = clamp(0.35 + (applied.dither || 0) * 3, 0.35, 0.9);
+        c.fillStyle = pattern;
+        c.fillRect(offsetX, 0, viewWidth, viewHeight);
+        c.restore();
+      }
     }
     c.restore();
   }
@@ -531,7 +561,7 @@ export function createRender({
 
   // ---------- overlay e gravação ----------
 
-  function drawMaskOverlay(result, source = video) {
+  function drawMaskOverlay(result, source = video, applied = {}) {
     const started = performance.now();
     const c = overlayContext;
     if (!c) return;
@@ -572,7 +602,7 @@ export function createRender({
       }
       if (state.videoWindows) {
         const windowStarted = performance.now();
-        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source);
+        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
       }
       if (state.showMask) {
