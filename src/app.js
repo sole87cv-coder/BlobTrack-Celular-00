@@ -543,7 +543,8 @@ function updateReactiveEffectQuality(now) {
   perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
   const pauseBelow = Math.max(12, deviceProfile.fps * 0.55);
   const resumeAt = Math.max(pauseBelow + 2, deviceProfile.fps * 0.65);
-  if (!perf.effectsPaused) {
+  const isRecording = ['recording', 'paused', 'stopping'].includes(recordingSnapshot.state);
+  if (!perf.effectsPaused && !isRecording) {
     perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
     if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
   } else {
@@ -616,7 +617,7 @@ function frame(now) {
           perf.fastFrames = next.fastFrames;
           perf.renderSlowFrames = next.renderSlowFrames;
           if (state.autoQuality && next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
-          if (next.renderPause && !perf.effectsPaused) {
+          if (next.renderPause && !perf.effectsPaused && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) {
             perf.effectsPaused = true;
             perf.recoveredFrames = 0;
             showToast('Efeitos reativos pausados para proteger o FPS');
@@ -1152,7 +1153,8 @@ stage.addEventListener('keydown',e=>{
 overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;state.keyboardPoint=null;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
 overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
 overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;state.keyboardPoint=null;toggle($('rectangleButton'),false);}});
-if(isAppleMobile && !isStandaloneApp){$('installButton').hidden=false;$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
+if(isStandaloneApp)$('installButton').hidden=true;
+if(isAppleMobile && !isStandaloneApp){$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
 if(isAppleMobile && isStandaloneApp)$('fullscreenButton').hidden=true;
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;$('installButton').hidden=false;});$('installButton').addEventListener('click',async()=>{if(installPrompt){installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;$('installButton').hidden=true;return;}if(isAppleMobile&&!isStandaloneApp)showToast('No Safari: Compartilhar → Adicionar à Tela de Início.');});
 function applyUiPreferences(){

@@ -490,7 +490,9 @@ body.recording-active .focus-hint { display:none }
 .record-button-time,.record-indicator-time { font:10px 'DM Mono',monospace;font-variant-numeric:tabular-nums }
 .record-button[aria-pressed="true"] { border-color:#ff7b7b70;background:#351a20 }
 .record-button[aria-pressed="true"] .record-button-icon { color:#ff7b7b;animation:record-pulse 1.2s ease-in-out infinite }
-.record-save-button { color:var(--mint) }
+.install-chip { border-color:#6ee7bc44;background:#6ee7bc0a;color:var(--mint);opacity:.85 }
+.install-chip:hover { opacity:1 }
+.install-chip:active { transform:scale(.94) }
 .record-dock-button {
   position:sticky;
   left:0;
