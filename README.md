@@ -102,7 +102,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v51` → `v52`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v52` → `v53`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -116,15 +116,17 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
 | `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
 
-#### Exemplo prático: deixar o Pontilhado com pontos maiores
+#### Exemplo prático: ajustar o Pontilhado (Floyd-Steinberg)
 
 Este é um bom primeiro trabalho porque toca só nas 🟢. Em `src/render/render.js` você encontra:
 
 ```js
-const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;
+const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;
+const FLOYD_MAX_PIXELS = FLOYD_MAX_WIDTH * FLOYD_MAX_HEIGHT;
+const FLOYD_ERROR_LIMIT = 0.35;
 ```
 
-`DITHER_CELL` é o tamanho da casa da grade; `DITHER_DOT_RADIUS` é o raio do ponto. Aumentar o raio de `5.5` para `7` deixa os pontos maiores sem criar trabalho por quadro: o desenho é feito uma única vez num mini-canvas e reaproveitado (`WeakMap`). Se mexer na grade, acompanhe também `cellSize` no shader de `src/app.js` para as duas partes continuarem combinando. Depois: suba o cache, rode os testes e confira o efeito no navegador.
+O Pontilhado não usa mais círculos nem grade: ele transforma o quadro em preto e branco empurrando o erro de cada pixel para os vizinhos. A varredura é **serpenteada** — linha par da esquerda para a direita, linha ímpar da direita para a esquerda — para não aparecerem diagonais. `FLOYD_MAX_*` define o tamanho do mini-quadro: valores menores dão pontos maiores e custam menos; valores maiores dão pontos mais finos e custam mais. Não suba esses números sem medir. `FLOYD_ERROR_LIMIT` segura rastros longos; `0,35` é o valor seguro. Se o canvas 2D falhar, o app desenha o vídeo normal em vez de quebrar. Depois: suba o cache, rode os testes e confira o efeito no navegador.
 
 #### Rotina de segurança antes de publicar
 
@@ -138,7 +140,7 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 212 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 214 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
@@ -190,7 +192,7 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 212 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 214 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 
