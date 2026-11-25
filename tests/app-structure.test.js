@@ -8,11 +8,13 @@ test('renderer factory initializes after all captured values', () => {
   const renderIndex = app.indexOf('const render = createRender(');
   assert.ok(renderIndex > 0);
   for (const declaration of [
+    'let forceFallback = false;',
     'const maskCanvas =',
     'const cropRect =',
     'const trailIds =',
     'let recordingSnapshot =',
     'function sendAudioOptions()',
+    'const glState =',
   ]) assert.ok(app.indexOf(declaration) < renderIndex, `${declaration} must precede the renderer`);
 });
 
@@ -21,16 +23,17 @@ test('binary mask renderer receives the live mask context', () => {
   assert.ok(!app.includes('maskContext: null'));
 });
 
-test('dither é Floyd-Steinberg no quadro inteiro, sem branch de shader', async () => {
+test('Pontilhado é halftone no quadro inteiro, com shader WebGL e fallback 2D', async () => {
   assert.ok(!app.includes('bayer8'));
-  assert.ok(!app.includes('uEffect==2'));
+  assert.ok(app.includes('uEffect==2'));
+  assert.ok(app.includes('glState.program = glProgram'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('export function diffuseFloydSteinberg('));
-  assert.ok(render.includes('const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;'));
-  assert.ok(render.includes('getFloydFrame(source, applied)'));
-  assert.ok(render.includes('gl.uniform1i(uniforms.uEffect, 3)'));
+  assert.ok(render.includes('const HALFTONE_CELL = 10;'));
+  assert.ok(render.includes('getHalftoneFrame(source, applied)'));
+  assert.ok(render.includes("uniforms.uEffect, state.effect === 'dither' ? 2 : 3"));
   assert.ok(render.includes("state.effect === 'dither') return;"));
   assert.ok(!render.includes('getDitherPattern'));
+  assert.ok(!render.includes('diffuseFloydSteinberg'));
   assert.ok(!render.includes("grayscale(1) contrast(24)"));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
@@ -73,9 +76,22 @@ test('automatic quality separates analysis and render budgets', () => {
   assert.ok(app.includes('updateQualityBudgets(perf, state.timing.analysis, state.timing.render'));
   assert.ok(app.includes('1000 / deviceProfile.fps'));
   assert.ok(app.includes('window.__blobtrackMetrics = {'));
-  for (const key of ['tAnalysis:', 'tRender:', 'tCapture:', 'blobsAtivos:', 'idsNovosUltimos60s:', 'recordingState:', 'effectsPaused:']) {
+  for (const key of ['tAnalysis:', 'tRender:', 'tCapture:', 'tOverlay:', 'tComposition:', 'blobsAtivos:', 'idsNovosUltimos60s:', 'recordingState:', 'effectsPaused:']) {
     assert.ok(app.includes(key), `${key} is published`);
   }
+});
+
+test('Pacote 1 reaproveita buffers e evita payload de áudio inútil', async () => {
+  assert.ok(app.includes('let maskImage = null, maskView = null;'));
+  assert.ok(/maskImage: null,\r?\n\s*maskView: null,/.test(app));
+  assert.ok(app.includes("typeof state.worklet?.port?.postMessage === 'function'"));
+  assert.ok(app.includes("value: el.querySelector('b')"));
+  assert.ok(app.includes('zone.value.textContent'));
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  assert.ok(render.includes('maskView || (maskView = new Uint32Array(image.data.buffer))'));
+  assert.ok(render.includes('meshSteps = { width: viewWidth, height: viewHeight, spacing, x: xSteps, y: ySteps }'));
+  assert.ok(render.includes('state.timing.overlay = overlayCost'));
+  assert.ok(render.includes("if (!(filter !== 'none' && state.videoBlend === 0)) drawSource();"));
 });
 
 test('viewport does not prevent user zoom', async () => {

@@ -265,6 +265,24 @@ test('recording composition letterboxes, shades, and layers the overlay last', (
   assert.deepEqual(calls.at(-1), ['restore']);
 });
 
+test('recording shade gradient is reused while the canvas geometry is unchanged', () => {
+  let created = 0;
+  const gradient = { addColorStop() {} };
+  const context = {
+    save() {}, restore() {}, clearRect() {}, fillRect() {}, drawImage() {},
+    createLinearGradient(...args) { created++; gradient.args = args; return gradient; },
+  };
+  const visual = { width: 480, height: 640 };
+
+  drawRecordingFrame(context, visual, null, 1280, 720, true);
+  drawRecordingFrame(context, visual, null, 1280, 720, true);
+  assert.equal(created, 1);
+  assert.deepEqual(gradient.args, [0, 0, 0, 720]);
+
+  drawRecordingFrame(context, visual, null, 960, 540, true);
+  assert.equal(created, 2);
+});
+
 test('recording watermark is drawn over the overlay without changing composition order', () => {
   const calls = [];
   const context = {

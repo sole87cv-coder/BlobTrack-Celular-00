@@ -125,7 +125,7 @@ const state = {
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0, rhythmEnabled: true,
   audioEffects: { echo: false, space: false, chorus: false },
   gains: { exposure: .35, grow: .60, threshold: .12, dither: .20, speed: 60 },
-  timing: { camera: null, capture: null, tracking: null, analysis: null, render: null, cycle: null, bus: null, composition: null, windows: null },
+  timing: { camera: null, capture: null, tracking: null, analysis: null, render: null, cycle: null, bus: null, composition: null, windows: null, overlay: null },
   focusMode: false,
 };
 const idEventSeconds = new Int32Array(61).fill(-1);
@@ -172,6 +172,7 @@ if (saved.audioEffects && typeof saved.audioEffects === 'object') {
   for (const key of ['echo','space','chorus']) if (typeof saved.audioEffects[key] === 'boolean') state.audioEffects[key] = saved.audioEffects[key];
 }
 if (typeof saved.focusMode === 'boolean') state.focusMode = saved.focusMode;
+let forceFallback = false;
 if (state.extremeMode) {
   state.videoWindows = false; state.trailEffect = false; state.waveEffect = false;
   state.meshEffect = false; state.networkEffect = false; state.distanceTelemetry = false;
@@ -182,7 +183,7 @@ if (state.extremeMode) {
 let toastTimer = null, installPrompt = null, glProgram = null, texture = null, posBuffer = null, uniforms = null;
 const maskCanvas = document.createElement('canvas');
 const maskContext = maskCanvas.getContext('2d');
-let maskImage = null;
+let maskImage = null, maskView = null;
 const tracker = new BlobTracker({ calibrateFrames: 8, stationaryAbsorbFrames: 8 });
 
 const TRAIL_SLOTS = 12, TRAIL_POINTS = 18;
@@ -259,21 +260,21 @@ const audioService = createAudio({
 });
 const { makeAudio, connectRecordingAudio, disconnectRecordingAudio, ensureAudioAlive, watchAudio, handleAudioInterruption } = audioService;
 
+const glState = { program: null, texture: null, uniforms: null };
 const render = createRender({
   state,
   canvas,
   overlayCanvas,
   stageViewport,
   gl,
-  glProgram: null,
-  texture: null,
-  uniforms: null,
+  glState,
   fallbackContext,
   overlayContext,
   video,
   maskCanvas,
   maskContext,
   maskImage: null,
+  maskView: null,
   cropRect,
   gridPoint,
   mapPointA,
@@ -348,7 +349,7 @@ void main(){ vUv=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }`;
 const fragmentSource = `#version 300 es
 precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; uniform bool uFit; in vec2 vUv; out vec4 outColor;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror!=uFlip)uv.x=1.0-uv.x;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
+void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror!=uFlip)uv.x=1.0-uv.x;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);rgb=vec3(step(t,l));}else if(uEffect==2){float t=clamp(uThreshold+uBias*.14,0.0,1.0);vec2 cell=fract(gl_FragCoord.xy/14.0)-0.5;float dist=length(cell);float radius=mix(0.10,0.62,clamp(l*(0.65+t*0.6),0.0,1.0));rgb=vec3(1.0-smoothstep(radius-0.06,radius+0.06,dist));}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
 function shader(type, source) { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function initRenderer() {
   if (!gl) { $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'Renderização indisponível'; return Boolean(fallbackContext); }
@@ -359,7 +360,7 @@ function initRenderer() {
     gl.useProgram(glProgram); posBuffer = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
     const loc = gl.getAttribLocation(glProgram, 'aPosition'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     texture = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, texture); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    render.glProgram = glProgram; render.texture = texture; render.uniforms = uniforms;
+    glState.program = glProgram; glState.texture = texture; glState.uniforms = uniforms;
     $('renderInfo').textContent = 'WebGL2 ativo'; return true;
   } catch (e) { log(`Renderizador: ${e.message}`); showToast(fallbackContext ? 'WebGL indisponível · usando modo leve' : 'Renderização indisponível'); $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'WebGL2 indisponível'; return Boolean(fallbackContext); }
 }
@@ -536,7 +537,10 @@ function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   const applied = { exposure:m*state.gains.exposure*e.energy, grow:m*state.gains.grow*(.6*e.density+.4*e.speed), threshold:m*state.gains.threshold*e.coherence, dither:m*state.gains.dither*e.speed, speed:m*state.gains.speed*e.energy };
   state.lastSignal = { ...e, applied };
   const t0 = performance.now();
-  audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:state.visualOnly?[]:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, frameTime: now });
+  // Sem porta, com som desligado, mudo ou no modo "Só visual", não há por que montar o payload.
+  if (state.audioEnabled && !state.muted && !state.visualOnly && typeof state.worklet?.port?.postMessage === 'function') {
+    audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, frameTime: now });
+  }
   state.timing.bus = performance.now() - t0;
   return applied;
 }
@@ -546,11 +550,25 @@ function updateHud(raw, applied, result) {
   if (now - state.lastHudAt < 100) return;
   state.lastHudAt = now;
   if (!hudCache) {
-    hudCache = { zones: Array.from(document.querySelectorAll('.zone')), elements: {} };
+    hudCache = {
+      zones: Array.from(document.querySelectorAll('.zone'), el => ({ el, value: el.querySelector('b'), percent: -1, background: '' })),
+      elements: {},
+    };
     for (const k of ['energy','density','speed','coherence','ambient']) hudCache.elements[k] = { label: document.getElementById('signal-'+k), bar: document.getElementById('bar-'+k) };
   }
   for(const k of ['energy','density','speed','coherence','ambient']){const el=hudCache.elements[k];el.label.textContent=`${Math.round(state.envelopes[k]*100)}%`;el.bar.style.width=`${state.envelopes[k]*100}%`;};
-  hudCache.zones.forEach((el,i)=>{const v=state.envelopes.zones[i],percent=Math.round(v*100);el.querySelector('b').textContent=`${percent}%`;el.setAttribute('aria-label',`Zona ${i+1}: ${percent}%`);el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
+  hudCache.zones.forEach((zone,i)=>{
+    const v=state.envelopes.zones[i],percent=Math.round(v*100);
+    const background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;
+    if (zone.percent===percent && zone.background===background) return;
+    if (zone.percent!==percent) {
+      zone.percent=percent;
+      if (zone.value) zone.value.textContent=`${percent}%`;
+      zone.el.setAttribute('aria-label',`Zona ${i+1}: ${percent}%`);
+    }
+    zone.background=background;
+    zone.el.style.background=background;
+  });
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
   $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
@@ -628,6 +646,8 @@ function publishBlobTrackMetrics(now, result) {
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
     tCapture: state.timing.capture,
+    tOverlay: state.timing.overlay,
+    tComposition: state.timing.composition,
     blobsAtivos: result.blobs.length,
     idsNovosUltimos60s: idsNewLast60s,
     recordingState: recordingSnapshot.state,
@@ -951,7 +971,6 @@ $('minEffectsButton').addEventListener('click', () => {
   toggle($('minEffectsButton'), true);
   setAllEffects(false);
 });
-let forceFallback = false;
 $('extremeModeButton').addEventListener('click', () => {
   state.extremeMode = !state.extremeMode;
   toggle($('extremeModeButton'), state.extremeMode);

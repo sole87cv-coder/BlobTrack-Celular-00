@@ -1,5 +1,21 @@
 export const RECORDING_WATERMARK = '@V1su4rt';
 
+// O degradê depende só da geometria: enquanto o canvas não muda, reutiliza o mesmo objeto.
+const shadeGradients = new WeakMap();
+
+function shadeGradient(context, width, height, top, drawHeight) {
+  const key = `${width}|${height}|${top}|${drawHeight}`;
+  const cached = shadeGradients.get(context);
+  if (cached?.key === key) return cached.gradient;
+  const gradient = context.createLinearGradient(0, top, 0, top + drawHeight);
+  gradient.addColorStop(0, 'rgba(6,8,12,0.69)');
+  gradient.addColorStop(0.18, 'rgba(6,8,12,0)');
+  gradient.addColorStop(0.82, 'rgba(6,8,12,0)');
+  gradient.addColorStop(1, 'rgba(6,8,12,0.63)');
+  shadeGradients.set(context, { key, gradient });
+  return gradient;
+}
+
 export function recordingCanvasSize(width, height, maxEdge = 1280) {
   if (![width, height, maxEdge].every(Number.isFinite) || width <= 0 || height <= 0 || maxEdge <= 0) {
     throw new RangeError('Dimensões de gravação inválidas.');
@@ -25,12 +41,7 @@ export function drawRecordingFrame(context, visual, overlay, width, height, incl
   context.fillRect(0, 0, width, height);
   context.drawImage(visual, left, top, drawWidth, drawHeight);
   if (includeShade) {
-    const gradient = context.createLinearGradient(0, top, 0, top + drawHeight);
-    gradient.addColorStop(0, 'rgba(6,8,12,0.69)');
-    gradient.addColorStop(0.18, 'rgba(6,8,12,0)');
-    gradient.addColorStop(0.82, 'rgba(6,8,12,0)');
-    gradient.addColorStop(1, 'rgba(6,8,12,0.63)');
-    context.fillStyle = gradient;
+    context.fillStyle = shadeGradient(context, width, height, top, drawHeight);
     context.fillRect(left, top, drawWidth, drawHeight);
   }
   if (overlay?.width && overlay?.height) context.drawImage(overlay, left, top, drawWidth, drawHeight);

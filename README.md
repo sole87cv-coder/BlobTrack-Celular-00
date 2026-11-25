@@ -102,7 +102,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v52` → `v53`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v54` → `v55`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -116,17 +116,23 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
 | `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
 
-#### Exemplo prático: ajustar o Pontilhado (Floyd-Steinberg)
+#### Exemplo prático: ajustar o Pontilhado (halftone)
 
 Este é um bom primeiro trabalho porque toca só nas 🟢. Em `src/render/render.js` você encontra:
 
 ```js
-const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;
-const FLOYD_MAX_PIXELS = FLOYD_MAX_WIDTH * FLOYD_MAX_HEIGHT;
-const FLOYD_ERROR_LIMIT = 0.35;
+const HALFTONE_MAX_WIDTH = 320, HALFTONE_MAX_HEIGHT = 240;
+const HALFTONE_MAX_PIXELS = HALFTONE_MAX_WIDTH * HALFTONE_MAX_HEIGHT;
+const HALFTONE_CELL = 10;
 ```
 
-O Pontilhado não usa mais círculos nem grade: ele transforma o quadro em preto e branco empurrando o erro de cada pixel para os vizinhos. A varredura é **serpenteada** — linha par da esquerda para a direita, linha ímpar da direita para a esquerda — para não aparecerem diagonais. `FLOYD_MAX_*` define o tamanho do mini-quadro: valores menores dão pontos maiores e custam menos; valores maiores dão pontos mais finos e custam mais. Não suba esses números sem medir. `FLOYD_ERROR_LIMIT` segura rastros longos; `0,35` é o valor seguro. Se o canvas 2D falhar, o app desenha o vídeo normal em vez de quebrar. Depois: suba o cache, rode os testes e confira o efeito no navegador.
+A imagem **vira pontos**: cada célula vira um círculo branco cujo raio cresce com a luminosidade. Não há pontos desenhados por cima da imagem. No WebGL, o quadro original vai direto para a textura e o branch `uEffect==2` do shader em `src/app.js` desenha círculos de `14 px`; no Canvas 2D, um mini-canvas reaproveitado faz o mesmo serviço com `HALFTONE_CELL`. Não há `putImageData` por quadro. Para pontos maiores, aumente a célula; para mais finos, diminua. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+
+#### Reaproveitamento de buffers (Pacote 1)
+
+Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32Array` da máscara, as linhas da malha (`xSteps`/`ySteps`), os pontos mapeados de cada blob (uma vez por olho), o gradiente da gravação e as referências `<b>` do HUD. As janelas de vídeo não desenham o quadro-base quando `videoBlend === 0` e há filtro, e o payload de áudio deixa de ser montado com som desligado, mudo ou sem porta. Nada disso altera o contrato congelado.
+
+Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo dos efeitos no canvas de overlay) e `tComposition` (tempo total de montar o overlay). As chaves antigas (`fps`, `tAnalysis`, `tRender`, `tCapture`, `blobsAtivos`, `idsNovosUltimos60s`, `recordingState`, `effectsPaused`) continuam iguais. Abra o console do navegador e rode `window.__blobtrackMetrics` para comparar.
 
 #### Rotina de segurança antes de publicar
 
@@ -154,7 +160,7 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
 4. Peça ajuda antes de mexer na zona 🔴.
 
-Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: aumenta pontos do efeito Pontilhado e sobe cache v52`.
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `perf: reaproveita buffers do overlay e sobe cache v54`.
 
 ### Alterações de título e marca (manutenção manual)
 

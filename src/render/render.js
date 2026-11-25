@@ -1,49 +1,9 @@
 import { clamp } from '../core/utils.js';
 
-const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;
-const FLOYD_MAX_PIXELS = FLOYD_MAX_WIDTH * FLOYD_MAX_HEIGHT;
-const FLOYD_ERROR_LIMIT = 0.35;
-
-// Floyd-Steinberg serpenteado: a direção alterna a cada linha para evitar diagonais.
-// Os dois buffers de erro são reutilizados pelo chamador; não há alocação por pixel.
-export function diffuseFloydSteinberg(pixels, width, height, threshold, rowError = new Float32Array(width), nextError = new Float32Array(width)) {
-  const limit = clamp(threshold, 0.05, 0.95);
-  let current = rowError;
-  let next = nextError;
-  current.fill(0);
-  for (let y = 0; y < height; y++) {
-    next.fill(0);
-    const forward = (y & 1) === 0;
-    for (let n = 0; n < width; n++) {
-      const x = forward ? n : width - 1 - n;
-      const i = (y * width + x) * 4;
-      const luma = (pixels[i] * 77 + pixels[i + 1] * 150 + pixels[i + 2] * 29) / 65536;
-      const value = luma + current[x];
-      const white = value >= limit;
-      const bw = white ? 255 : 0;
-      pixels[i] = bw;
-      pixels[i + 1] = bw;
-      pixels[i + 2] = bw;
-      pixels[i + 3] = 255;
-      const error = clamp(value - (white ? 1 : 0), -FLOYD_ERROR_LIMIT, FLOYD_ERROR_LIMIT);
-      if (forward) {
-        if (x + 1 < width) current[x + 1] += error * 0.4375;
-        if (x > 0) next[x - 1] += error * 0.1875;
-        next[x] += error * 0.3125;
-        if (x + 1 < width) next[x + 1] += error * 0.0625;
-      } else {
-        if (x > 0) current[x - 1] += error * 0.4375;
-        if (x + 1 < width) next[x + 1] += error * 0.1875;
-        next[x] += error * 0.3125;
-        if (x > 0) next[x - 1] += error * 0.0625;
-      }
-    }
-    const swap = current;
-    current = next;
-    next = swap;
-  }
-  return pixels;
-}
+const HALFTONE_MAX_WIDTH = 320, HALFTONE_MAX_HEIGHT = 240;
+const HALFTONE_MAX_PIXELS = HALFTONE_MAX_WIDTH * HALFTONE_MAX_HEIGHT;
+const HALFTONE_CELL = 10;
+const HALFTONE_TAU = Math.PI * 2;
 
 export function createRender({
   state,
@@ -51,15 +11,14 @@ export function createRender({
   overlayCanvas,
   stageViewport = null,
   gl,
-  glProgram,
-  texture,
-  uniforms,
+  glState = null,
   fallbackContext,
   overlayContext,
   video,
   maskCanvas,
   maskContext,
   maskImage,
+  maskView,
   cropRect,
   gridPoint,
   mapPointA,
@@ -94,53 +53,61 @@ export function createRender({
   const distancePairSquared = new Float64Array(distancePairCapacity);
   const distancePairUsed = new Uint8Array(distancePairCapacity);
   const distanceDegree = new Uint8Array(TRAIL_SLOTS);
-  let floydCanvas = null;
-  let floydContext2d = null;
-  let floydRowError = new Float32Array(0);
-  let floydNextError = new Float32Array(0);
-  let floydWarned = false;
+  let halftoneCanvas = null;
+  let halftoneContext2d = null;
+  let halftoneWarned = false;
+  let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
 
-  // Gera um quadro 1-bit com erro difundido. Em caso de falha, devolve o vídeo original.
-  function getFloydFrame(source, applied = {}) {
+  // Fallback 2D do Pontilhado: cada célula vira um círculo branco cujo raio segue a luma.
+  // No caminho WebGL o mesmo efeito vive no shader; aqui não há putImageData por quadro.
+  function getHalftoneFrame(source, applied = {}) {
     const srcWidth = source?.videoWidth || source?.width || 0;
     const srcHeight = source?.videoHeight || source?.height || 0;
     if (!srcWidth || !srcHeight || typeof document === 'undefined') return source;
     try {
-      if (!floydCanvas) {
-        floydCanvas = document.createElement('canvas');
-        floydContext2d = floydCanvas.getContext('2d', { willReadFrequently: true, alpha: false });
-        if (!floydContext2d) return source;
+      if (!halftoneCanvas) {
+        halftoneCanvas = document.createElement('canvas');
+        halftoneContext2d = halftoneCanvas.getContext('2d', { willReadFrequently: true, alpha: false });
+        if (!halftoneContext2d) return source;
       }
       const scale = Math.min(
         1,
-        FLOYD_MAX_WIDTH / srcWidth,
-        FLOYD_MAX_HEIGHT / srcHeight,
-        Math.sqrt(FLOYD_MAX_PIXELS / (srcWidth * srcHeight))
+        HALFTONE_MAX_WIDTH / srcWidth,
+        HALFTONE_MAX_HEIGHT / srcHeight,
+        Math.sqrt(HALFTONE_MAX_PIXELS / (srcWidth * srcHeight))
       );
       const width = Math.max(1, Math.round(srcWidth * scale));
       const height = Math.max(1, Math.round(srcHeight * scale));
-      if (floydCanvas.width !== width || floydCanvas.height !== height) {
-        floydCanvas.width = width;
-        floydCanvas.height = height;
+      if (halftoneCanvas.width !== width || halftoneCanvas.height !== height) {
+        halftoneCanvas.width = width;
+        halftoneCanvas.height = height;
       }
-      floydContext2d.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
-      const image = floydContext2d.getImageData(0, 0, width, height);
-      if (floydRowError.length !== width) {
-        floydRowError = new Float32Array(width);
-        floydNextError = new Float32Array(width);
+      halftoneContext2d.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
+      const image = halftoneContext2d.getImageData(0, 0, width, height);
+      const data = image.data;
+      halftoneContext2d.fillStyle = '#000';
+      halftoneContext2d.fillRect(0, 0, width, height);
+      halftoneContext2d.fillStyle = '#fff';
+      const t = clamp(0.5 + (applied.threshold || 0) + (state.bias || 0) * 0.14, 0, 1);
+      const factor = 0.65 + t * 0.6;
+      const half = HALFTONE_CELL / 2;
+      for (let y = 0; y < height; y += HALFTONE_CELL) {
+        for (let x = 0; x < width; x += HALFTONE_CELL) {
+          const sx = Math.min(width - 1, x + half);
+          const sy = Math.min(height - 1, y + half);
+          const i = (sy * width + sx) * 4;
+          const luma = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) / 65536;
+          const radius = HALFTONE_CELL * (0.1 + 0.52 * clamp(luma * factor, 0, 1));
+          halftoneContext2d.beginPath();
+          halftoneContext2d.arc(x + half, y + half, radius, 0, HALFTONE_TAU);
+          halftoneContext2d.fill();
+        }
       }
-      const adjustment = clamp(
-        (applied.threshold || 0) * 0.5 + (state.bias || 0) * 0.14 + (applied.dither || 0) * 0.08,
-        -0.35,
-        0.35
-      );
-      diffuseFloydSteinberg(image.data, width, height, 0.5 - adjustment, floydRowError, floydNextError);
-      floydContext2d.putImageData(image, 0, 0);
-      return floydCanvas;
+      return halftoneCanvas;
     } catch (e) {
-      if (!floydWarned && typeof log === 'function') {
-        log(`Dither Floyd-Steinberg indisponível: ${e.message}`);
-        floydWarned = true;
+      if (!halftoneWarned && typeof log === 'function') {
+        log(`Halftone indisponível: ${e.message}`);
+        halftoneWarned = true;
       }
       return source;
     }
@@ -293,8 +260,8 @@ export function createRender({
     c.globalAlpha = 1;
   }
 
-  function drawWaves(c, blobs, viewWidth, viewHeight, offsetX, now) {
-    const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight);
+  function drawWaves(c, blobs, viewWidth, viewHeight, offsetX, now, preparedCount) {
+    const count = preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight);
     const size = Math.min(viewWidth, viewHeight);
     for (let i = 0; i < count; i++) {
       const blob = blobs[i];
@@ -337,19 +304,22 @@ export function createRender({
     out[1] = y + pushY;
   }
 
-  function drawMesh(c, blobs, viewWidth, viewHeight, offsetX) {
-    const count = Math.min(prepareBlobViewPoints(blobs, viewWidth, viewHeight), 8);
+  function drawMesh(c, blobs, viewWidth, viewHeight, offsetX, preparedCount) {
+    const count = Math.min(preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight), 8);
     const spacing = Math.max(34, Math.min(52, Math.min(viewWidth, viewHeight) / 11));
     c.globalAlpha = .22 + state.envelopes.density * .2;
     c.strokeStyle = '#ed72ff';
     c.lineWidth = .7 + state.envelopes.speed * .8;
-    // Garante cobertura total: linhas horizontais
-    const ySteps = [];
-    for (let y = 0; y <= viewHeight; y += spacing) ySteps.push(y);
-    if (ySteps[ySteps.length - 1] < viewHeight) ySteps.push(viewHeight);
-    const xSteps = [];
-    for (let x = 0; x <= viewWidth; x += spacing) xSteps.push(x);
-    if (xSteps[xSteps.length - 1] < viewWidth) xSteps.push(viewWidth);
+    if (meshSteps.width !== viewWidth || meshSteps.height !== viewHeight || meshSteps.spacing !== spacing) {
+      const ySteps = [];
+      for (let y = 0; y <= viewHeight; y += spacing) ySteps.push(y);
+      if (ySteps[ySteps.length - 1] < viewHeight) ySteps.push(viewHeight);
+      const xSteps = [];
+      for (let x = 0; x <= viewWidth; x += spacing) xSteps.push(x);
+      if (xSteps[xSteps.length - 1] < viewWidth) xSteps.push(viewWidth);
+      meshSteps = { width: viewWidth, height: viewHeight, spacing, x: xSteps, y: ySteps };
+    }
+    const xSteps = meshSteps.x, ySteps = meshSteps.y;
     for (const y of ySteps) {
       c.beginPath();
       for (const x of xSteps) {
@@ -371,8 +341,8 @@ export function createRender({
     c.globalAlpha = 1;
   }
 
-  function drawBlobNetwork(c, blobs, viewWidth, viewHeight, offsetX = 0) {
-    const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight);
+  function drawBlobNetwork(c, blobs, viewWidth, viewHeight, offsetX = 0, preparedCount) {
+    const count = preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight);
     if (!count) return;
     const maxDistance = Math.min(viewWidth, viewHeight) * 0.28;
     const maxDistanceSquared = maxDistance * maxDistance;
@@ -404,9 +374,9 @@ export function createRender({
     c.restore();
   }
 
-  function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0) {
+  function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0, preparedCount) {
     if (!state.distanceTelemetry || state.performance?.effectsPaused) return 0;
-    const count = prepareBlobViewPoints(blobs, viewWidth, viewHeight);
+    const count = preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight);
     if (count < 2) return 0;
     const minDistance = Math.min(viewWidth, viewHeight) * clamp(state.maxConnectionDistance, 0.08, 0.5);
     const minDistanceSquared = minDistance * minDistance;
@@ -522,7 +492,8 @@ export function createRender({
       }
     };
     c.save();
-    drawSource();
+    // Com videoBlend === 0 e filtro ativo, a segunda passada já desenha o quadro final.
+    if (!(filter !== 'none' && state.videoBlend === 0)) drawSource();
     c.restore();
     if (state.videoBlend > 0 && filter !== 'none') {
       c.save();
@@ -548,14 +519,17 @@ export function createRender({
     if (!source.videoWidth) return;
     state.timing.camera = state.timing.camera ?? null;
     const t0 = performance.now();
-    const ditherSource = state.effect === 'dither' ? getFloydFrame(source, applied) : source;
-    const frameWidth = ditherSource.videoWidth || ditherSource.width;
-    const frameHeight = ditherSource.videoHeight || ditherSource.height;
-    const useFallback = !gl || !glProgram || (typeof forceFallback === 'function' && forceFallback());
+    const glProgram = glState?.program;
+    const glTexture = glState?.texture;
+    const uniforms = glState?.uniforms;
+    const useFallback = !gl || !glProgram || ((typeof forceFallback === 'function' && forceFallback()) && fallbackContext);
     if (useFallback) {
       if (fallbackContext) {
+        const ditherSource = state.effect === 'dither' ? getHalftoneFrame(source, applied) : source;
+        const frameWidth = ditherSource.videoWidth || ditherSource.width;
+        const frameHeight = ditherSource.videoHeight || ditherSource.height;
         fallbackContext.save();
-        fallbackContext.filter = 'none'; // o dither já vem no quadro; os outros efeitos ficam nas janelas
+        fallbackContext.filter = 'none'; // invert/threshold vivem nas janelas; o halftone já vem no quadro
         const eyes = state.gearVr ? 2 : 1;
         const eyeWidth = canvas.width / eyes;
         for (let eye = 0; eye < eyes; eye++) {
@@ -593,15 +567,15 @@ export function createRender({
       return;
     }
     gl.useProgram(glProgram);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.bindTexture(gl.TEXTURE_2D, glTexture);
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ditherSource);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
     } catch {
       return;
     }
     state.timing.camera = performance.now() - t0;
     gl.uniform1i(uniforms.uTexture, 0);
-    gl.uniform1i(uniforms.uEffect, 3); // o quadro já traz o efeito; 3 = sem filtro extra
+    gl.uniform1i(uniforms.uEffect, state.effect === 'dither' ? 2 : 3);
 
     gl.uniform1f(uniforms.uThreshold, .5 + applied.threshold);
     gl.uniform1f(uniforms.uBias, state.bias);
@@ -609,7 +583,7 @@ export function createRender({
     gl.uniform1f(uniforms.uGrowth, applied.grow);
     gl.uniform1f(uniforms.uSpeed, applied.speed);
     gl.uniform1f(uniforms.uTime, performance.now() / 1000);
-    gl.uniform1f(uniforms.uImageAspect, frameWidth / frameHeight);
+    gl.uniform1f(uniforms.uImageAspect, source.videoWidth / source.videoHeight);
     gl.uniform1f(
       uniforms.uViewportAspect,
       (state.gearVr ? canvas.width / 2 : canvas.width) / canvas.height
@@ -649,15 +623,16 @@ export function createRender({
         maskCanvas.width = result.width;
         maskCanvas.height = result.height;
         maskImage = maskContext.createImageData(result.width, result.height);
+        maskView = new Uint32Array(maskImage.data.buffer);
       }
       const image = maskImage;
       const mask = result.mask;
-      const packed = new Uint32Array(image.data.buffer);
+      const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
       const ON = 0xFFFFFFFF, OFF = 0xFF000000;
       for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
       maskContext.putImageData(image, 0, 0);
     }
-    let windowCost = 0;
+    let windowCost = 0, overlayCost = 0;
     for (let eye = 0; eye < eyeCount; eye++) {
       const offsetX = eye * viewWidth;
       c.save();
@@ -693,17 +668,22 @@ export function createRender({
         }
         c.restore();
       }
+      const wantsViewPoints = !state.performance.effectsPaused
+        && (state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry);
+      const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
+      const overlayStarted = performance.now();
       if (!state.performance.effectsPaused) {
         if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
-        if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now());
-        if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX);
+        if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
+        if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
       }
       if (state.networkEffect && !state.performance.effectsPaused) {
-        drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX);
+        drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
       }
       if (state.distanceTelemetry && !state.performance.effectsPaused) {
-        drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX);
+        drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
       }
+      overlayCost += performance.now() - overlayStarted;
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;
         const cellH = viewHeight / 2;
@@ -750,6 +730,7 @@ export function createRender({
     }
     c.restore();
     state.timing.windows = windowCost;
+    state.timing.overlay = overlayCost;
     state.timing.composition = performance.now() - started;
   }
 
