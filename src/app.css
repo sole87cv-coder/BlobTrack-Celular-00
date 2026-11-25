@@ -160,30 +160,30 @@ button:focus-visible,input:focus-visible { outline:2px solid var(--mint);outline
   background:linear-gradient(180deg,#06080c58,#06080c9e)
 }
 .stage-welcome {
-  width:min(100%,390px);
+  width:min(100%,340px);
   display:flex;align-items:center;flex-direction:column;
-  padding:18px 18px 16px;
-  border:1px solid #ffffff1b;border-radius:var(--radius-lg);
+  padding:12px 14px 10px;
+  border:1px solid #ffffff1b;border-radius:var(--radius-md);
   background:
     radial-gradient(ellipse at 12% 0%,var(--glass-mint),transparent 44%),
     radial-gradient(ellipse at 92% 100%,var(--glass-violet),transparent 42%),
     linear-gradient(145deg,#17272cdd,#0c111bdc 58%,#171327d9);
   backdrop-filter:blur(22px) saturate(145%);
   -webkit-backdrop-filter:blur(22px) saturate(145%);
-  box-shadow:0 18px 55px #00000055,inset 0 1px #ffffff18
+  box-shadow:0 14px 40px #00000055,inset 0 1px #ffffff18
 }
-.stage-message h1 { font-size:clamp(19px,5vw,26px);line-height:1.15;max-width:330px;margin:12px 0 5px }
-.stage-message p { margin:0 0 12px;color:#b9c4cf;font-size:13px }
-.stage-message .welcome-help { max-width:340px;margin:-4px 0 12px;color:#c4ced8;font-size:12px;line-height:1.4 }
-.pulse-icon { display:grid;place-items:center;width:64px;height:64px;color:var(--mint);filter:drop-shadow(0 0 16px #6ee7bc40) }
+.stage-message h1 { font-size:clamp(16px,5vw,22px);line-height:1.15;max-width:300px;margin:8px 0 4px }
+.stage-message p { margin:0 0 8px;color:#b9c4cf;font-size:12px }
+.stage-message .welcome-help { max-width:300px;margin:-2px 0 8px;color:#c4ced8;font-size:11px;line-height:1.4 }
+.pulse-icon { display:grid;place-items:center;width:48px;height:48px;color:var(--mint);filter:drop-shadow(0 0 12px #6ee7bc40) }
 .pulse-icon svg { width:100%;height:100% }
 html:not(.reduce-motion) .pulse-icon svg { animation:logo-breathe 4s ease-in-out infinite }
 @keyframes logo-breathe { 50% { transform:scale(1.06);opacity:.84 } }
 .primary-button {
-  min-height:48px;min-width:150px;padding:0 24px;
+  min-height:44px;min-width:130px;padding:0 20px;
   border:0;border-radius:var(--radius-md);
   background:var(--mint);color:#092017;
-  font-weight:700;font-size:15px;
+  font-weight:700;font-size:14px;
   box-shadow:0 8px 32px #6ee7bc33;
   transition:all .2s var(--ease-out)
 }
