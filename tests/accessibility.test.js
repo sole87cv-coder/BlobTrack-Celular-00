@@ -119,9 +119,9 @@ test('public branding, PT-BR strings and safe technical identifiers are retained
   const manifest = JSON.parse(await readFile(new URL('../manifest.webmanifest', import.meta.url), 'utf8'));
   const i18n = await readFile(new URL('../src/ui/i18n/pt-BR.js', import.meta.url), 'utf8');
   assert.match(html, /<html lang="pt-BR">/);
-  assert.match(html, /<title>Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem/);
-  assert.equal(manifest.short_name, 'Os Corpos');
-  assert.match(i18n, /shortName: 'Os Corpos'/);
+  assert.match(html, /<title>@V1su4rt — instrumento audiovisual que transforma movimento em som e imagem/);
+  assert.equal(manifest.short_name, '@V1su4rt');
+  assert.match(i18n, /shortName: '@V1su4rt'/);
   assert.match(app, /blobtrack-celular-00-preferences/);
 });
 test('microphone remains unused and the camera issue has a persistent recovery action', () => {
@@ -143,7 +143,7 @@ test('PWA brand icons include a scalable SVG and maskable PNG sizes', async () =
 
 test('credit stays separate from the mark and is hidden in Gear VR and focus mode', () => {
   assert.match(html, /<html lang="pt-BR">/);
-  assert.match(html, /<title>Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem<\/title>/);
+  assert.match(html, /<title>@V1su4rt — instrumento audiovisual que transforma movimento em som e imagem<\/title>/);
   assert.match(html, /<p class="stage-credit" aria-hidden="true">@V1su4rt<\/p>/);
   assert.match(css, /body\.gear-vr \.stage-credit,body\.focus-mode \.stage-credit \{ display:none \}/);
   assert.match(html, /href="https:\/\/www\.instagram\.com\/v1su4rt\/" target="_blank" rel="noopener noreferrer"/);

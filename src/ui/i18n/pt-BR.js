@@ -1,12 +1,12 @@
 export const strings = {
   app: {
-    title: 'Os Corpos Compon o Som — instrumento audiovisual que transforma movimento em som e imagem',
-    name: 'Os Corpos Compon o Som',
-    shortName: 'Os Corpos',
+    title: '@V1su4rt — instrumento audiovisual que transforma movimento em som e imagem',
+    name: '@V1su4rt',
+    shortName: '@V1su4rt',
     description: 'Instrumento audiovisual para celular: a câmera detecta movimento e o transforma em imagem e som em tempo real.',
     tagline: 'instrumento audiovisual que transforma movimento em som e imagem',
     about: {
-      heading: 'Os Corpos Compon o Som',
+      heading: '@V1su4rt',
       subheading: 'Instrumento audiovisual que transforma movimento em som e imagem',
       paragraph: 'Um instrumento audiovisual para celular. A câmera detecta os corpos em movimento e os converte em imagem e som sintetizados em tempo real.',
     },
@@ -27,7 +27,7 @@ export const strings = {
     audioIncluded: 'com áudio do app', audioNotIncluded: 'sem áudio',
     ready: 'Pronto', offline: 'Offline', send: 'Enviar', record: 'Gravar', save: 'Salvar', screen: 'Tela',
     stage: 'Palco', install: 'Instalar', cameraWaiting: 'Câmera aguardando', pausedEffects: 'Efeitos reativos pausados para proteger o FPS',
-    motionTitle: 'O movimento vira imagem e som', startHint: 'Ligue a câmera para começar.', noMicrophone: 'Movimento vira imagem e som. Sem microfone.',
+    motionTitle: '@V1su4rt', startHint: 'Ligue a câmera para começar.', noMicrophone: 'Movimento vira imagem e som. Sem microfone.',
     startCamera: 'Iniciar câmera', retry: 'Tentar novamente', close: 'Fechar', quickSettings: 'Ajustes rápidos', mute: 'Mudo',
     controls: 'Controles', adjustments: 'Ajustes', recordVideo: 'Gravar vídeo', saveRecording: 'Salvar gravação', soundOn: 'Som · ligado', soundOff: 'Som · desligado', react: 'Reagir', switchCamera: 'Trocar câmera', end: 'Encerrar', moreActions: 'Mais ações →',
     effect: 'Efeito', sound: 'Som', tracking: 'Rastreio', measurements: 'Medições', moreOptions: 'Mais opções ↓', visualOnly: 'Só visual', visualOnlyHint: 'Quando ativo, os blobs continuam nos efeitos visuais e não controlam o áudio.',

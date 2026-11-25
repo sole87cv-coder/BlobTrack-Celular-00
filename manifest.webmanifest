@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Os Corpos Compon o Som — instrumento audiovisual para celular",
-  "short_name": "Os Corpos",
+  "name": "@V1su4rt — instrumento audiovisual para celular",
+  "short_name": "@V1su4rt",
   "description": "Instrumento audiovisual para celular: a câmera detecta movimento e o transforma em imagem e som em tempo real.",
   "start_url": "./",
   "scope": "./",

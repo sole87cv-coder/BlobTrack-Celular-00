@@ -26,6 +26,6 @@ test('getStrings seleciona o idioma e usa pt-BR como fallback', () => {
 test('texto da interface traduz entre idiomas sem alterar a marca pública', () => {
   assert.equal(translateText('Palco', 'en'), 'Stage');
   assert.equal(translateText('Distâncias', 'fr'), 'Distances');
-  assert.equal(translateText('Os Corpos Compon o Som', 'en'), 'Os Corpos Compon o Som');
+  assert.equal(translateText('@V1su4rt', 'en'), '@V1su4rt');
   assert.equal(translateText('@V1su4rt', 'es'), '@V1su4rt');
 });

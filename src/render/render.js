@@ -543,14 +543,10 @@ export function createRender({
         maskImage = maskContext.createImageData(result.width, result.height);
       }
       const image = maskImage;
-      for (let i = 0; i < result.mask.length; i++) {
-        const q = i * 4;
-        const value = result.mask[i] ? 255 : 0;
-        image.data[q] = value;
-        image.data[q + 1] = value;
-        image.data[q + 2] = value;
-        image.data[q + 3] = 255;
-      }
+      const mask = result.mask;
+      const packed = new Uint32Array(image.data.buffer);
+      const ON = 0xFFFFFFFF, OFF = 0xFF000000;
+      for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
       maskContext.putImageData(image, 0, 0);
     }
     let windowCost = 0;

@@ -101,9 +101,9 @@ const video = $('camera'), canvas = $('visual'), analysisCanvas = $('analysis');
 const overlayCanvas = $('overlay');
 const stage = $('stage');
 const stageViewport = { width: 0, height: 0 };
-const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPreference: 'high-performance' });
+const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPreference: 'high-performance', desynchronized: true });
 const fallbackContext = gl ? null : canvas.getContext('2d', { alpha: false });
-const overlayContext = overlayCanvas.getContext('2d');
+const overlayContext = overlayCanvas.getContext('2d', { desynchronized: true });
 const ctx = analysisCanvas.getContext('2d', { willReadFrequently: true });
 const frameCanvas = document.createElement('canvas');
 const frameContext = frameCanvas.getContext('2d', { alpha: false });
@@ -514,12 +514,17 @@ function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   state.timing.bus = performance.now() - t0;
   return applied;
 }
+let hudCache = null;
 function updateHud(raw, applied, result) {
   const now = performance.now();
   if (now - state.lastHudAt < 100) return;
   state.lastHudAt = now;
-  for(const k of ['energy','density','speed','coherence','ambient']){$(`signal-${k}`).textContent=`${Math.round(state.envelopes[k]*100)}%`;$(`bar-${k}`).style.width=`${state.envelopes[k]*100}%`;}
-  document.querySelectorAll('.zone').forEach((el,i)=>{const v=state.envelopes.zones[i],percent=Math.round(v*100);el.querySelector('b').textContent=`${percent}%`;el.setAttribute('aria-label',`Zona ${i+1}: ${percent}%`);el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
+  if (!hudCache) {
+    hudCache = { zones: Array.from(document.querySelectorAll('.zone')), elements: {} };
+    for (const k of ['energy','density','speed','coherence','ambient']) hudCache.elements[k] = { label: document.getElementById('signal-'+k), bar: document.getElementById('bar-'+k) };
+  }
+  for(const k of ['energy','density','speed','coherence','ambient']){const el=hudCache.elements[k];el.label.textContent=`${Math.round(state.envelopes[k]*100)}%`;el.bar.style.width=`${state.envelopes[k]*100}%`;};
+  hudCache.zones.forEach((el,i)=>{const v=state.envelopes.zones[i],percent=Math.round(v*100);el.querySelector('b').textContent=`${percent}%`;el.setAttribute('aria-label',`Zona ${i+1}: ${percent}%`);el.style.background=`linear-gradient(90deg,#15372d ${Math.min(100,v*100)}%,#141a23 ${Math.min(100,v*100)}%)`;});
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
   $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
