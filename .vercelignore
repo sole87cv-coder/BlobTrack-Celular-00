@@ -1,10 +1,7 @@
 # Arquivos de desenvolvimento e o APK antigo não fazem parte da PWA servida pelo Vercel.
+# docs/ cobre a documentação corrente e o histórico movido em 25/11/2026.
 android/
 dist/
 docs/
 tests/
-AUDITORIA.md
-BUGS-CROP.md
-CHANGELOG.md
 README.md
-RECORDING-PLAN.md

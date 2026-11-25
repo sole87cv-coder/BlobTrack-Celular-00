@@ -14,7 +14,7 @@ Inventário feito na branch `chore/organizacao`, em 24/11/2026. Foram encontrado
 | `index.html`, `sw.js`, `manifest.webmanifest`, `vercel.json`, `package.json`, `.gitignore`, `.vercelignore` | CORE | Entradas e configurações de execução, deploy, cache e testes. | Manter |
 | `icons/**` (3 arquivos) | CORE | Ícones referenciados pelo manifesto e interface PWA. | Manter |
 | `teste.html`, `teste.js`, `teste.css` | CORE | Página de diagnóstico referenciada pela documentação, pelo shell offline e pelo pacote Android. | Manter |
-| `README.md`, `AUDITORIA.md`, `BUGS-CROP.md`, `CHANGELOG.md`, `RECORDING-PLAN.md` | CORE | Documentação de uso, decisões, auditoria e validação. | Manter |
+| `README.md` e `docs/historico/*.md` (AUDITORIA, BUGS-CROP, CHANGELOG, RECORDING-PLAN) | CORE | Documentação de uso, decisões, auditoria e validação. | Manter; os quatro relatórios antigos foram movidos para `docs/historico/` em 25/11/2026 |
 | `dist/BlobTrack-Celular-00-debug.apk` | CORE | Artefato debug rastreado; documentado no README e nas instruções Android. | Manter |
 | `.vs/**` (19 arquivos no inventário) | GERADO/CACHE | Estado local do Visual Studio; não aparece entre os arquivos rastreados. | Manter no disco; já ignorado |
 | `android/.gradle/**` | GERADO/CACHE | Estado de execução/cache do Gradle; fora do índice Git e regenerável pelo Gradle. | Manter no disco; já ignorado |

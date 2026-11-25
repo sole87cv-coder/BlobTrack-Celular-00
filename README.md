@@ -25,10 +25,12 @@ O processamento acontece num ciclo de quadro. Os buffers são reaproveitados; a 
 Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servir arquivos localmente. Na raiz do projeto:
 
 ```powershell
-python -m http.server 8000
+python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Permissão de câmera e áudio exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v55`).
+
+Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
 ```powershell
 npm test
@@ -58,10 +60,11 @@ O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação
 | `src/session/`, `src/platform/` | Exclusividade de sessão e integrações do navegador. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Captura de vídeo, composição e salvamento. |
 | `src/app.css` | Aparência responsiva. |
-| `sw.js`, `manifest.json`, ícones | Instalação e cache offline da PWA. Atualize o número de cache ao alterar recursos de runtime. |
+| `sw.js`, `manifest.webmanifest`, ícones | Instalação e cache offline da PWA. Atualize o número de cache ao alterar recursos de runtime. |
 | `tests/` | Testes automatizados sem câmera física. |
 | `scripts/bench-blobtrack.js` | Cenário reproduzível de tempo do núcleo de rastreamento. |
-| `docs/` | Diagnóstico, medições, matriz física e decisões de manutenção. |
+| `start-local.bat`, `start-local.sh` | Atalhos para subir o servidor local na porta 8000. |
+| `docs/` | Diagnóstico, medições, matriz física e decisões de manutenção. Comece por [`docs/INDICE.md`](docs/INDICE.md). |
 | `android/` | Projeto WebView e compilação do APK debug. |
 | `teste.html`, `teste.js`, `teste.css` | Ferramentas de diagnóstico manual mantidas no repositório. |
 
@@ -77,7 +80,7 @@ O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação
 | Cores e efeitos | `src/render/` e controles em `index.html`/`src/app.js`. |
 | Perfis do aparelho e taxa de quadros | `src/core/deviceProfile.js`. |
 | Gravação | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` e `docs/gravacao.md`. |
-| Região de interesse | `src/core/roiMask.js`, integração em `src/app.js` e `docs/ROI-decisao.md`. |
+| Região de interesse | `src/core/roiMask.js`, integração em `src/app.js` e `docs/diagnostico-cirurgico.md`. |
 | Rede entre blobs | controle persistido em `src/app.js` e desenho em `src/render/`. |
 
 ### Manual de manutenção para quem está começando
@@ -163,7 +166,7 @@ git status --short
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
 
-Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
+Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000 --bind 127.0.0.1`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
 
 #### Se algo deu errado
 
