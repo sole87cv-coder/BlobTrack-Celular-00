@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRender } from '../../src/render/render.js';
+import { createRender, diffuseFloydSteinberg } from '../../src/render/render.js';
 
 function makeState(overrides = {}) {
   return {
@@ -129,69 +129,92 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(out1[1] < out2[1]);
 });
 
-test('dither desenha pontos grandes e cacheia o pattern', () => {
+test('dither não desenha janelas que cubram o dither do quadro inteiro', () => {
+  const state = makeState({ effect: 'dither' });
+  const render = createRender({ state, video: { videoWidth: 640, videoHeight: 360 } });
+  const calls = [];
+  const c = {
+    save() { calls.push('save'); },
+    restore() {}, beginPath() {}, rect() {}, clip() {},
+    translate() {}, scale() {}, drawImage() {}, fillRect() {},
+  };
+  render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, state.video);
+  assert.equal(calls.length, 0);
+});
+
+test('Floyd-Steinberg difunde erro em serpentina e mantém apenas preto e branco', () => {
+  const width = 2, height = 2;
+  const pixels = new Uint8ClampedArray([
+    200, 200, 200, 255, 140, 140, 140, 255,
+    140, 140, 140, 255, 140, 140, 140, 255,
+  ]);
+  diffuseFloydSteinberg(pixels, width, height, 0.5, new Float32Array(width), new Float32Array(width));
+  // O erro negativo do branco na primeira linha escurece o cinza claro ao lado.
+  assert.equal(pixels[0], 255);
+  assert.equal(pixels[4], 0);
+  // A segunda linha volta da direita para a esquerda.
+  assert.equal(pixels[8], 0);
+  assert.equal(pixels[12], 255);
+  for (let i = 0; i < pixels.length; i += 4) {
+    assert.ok(pixels[i] === 0 || pixels[i] === 255);
+    assert.equal(pixels[i], pixels[i + 1]);
+    assert.equal(pixels[i], pixels[i + 2]);
+    assert.equal(pixels[i + 3], 255);
+  }
+});
+
+test('fallback de dither desenha o quadro binarizado e reaproveita o canvas', () => {
   const previousDocument = globalThis.document;
-  let tilesCreated = 0;
-  const tileContext = {
-    fillStyle: '',
-    beginPath() {},
-    arc(x, y, radius) { this.arc = { x, y, radius }; },
-    fill() { this.filled = true; },
-  };
-  const tile = {
-    width: 0,
-    height: 0,
-    getContext() { return tileContext; },
-  };
-  globalThis.document = {
-    createElement(tag) {
-      assert.equal(tag, 'canvas');
-      tilesCreated++;
-      return tile;
+  let canvasesCreated = 0;
+  let lastImage = null;
+  const offscreenContext = {
+    drawImage(...args) { this.lastDraw = args; },
+    getImageData(x, y, width, height) {
+      const data = new Uint8ClampedArray(width * height * 4).fill(140);
+      for (let i = 3; i < data.length; i += 4) data[i] = 255;
+      return { data, width, height };
     },
+    putImageData(image) { lastImage = image; },
+  };
+  const floydCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
+  globalThis.document = {
+    createElement(tag) { assert.equal(tag, 'canvas'); canvasesCreated++; return floydCanvas; },
   };
   try {
-    const state = makeState({ effect: 'dither' });
+    const state = makeState({ effect: 'dither', timing: {} });
     const video = { videoWidth: 640, videoHeight: 360 };
+    const draws = [];
+    const c = {
+      filter: '',
+      save() {}, restore() {},
+      beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {},
+      drawImage(...args) { draws.push(args); },
+    };
     const render = createRender({
-      state,
-      video,
+      state, video,
+      canvas: { width: 320, height: 240 },
+      fallbackContext: c,
       cropRect: new Float32Array(4),
       mapPointA: new Float32Array(2),
       mapPointB: new Float32Array(2),
       gridPoint: new Float32Array(2),
     });
-    const pattern = { __dither: true };
-    const fills = [];
-    let alphaAtFill = null;
-    const c = {
-      globalAlpha: 1,
-      fillStyle: '',
-      filter: '',
-      save() {}, restore() {},
-      beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {}, drawImage() {},
-      createPattern(source, repeat) {
-        assert.equal(source, tile);
-        assert.equal(repeat, 'repeat');
-        return pattern;
-      },
-      fillRect(...args) { fills.push(args); alphaAtFill = this.globalAlpha; },
-    };
-    const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
 
-    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video, { dither: 0.1 });
-    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video, { dither: 0.1 });
+    render.renderFrame({ dither: 0.1 }, video);
+    render.renderFrame({ dither: 0.1 }, video);
 
-    assert.equal(tilesCreated, 1);
-    assert.equal(tile.width, 16);
-    assert.equal(tile.height, 16);
-    assert.deepEqual(tileContext.arc, { x: 8, y: 8, radius: 5.5 });
-    assert.equal(tileContext.filled, true);
-    assert.equal(fills.length, 2);
-    assert.deepEqual(fills[0], [0, 0, 320, 240]);
-    assert.equal(c.fillStyle, pattern);
-    assert.ok(Math.abs(alphaAtFill - 0.65) < 1e-6);
+    assert.equal(canvasesCreated, 1);
+    assert.equal(floydCanvas.width, 320);
+    assert.equal(floydCanvas.height, 180);
+    assert.deepEqual(offscreenContext.lastDraw, [video, 0, 0, 640, 360, 0, 0, 320, 180]);
+    assert.ok(lastImage);
+    for (let i = 0; i < lastImage.data.length; i += 4) {
+      assert.ok(lastImage.data[i] === 0 || lastImage.data[i] === 255);
+    }
+    assert.equal(draws.length, 2);
+    assert.deepEqual(draws[0], [floydCanvas, 40, 0, 240, 180, 0, 0, 320, 240]);
+    assert.deepEqual(draws[1], draws[0]);
   } finally {
     globalThis.document = previousDocument;
   }

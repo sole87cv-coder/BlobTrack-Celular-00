@@ -1,5 +1,50 @@
 import { clamp } from '../core/utils.js';
 
+const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;
+const FLOYD_MAX_PIXELS = FLOYD_MAX_WIDTH * FLOYD_MAX_HEIGHT;
+const FLOYD_ERROR_LIMIT = 0.35;
+
+// Floyd-Steinberg serpenteado: a direção alterna a cada linha para evitar diagonais.
+// Os dois buffers de erro são reutilizados pelo chamador; não há alocação por pixel.
+export function diffuseFloydSteinberg(pixels, width, height, threshold, rowError = new Float32Array(width), nextError = new Float32Array(width)) {
+  const limit = clamp(threshold, 0.05, 0.95);
+  let current = rowError;
+  let next = nextError;
+  current.fill(0);
+  for (let y = 0; y < height; y++) {
+    next.fill(0);
+    const forward = (y & 1) === 0;
+    for (let n = 0; n < width; n++) {
+      const x = forward ? n : width - 1 - n;
+      const i = (y * width + x) * 4;
+      const luma = (pixels[i] * 77 + pixels[i + 1] * 150 + pixels[i + 2] * 29) / 65536;
+      const value = luma + current[x];
+      const white = value >= limit;
+      const bw = white ? 255 : 0;
+      pixels[i] = bw;
+      pixels[i + 1] = bw;
+      pixels[i + 2] = bw;
+      pixels[i + 3] = 255;
+      const error = clamp(value - (white ? 1 : 0), -FLOYD_ERROR_LIMIT, FLOYD_ERROR_LIMIT);
+      if (forward) {
+        if (x + 1 < width) current[x + 1] += error * 0.4375;
+        if (x > 0) next[x - 1] += error * 0.1875;
+        next[x] += error * 0.3125;
+        if (x + 1 < width) next[x + 1] += error * 0.0625;
+      } else {
+        if (x > 0) current[x - 1] += error * 0.4375;
+        if (x + 1 < width) next[x + 1] += error * 0.1875;
+        next[x] += error * 0.3125;
+        if (x > 0) next[x - 1] += error * 0.0625;
+      }
+    }
+    const swap = current;
+    current = next;
+    next = swap;
+  }
+  return pixels;
+}
+
 export function createRender({
   state,
   canvas,
@@ -49,25 +94,56 @@ export function createRender({
   const distancePairSquared = new Float64Array(distancePairCapacity);
   const distancePairUsed = new Uint8Array(distancePairCapacity);
   const distanceDegree = new Uint8Array(TRAIL_SLOTS);
-  const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;
-  const ditherPatterns = new WeakMap();
+  let floydCanvas = null;
+  let floydContext2d = null;
+  let floydRowError = new Float32Array(0);
+  let floydNextError = new Float32Array(0);
+  let floydWarned = false;
 
-  function getDitherPattern(c) {
-    if (typeof document === 'undefined') return null;
-    let pattern = ditherPatterns.get(c);
-    if (pattern) return pattern;
-    const tile = document.createElement('canvas');
-    tile.width = DITHER_CELL;
-    tile.height = DITHER_CELL;
-    const tileContext = tile.getContext('2d');
-    if (!tileContext) return null;
-    tileContext.fillStyle = '#05070c';
-    tileContext.beginPath();
-    tileContext.arc(DITHER_CELL / 2, DITHER_CELL / 2, DITHER_DOT_RADIUS, 0, Math.PI * 2);
-    tileContext.fill();
-    pattern = c.createPattern(tile, 'repeat');
-    if (pattern) ditherPatterns.set(c, pattern);
-    return pattern;
+  // Gera um quadro 1-bit com erro difundido. Em caso de falha, devolve o vídeo original.
+  function getFloydFrame(source, applied = {}) {
+    const srcWidth = source?.videoWidth || source?.width || 0;
+    const srcHeight = source?.videoHeight || source?.height || 0;
+    if (!srcWidth || !srcHeight || typeof document === 'undefined') return source;
+    try {
+      if (!floydCanvas) {
+        floydCanvas = document.createElement('canvas');
+        floydContext2d = floydCanvas.getContext('2d', { willReadFrequently: true, alpha: false });
+        if (!floydContext2d) return source;
+      }
+      const scale = Math.min(
+        1,
+        FLOYD_MAX_WIDTH / srcWidth,
+        FLOYD_MAX_HEIGHT / srcHeight,
+        Math.sqrt(FLOYD_MAX_PIXELS / (srcWidth * srcHeight))
+      );
+      const width = Math.max(1, Math.round(srcWidth * scale));
+      const height = Math.max(1, Math.round(srcHeight * scale));
+      if (floydCanvas.width !== width || floydCanvas.height !== height) {
+        floydCanvas.width = width;
+        floydCanvas.height = height;
+      }
+      floydContext2d.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
+      const image = floydContext2d.getImageData(0, 0, width, height);
+      if (floydRowError.length !== width) {
+        floydRowError = new Float32Array(width);
+        floydNextError = new Float32Array(width);
+      }
+      const adjustment = clamp(
+        (applied.threshold || 0) * 0.5 + (state.bias || 0) * 0.14 + (applied.dither || 0) * 0.08,
+        -0.35,
+        0.35
+      );
+      diffuseFloydSteinberg(image.data, width, height, 0.5 - adjustment, floydRowError, floydNextError);
+      floydContext2d.putImageData(image, 0, 0);
+      return floydCanvas;
+    } catch (e) {
+      if (!floydWarned && typeof log === 'function') {
+        log(`Dither Floyd-Steinberg indisponível: ${e.message}`);
+        floydWarned = true;
+      }
+      return source;
+    }
   }
 
   // ---------- geometria pura ----------
@@ -406,7 +482,7 @@ export function createRender({
   }
 
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}) {
-    if (!source?.videoWidth || !blobs.length) return;
+    if (!source?.videoWidth || !blobs.length || state.effect === 'dither') return;
     c.save();
     const effectFilter =
       state.effect === 'invert' ? 'invert(1)'
@@ -463,16 +539,6 @@ export function createRender({
       c.restore();
       c.filter = 'none';
     }
-    if (state.effect === 'dither') {
-      const pattern = getDitherPattern(c);
-      if (pattern) {
-        c.save();
-        c.globalAlpha = clamp(0.35 + (applied.dither || 0) * 3, 0.35, 0.9);
-        c.fillStyle = pattern;
-        c.fillRect(offsetX, 0, viewWidth, viewHeight);
-        c.restore();
-      }
-    }
     c.restore();
   }
 
@@ -482,11 +548,14 @@ export function createRender({
     if (!source.videoWidth) return;
     state.timing.camera = state.timing.camera ?? null;
     const t0 = performance.now();
+    const ditherSource = state.effect === 'dither' ? getFloydFrame(source, applied) : source;
+    const frameWidth = ditherSource.videoWidth || ditherSource.width;
+    const frameHeight = ditherSource.videoHeight || ditherSource.height;
     const useFallback = !gl || !glProgram || (typeof forceFallback === 'function' && forceFallback());
     if (useFallback) {
       if (fallbackContext) {
         fallbackContext.save();
-        fallbackContext.filter = 'none'; // fundo sempre vídeo normal (efeito só nos retângulos dos blobs)
+        fallbackContext.filter = 'none'; // o dither já vem no quadro; os outros efeitos ficam nas janelas
         const eyes = state.gearVr ? 2 : 1;
         const eyeWidth = canvas.width / eyes;
         for (let eye = 0; eye < eyes; eye++) {
@@ -500,11 +569,11 @@ export function createRender({
           fallbackContext.translate(x + (mirrorX ? width : 0), 0);
           fallbackContext.scale(mirrorX ? -1 : 1, 1);
           if (state.gearVr) {
-            drawContainedSource(fallbackContext, source, width, canvas.height);
+            drawContainedSource(fallbackContext, ditherSource, width, canvas.height);
           } else {
-            calculateCoverCrop(source.videoWidth, source.videoHeight, width, canvas.height, cropRect);
+            calculateCoverCrop(frameWidth, frameHeight, width, canvas.height, cropRect);
             fallbackContext.drawImage(
-              source,
+              ditherSource,
               cropRect[0],
               cropRect[1],
               cropRect[2],
@@ -526,20 +595,21 @@ export function createRender({
     gl.useProgram(glProgram);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, ditherSource);
     } catch {
       return;
     }
     state.timing.camera = performance.now() - t0;
     gl.uniform1i(uniforms.uTexture, 0);
-    gl.uniform1i(uniforms.uEffect, 3); // fundo sempre vídeo normal (efeito só nos retângulos dos blobs)
+    gl.uniform1i(uniforms.uEffect, 3); // o quadro já traz o efeito; 3 = sem filtro extra
+
     gl.uniform1f(uniforms.uThreshold, .5 + applied.threshold);
     gl.uniform1f(uniforms.uBias, state.bias);
     gl.uniform1f(uniforms.uExposure, applied.exposure);
     gl.uniform1f(uniforms.uGrowth, applied.grow);
     gl.uniform1f(uniforms.uSpeed, applied.speed);
     gl.uniform1f(uniforms.uTime, performance.now() / 1000);
-    gl.uniform1f(uniforms.uImageAspect, source.videoWidth / source.videoHeight);
+    gl.uniform1f(uniforms.uImageAspect, frameWidth / frameHeight);
     gl.uniform1f(
       uniforms.uViewportAspect,
       (state.gearVr ? canvas.width / 2 : canvas.width) / canvas.height

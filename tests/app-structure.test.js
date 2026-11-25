@@ -21,14 +21,18 @@ test('binary mask renderer receives the live mask context', () => {
   assert.ok(!app.includes('maskContext: null'));
 });
 
-test('dither usa célula grande e repassa os gains ao overlay', async () => {
-  assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
-  assert.ok(app.includes('float cellSize=16.0;'));
-  assert.ok(app.includes('float radius=mix(0.08,0.5,l*(0.7+t*0.5));'));
+test('dither é Floyd-Steinberg no quadro inteiro, sem branch de shader', async () => {
+  assert.ok(!app.includes('bayer8'));
+  assert.ok(!app.includes('uEffect==2'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;'));
-  assert.ok(render.includes("c.createPattern(tile, 'repeat')"));
-  assert.ok(render.includes('c.fillRect(offsetX, 0, viewWidth, viewHeight)'));
+  assert.ok(render.includes('export function diffuseFloydSteinberg('));
+  assert.ok(render.includes('const FLOYD_MAX_WIDTH = 320, FLOYD_MAX_HEIGHT = 240;'));
+  assert.ok(render.includes('getFloydFrame(source, applied)'));
+  assert.ok(render.includes('gl.uniform1i(uniforms.uEffect, 3)'));
+  assert.ok(render.includes("state.effect === 'dither') return;"));
+  assert.ok(!render.includes('getDitherPattern'));
+  assert.ok(!render.includes("grayscale(1) contrast(24)"));
+  assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
 });
 
