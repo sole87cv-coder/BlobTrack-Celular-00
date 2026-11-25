@@ -113,15 +113,11 @@
           <small class="dock-scroll-hint" id="dockScrollHint" hidden>Mais opções ↓</small>
 
           <div class="dock-panel" id="panelAudio" role="tabpanel" aria-labelledby="tabAudio" tabindex="0">
-            <div class="dock-module">
-              <div class="dock-row">
-                <button type="button" class="pill" id="visualOnlyButton" aria-pressed="false">Só visual</button>
-                <small class="hint">Quando ativo, os blobs continuam nos efeitos visuais e não controlam o áudio.</small>
-              </div>
+            <div class="dock-row">
+              <button type="button" class="pill" id="visualOnlyButton" aria-pressed="false">Só visual</button>
+              <small class="hint">Quando ativo, os blobs continuam nos efeitos visuais e não controlam o áudio.</small>
             </div>
-            <div class="dock-module">
-              <span class="dock-module-title">Parâmetros de áudio</span>
-              <div class="audio-params-grid">
+            <div class="audio-params-grid">
               <div class="audio-param">
                 <label for="audioSensitivity"><span>Nível do som</span><b id="audioSensitivityValue">1,00</b></label>
                 <input id="audioSensitivity" type="range" min="0" max="3" step="0.05" value="1">
@@ -161,9 +157,7 @@
                 </label>
               </div>
             </div>
-            <div class="dock-module">
-              <span class="dock-module-title">Efeitos de áudio</span>
-              <div class="audio-effect-block">
+            <div class="audio-effect-block">
               <span class="audio-section-title">Efeitos de áudio</span>
               <div class="dock-row">
                 <button type="button" class="pill small audio-effect-button active" id="audioRhythmButton" aria-pressed="true" aria-describedby="audioRhythmHint">Ritmo BlobTrack</button>
@@ -175,21 +169,20 @@
                 <button type="button" class="pill small audio-effect-button" id="audioChorusButton" aria-pressed="false">Chorus</button>
               </div>
             </div>
-            </div>
             <small class="hint">Os blobs conduzem a altura e a oscilação. Combine um timbre e ligue os efeitos ao seu gosto.</small>
           </div>
 
           <div class="dock-panel active" id="panelEffects" role="tabpanel" aria-labelledby="tabEffects" tabindex="0">
             <span class="audio-section-title">Estilo da imagem</span>
             <div class="dock-row">
-              <div class="dock-module effect-row" role="group" aria-label="Efeito visual">
+              <div class="effect-row" role="group" aria-label="Efeito visual">
                 <button type="button" data-effect="invert" class="effect-button active" aria-pressed="true">Inverter</button>
                 <button type="button" data-effect="threshold" class="effect-button" aria-pressed="false">Preto e branco</button>
                 <button type="button" data-effect="dither" class="effect-button" aria-pressed="false">Pontilhado</button>
               </div>
             </div>
             <div class="dock-row">
-              <div class="dock-module reactive-effects" role="group" aria-label="Efeitos reativos aos blobs">
+              <div class="reactive-effects" role="group" aria-label="Efeitos reativos aos blobs">
                 <button type="button" class="pill small effect-toggle active" id="blobWindowButton" aria-pressed="true">Janela viva</button>
                 <button type="button" class="pill small effect-toggle" id="trailEffectButton" aria-pressed="false">Rastro</button>
                 <button type="button" class="pill small effect-toggle" id="waveEffectButton" aria-pressed="false">Ondas</button>
@@ -198,21 +191,16 @@
                 <button type="button" class="pill small effect-toggle" id="distanceTelemetryButton" aria-pressed="false">Distâncias</button>
                 <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Mostrar vídeo original puro dentro dos retângulos dos blobs">Vídeo original</button>
                 <button type="button" class="pill small effect-toggle" id="invertBlendButton" aria-pressed="false" title="Inverter o vídeo dentro dos retângulos dos blobs">Inverter vídeo</button>
-                <div class="dock-module">
-                  <span class="dock-module-title">Mistura vídeo + efeito</span>
-                  <div class="dock-row slider-row">
-                    <label for="videoBlend"><span>Mistura vídeo + efeito</span><b id="videoBlendValue">0%</b></label>
-                    <input id="videoBlend" type="range" min="0" max="1" step="0.05" value="0">
-                  </div>
-                  <div class="dock-row wrap">
-                    <button type="button" class="pill small effect-toggle max-effects" id="maxEffectsButton" aria-pressed="false" title="Ativar todos os efeitos reativos de uma vez">Efeitos máximos</button>
-                    <button type="button" class="pill small effect-toggle min-effects" id="minEffectsButton" aria-pressed="false" title="Desligar todos os efeitos reativos de uma vez">Efeitos mínimos</button>
-                  </div>
+                <div class="dock-row slider-row">
+                  <label for="videoBlend"><span>Mistura vídeo + efeito</span><b id="videoBlendValue">0%</b></label>
+                  <input id="videoBlend" type="range" min="0" max="1" step="0.05" value="0">
                 </div>
+                <button type="button" class="pill small effect-toggle max-effects" id="maxEffectsButton" aria-pressed="false" title="Ativar todos os efeitos reativos de uma vez">Efeitos máximos</button>
+                <button type="button" class="pill small effect-toggle min-effects" id="minEffectsButton" aria-pressed="false" title="Desligar todos os efeitos reativos de uma vez">Efeitos mínimos</button>
               </div>
             </div>
             <small class="hint" id="effectPerformanceHint" hidden></small>
-            <details class="dock-module advanced-controls">
+            <details class="advanced-controls">
               <summary>Mais ajustes</summary>
             <div class="dock-row slider-row">
               <label for="maxConnectionDistance"><span>Alcance das distâncias</span><b id="maxConnectionDistanceValue">22%</b></label>
@@ -235,33 +223,28 @@
           </div>
 
           <div class="dock-panel" id="panelTracking" role="tabpanel" aria-labelledby="tabTracking" tabindex="0">
-            <div class="dock-module">
-              <span class="dock-module-title">Sensibilidade e detalhe</span>
-              <div class="dock-row slider-row">
-                <label for="motionThreshold"><span>Sensibilidade ao movimento</span><b id="motionValue">0,18</b></label>
-                <input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
-                <label for="trackingWidth"><span>Detalhe do rastreio</span><b id="trackingValue">320 px</b></label>
-                <input id="trackingWidth" type="range" min="160" max="640" step="80" value="320">
-              </div>
-              <div class="dock-row wrap">
-                <button class="pill small auto-quality active" id="autoQualityButton" type="button"
-                  aria-pressed="true">Auto</button>
-                <button class="pill small" id="backgroundButton" type="button">Reaprender fundo</button>
-                <button class="pill small" id="reseedButton" type="button">Reiniciar rastreio</button>
-                <button class="pill small" id="rectangleButton" type="button" aria-describedby="rectangleKeyboardHelp">Retângulo</button>
-                <button class="pill small" id="exposureButton" type="button" disabled>Exposição</button>
-                <button class="pill small" id="trackDown" type="button">Resolução −</button>
-                <button class="pill small" id="trackUp" type="button">Resolução +</button>
-              </div>
+            <div class="dock-row slider-row">
+              <label for="motionThreshold"><span>Sensibilidade ao movimento</span><b id="motionValue">0,18</b></label>
+              <input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
+              <label for="trackingWidth"><span>Detalhe do rastreio</span><b id="trackingValue">320 px</b></label>
+              <input id="trackingWidth" type="range" min="160" max="640" step="80" value="320">
+            </div>
+            <div class="dock-row wrap">
+              <button class="pill small auto-quality active" id="autoQualityButton" type="button"
+                aria-pressed="true">Auto</button>
+              <button class="pill small" id="backgroundButton" type="button">Reaprender fundo</button>
+              <button class="pill small" id="reseedButton" type="button">Reiniciar rastreio</button>
+              <button class="pill small" id="rectangleButton" type="button" aria-describedby="rectangleKeyboardHelp">Retângulo</button>
+              <button class="pill small" id="exposureButton" type="button" disabled>Exposição</button>
+              <button class="pill small" id="trackDown" type="button">Resolução −</button>
+              <button class="pill small" id="trackUp" type="button">Resolução +</button>
             </div>
             <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
             <small class="hint" id="exposureHint">Exposição manual quando a câmera suportar.</small>
           </div>
 
           <div class="dock-panel" id="panelSignals" role="tabpanel" aria-labelledby="tabSignals" tabindex="0">
-            <div class="dock-module">
-              <span class="dock-module-title">Sinais em tempo real</span>
-              <div class="signal-grid">
+            <div class="signal-grid">
               <div class="signal-card"><span>Energia</span><b id="signal-energy">—</b><i><u id="bar-energy"></u></i>
               </div>
               <div class="signal-card"><span>Densidade</span><b id="signal-density">—</b><i><u id="bar-density"></u></i>
@@ -273,10 +256,7 @@
               <div class="signal-card wide"><span>Nível ambiente</span><b id="signal-ambient">—</b><i><u
                     id="bar-ambient"></u></i></div>
             </div>
-            </div>
-            <div class="dock-module">
-              <span class="dock-module-title">Atividade nas seis zonas</span>
-              <div class="zone-grid" id="zoneGrid" role="list" aria-label="Atividade nas seis zonas">
+            <div class="zone-grid" id="zoneGrid" role="list" aria-label="Atividade nas seis zonas">
               <div class="zone" data-zone="0" role="listitem" aria-label="Zona 1: sem atividade"><span>01</span><b>—</b></div>
               <div class="zone" data-zone="1" role="listitem" aria-label="Zona 2: sem atividade"><span>02</span><b>—</b></div>
               <div class="zone" data-zone="2" role="listitem" aria-label="Zona 3: sem atividade"><span>03</span><b>—</b></div>
@@ -284,18 +264,12 @@
               <div class="zone" data-zone="4" role="listitem" aria-label="Zona 5: sem atividade"><span>05</span><b>—</b></div>
               <div class="zone" data-zone="5" role="listitem" aria-label="Zona 6: sem atividade"><span>06</span><b>—</b></div>
             </div>
-            </div>
-            <div class="dock-module">
-              <span class="dock-module-title">Leituras do ciclo</span>
-              <div class="readout-list">
+            <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>
               <div><span>Composição · janela viva</span><b id="windowCostReadout">—</b></div>
               <div><span>Áudio · vozes · pico</span><b id="audioReadout">—</b></div>
             </div>
-            </div>
-            <div class="dock-module">
-              <div class="log-line" id="logLine" aria-live="polite">Avisos aparecem aqui.</div>
-            </div>
+            <div class="log-line" id="logLine" aria-live="polite">Avisos aparecem aqui.</div>
           </div>
         </div>
       </section>
