@@ -81,3 +81,19 @@ test('pausa por FPS tem badge visível no palco e mantém descrição detalhada'
   assert.ok(app.includes('badge.hidden = !perf.effectsPaused'));
   assert.ok(app.includes('Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps'));
 });
+
+test('reactive pause has a cooldown and updates the badge only when state changes', async () => {
+  const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.ok(app.includes('const EFFECT_PAUSE_COOLDOWN_MS = 4000'));
+  assert.ok(app.includes('const EFFECT_PAUSE_TOAST_INTERVAL_MS = 30000'));
+  assert.ok(app.includes('function setReactiveEffectsPaused(paused, now)'));
+  assert.ok(app.includes('if (perf.effectsPaused === paused || now - perf.pauseChangedAt < EFFECT_PAUSE_COOLDOWN_MS) return false;'));
+  assert.ok(app.includes('if (paused && now - perf.pauseToastAt > EFFECT_PAUSE_TOAST_INTERVAL_MS)'));
+  assert.ok(app.includes('if (perf.effectsPaused !== perf.effectsPausedShown)'));
+  assert.ok(app.includes('perf.renderSlowFrames = 0;'));
+  assert.ok(app.includes('perf.renderAverage < 1000 / deviceProfile.fps * 0.4'));
+  assert.ok(!app.includes("showToast('Efeitos reativos retomados')"));
+  assert.equal(app.split('setReactiveEffectsPaused(true, now)').length - 1, 2);
+  assert.equal(app.split('setReactiveEffectsPaused(false, now)').length - 1, 1);
+  assert.ok(app.includes("if (next.renderPause && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) setReactiveEffectsPaused(true, now);"));
+});

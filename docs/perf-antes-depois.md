@@ -15,7 +15,7 @@ O script `scripts/bench-blobtrack.js` mede somente `BlobTrackerCore.updatePixels
 | P0-3 e P1-1, três medições finais | 0,701 / 0,708 / 0,545 | 1,340 / 1,367 / 1,200 | 1,731 / 2,240 / 1,674 | Duas abaixo do teto; a segunda ficou 0,020 ms acima. Núcleo do tracker inalterado nessas etapas |
 
 - O P0-1 teve ainda um microbenchmark isolado do processador de áudio silencioso: 20.000 blocos passaram de `1238,6 ms` para `2,7 ms`. Esse número mede outro caminho e não é comparável à tabela acima.
-- P0-3 (blur) e P1-1 (observer de idioma/HUD) não têm medição de GPU, bateria ou FPS em aparelho: a checagem foi sintática e por testes estáticos. O cache offline subiu para `v48` para forçar a atualização do shell, incluindo a marca d'água `@V1su4rt` apenas na gravação e o teclado de 8 teclas do Tom base.
+- P0-3 (blur) e P1-1 (observer de idioma/HUD) não têm medição de GPU, bateria ou FPS em aparelho: a checagem foi sintática e por testes estáticos. O cache offline subiu para `v49` para forçar a atualização do shell, incluindo a marca d'água `@V1su4rt` apenas na gravação, o teclado de 8 teclas do Tom base e a política de pausa/retomada dos efeitos reativos (cooldown de 4 s, retomada alinhada ao limiar de pausa, menos escritas no DOM, toast de pausa no máximo a cada 30 s e nenhum toast ao retomar).
 
 Não existe medição isolada “com gravação” nem “com S9” neste script. Ele não cria câmera, não compõe canvas e não grava vídeo. Não atribuir a esses recursos os tempos de `updatePixels` nem declarar ganho causal a partir de amostras em máquinas carregadas.
 

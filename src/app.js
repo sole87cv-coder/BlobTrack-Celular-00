@@ -118,7 +118,7 @@ const state = {
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: true, extremeMode: false, videoBlend: 0, invertBlend: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false },
+  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false, pauseChangedAt: -Infinity, pauseToastAt: -Infinity, effectsPausedShown: false },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
@@ -563,6 +563,22 @@ function updateHud(raw, applied, result) {
     $('visualSummary').textContent = count === 1 ? 'Uma região de movimento detectada.' : `${count} regiões de movimento detectadas.`;
   }
 }
+const EFFECT_PAUSE_COOLDOWN_MS = 4000;
+const EFFECT_PAUSE_TOAST_INTERVAL_MS = 30000;
+function setReactiveEffectsPaused(paused, now) {
+  const perf = state.performance;
+  if (perf.effectsPaused === paused || now - perf.pauseChangedAt < EFFECT_PAUSE_COOLDOWN_MS) return false;
+  perf.effectsPaused = paused;
+  perf.pauseChangedAt = now;
+  perf.lowFpsFrames = 0;
+  perf.recoveredFrames = 0;
+  perf.renderSlowFrames = 0;
+  if (paused && now - perf.pauseToastAt > EFFECT_PAUSE_TOAST_INTERVAL_MS) {
+    perf.pauseToastAt = now;
+    showToast('Efeitos reativos pausados para proteger o FPS');
+  }
+  return true;
+}
 function updateReactiveEffectQuality(now) {
   const perf = state.performance, elapsed = perf.lastFrameAt ? now - perf.lastFrameAt : 0;
   perf.lastFrameAt = now;
@@ -573,17 +589,21 @@ function updateReactiveEffectQuality(now) {
   const isRecording = ['recording', 'paused', 'stopping'].includes(recordingSnapshot.state);
   if (!perf.effectsPaused && !isRecording) {
     perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
-    if (perf.lowFpsFrames >= 8) { perf.effectsPaused = true; perf.recoveredFrames = 0; showToast('Efeitos reativos pausados para proteger o FPS'); }
-  } else {
-    perf.recoveredFrames = perf.fpsAverage >= resumeAt && perf.renderAverage < 1000 / deviceProfile.fps * 0.35 ? perf.recoveredFrames + 1 : 0;
-    if (perf.recoveredFrames >= 45) { perf.effectsPaused = false; perf.lowFpsFrames = 0; showToast('Efeitos reativos retomados'); }
+    if (perf.lowFpsFrames >= 8) setReactiveEffectsPaused(true, now);
+  } else if (perf.effectsPaused) {
+    const renderRecovered = perf.renderAverage < 1000 / deviceProfile.fps * 0.4;
+    perf.recoveredFrames = perf.fpsAverage >= resumeAt && renderRecovered ? perf.recoveredFrames + 1 : 0;
+    if (perf.recoveredFrames >= 45) setReactiveEffectsPaused(false, now);
   }
-  const hint = $('effectPerformanceHint');
-  hint.hidden = !perf.effectsPaused;
-  if (perf.effectsPaused) hint.textContent = `Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps · a Janela viva continua ativa.`;
-  const badge = $('effectsPausedBadge');
-  badge.hidden = !perf.effectsPaused;
-  if (perf.effectsPaused) badge.textContent = 'Efeitos reativos pausados para proteger o FPS';
+  if (perf.effectsPaused !== perf.effectsPausedShown) {
+    perf.effectsPausedShown = perf.effectsPaused;
+    const hint = $('effectPerformanceHint');
+    hint.hidden = !perf.effectsPaused;
+    if (perf.effectsPaused) hint.textContent = `Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps · a Janela viva continua ativa.`;
+    const badge = $('effectsPausedBadge');
+    badge.hidden = !perf.effectsPaused;
+    if (perf.effectsPaused) badge.textContent = 'Efeitos reativos pausados para proteger o FPS';
+  }
 }
 function publishBlobTrackMetrics(now, result) {
   const second = Math.floor(now / 1000);
@@ -644,11 +664,7 @@ function frame(now) {
           perf.fastFrames = next.fastFrames;
           perf.renderSlowFrames = next.renderSlowFrames;
           if (state.autoQuality && next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
-          if (next.renderPause && !perf.effectsPaused && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) {
-            perf.effectsPaused = true;
-            perf.recoveredFrames = 0;
-            showToast('Efeitos reativos pausados para proteger o FPS');
-          }
+          if (next.renderPause && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) setReactiveEffectsPaused(true, now);
           updateReactiveEffectQuality(now);
           publishBlobTrackMetrics(now, result);
         }
