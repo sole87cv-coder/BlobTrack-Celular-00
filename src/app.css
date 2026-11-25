@@ -471,7 +471,49 @@ body.recording-active .focus-hint { display:none }
   .float-bar,.dock,.stage-pill { background-color:#111720f5 }
 }
 
-/* Foldables / Android 12+ barra de tarefa: respeita insets horizontais */
+/* ===== Paisagem: priorizar visual, UI compacta ===== */
+@media (orientation:landscape) {
+  .float-bar { top:max(4px,var(--safe-top));padding:3px 6px;gap:4px;min-height:36px }
+  .chip-button { min-width:32px;min-height:32px;font-size:13px }
+  .brand strong { font-size:11px }
+  .status { font-size:10px }
+  .stage-pill { top:calc(40px + var(--safe-top));font-size:9px;padding:3px 8px }
+  .stage-bottom { bottom:calc(48px + var(--safe-bottom));font-size:8px }
+  .stage-message {
+    top:calc(36px + var(--safe-top));
+    bottom:calc(min(28dvh,120px) + 40px + var(--safe-bottom));
+    padding:4px
+  }
+  .stage-welcome { padding:8px 12px;border-radius:14px;gap:4px }
+  .pulse-icon { width:28px;height:28px }
+  .stage-message h1 { font-size:clamp(14px,2.5vw,18px);margin:4px 0 2px;max-width:260px }
+  .stage-message p { margin:0 0 4px;font-size:10px }
+  .stage-message .welcome-help { margin:0 0 4px;font-size:9px }
+  .primary-button { min-height:36px;min-width:110px;padding:0 16px;font-size:12px }
+  .dock { border-radius:var(--radius-md) var(--radius-md) 0 0 }
+  .dock-handle { min-height:36px;padding:0 12px;font-size:10px }
+  .dock-body { max-height:min(28dvh,120px);padding:2px 8px 4px }
+  .dock-actions { gap:4px;padding:2px 1px 4px }
+  .pill { min-height:32px;padding:0 10px;font-size:11px }
+  .pill.small { min-height:30px;padding:0 8px;font-size:10px }
+  .tab-button { min-height:30px;font-size:10px }
+  .dock-tabs { margin:4px 0 2px;padding:2px }
+  .audio-param { padding:2px 4px }
+  .audio-param label { min-height:20px;margin:2px 2px 0;font-size:10px }
+  .audio-param input[type=range] { height:32px }
+  .signal-grid { gap:4px;margin:2px 0 }
+  .signal-card { min-height:36px;padding:4px 6px }
+  .signal-card span { font-size:10px }
+  .signal-card b { font-size:10px }
+  .zone { min-height:20px;padding:0 6px }
+  .zone span,.zone b { font-size:9px }
+  .readout-list div { padding:3px 1px;font-size:9px }
+  .hint { margin:4px 2px;font-size:10px }
+  .advanced-controls summary { min-height:32px;font-size:10px;padding:0 8px }
+  .toast { bottom:calc(40px + var(--safe-bottom));font-size:11px;padding:6px 12px }
+  .stage-action-bar { bottom:calc(8px + var(--safe-bottom)) }
+  .stage-action-bar .page-button { min-width:90px;min-height:32px;font-size:12px;padding:6px 10px }
+}
 @media (display-cutout:unsupported) {
   .float-bar,.stage-pill,.stage-bottom { max-width:calc(100% - 20px) }
 }
