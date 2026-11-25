@@ -9,7 +9,7 @@ import { clearVideoComposition } from '../src/video-crop.js';
 import { loadPreferences } from '../src/preferences.js';
 
 const projectRoot = new URL('../', import.meta.url);
-const supportedMime = 'video/webm;codecs=vp8';
+const supportedMime = 'video/mp4;codecs=avc1.42E01E';
 
 class FakeTrack {
   constructor(kind) {
@@ -81,14 +81,14 @@ class FakeMediaRecorder {
 }
 
 class FallbackMediaRecorder extends FakeMediaRecorder {
-  static supportedTypes = new Set(['video/webm;codecs=vp9', supportedMime]);
+  static supportedTypes = new Set(['video/mp4;codecs=avc1.64001E', supportedMime]);
 
   static isTypeSupported(type) {
     return this.supportedTypes.has(type);
   }
 
   constructor(stream, options) {
-    if (options.mimeType === 'video/webm;codecs=vp9') {
+    if (options.mimeType === 'video/mp4;codecs=avc1.64001E') {
       const error = new Error('Codec indisponível');
       error.name = 'NotSupportedError';
       throw error;
@@ -426,7 +426,7 @@ test('recorder selects the first browser-supported MIME and matching extension',
   FakeMediaRecorder.supportedTypes = new Set([supportedMime]);
   assert.equal(selectRecordingMimeType(FakeMediaRecorder), supportedMime);
   assert.equal(recordingExtension('video/mp4;codecs=avc1'), 'mp4');
-  assert.equal(recordingExtension(supportedMime), 'webm');
+  assert.equal(recordingExtension(supportedMime), 'mp4');
   assert.equal(selectRecordingMimeType({ isTypeSupported: () => false }), null);
 });
 
@@ -435,7 +435,7 @@ test('recorder falls back when a supported MIME is rejected by its constructor',
 
   const startInfo = fixture.recorder.start();
 
-  assert.equal(selectRecordingMimeType(FallbackMediaRecorder), 'video/webm;codecs=vp9');
+  assert.equal(selectRecordingMimeType(FallbackMediaRecorder), 'video/mp4;codecs=avc1.42E01E');
   assert.equal(startInfo.mimeType, supportedMime);
   assert.equal(fixture.activeMediaRecorder.mimeType, supportedMime);
   await fixture.recorder.stop();
@@ -462,7 +462,7 @@ test('recorder combines the canvas with a cloned audio track and excludes paused
 
   assert.equal(result.durationMs, 2000);
   assert.equal(result.mimeType, supportedMime);
-  assert.equal(result.extension, 'webm');
+  assert.equal(result.extension, 'mp4');
   assert.equal(result.url, 'blob:test-recording');
   assert.equal(fixture.videoTrack.stopped, true);
   assert.equal(fixture.audioTrack.cloned.stopped, true);

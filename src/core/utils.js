@@ -14,7 +14,7 @@ export function formatRecordingTime(durationMs) {
 export function recordingFileName(result, date = new Date()) {
   const pad = value => String(value).padStart(2, '0');
   const stamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
-  return `BlobTrack_${stamp}.${result.extension || 'webm'}`;
+  return `BlobTrack_${stamp}.${result.extension || 'mp4'}`;
 }
 
 export async function hasRecordingStorageHeadroom(storage = globalThis.navigator?.storage, minimumBytes = 100 * 1024 * 1024) {

@@ -43,13 +43,13 @@ test('formatRecordingTime converts ms to mm:ss', (t) => {
 });
 
 test('recordingFileName follows the BlobTrack date-time format', (t) => {
-  const filename = recordingFileName({ extension: 'webm' }, new Date(2026, 0, 2, 3, 4, 5));
-  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.webm');
+  const filename = recordingFileName({ extension: 'mp4' }, new Date(2026, 0, 2, 3, 4, 5));
+  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.mp4');
 });
 
-test('recordingFileName defaults extension to webm', (t) => {
+test('recordingFileName defaults extension to mp4', (t) => {
   const filename = recordingFileName({}, new Date(2026, 0, 2, 3, 4, 5));
-  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.webm');
+  assert.equal(filename, 'BlobTrack_2026-01-02_03-04-05.mp4');
 });
 
 test('recording storage API absence or failure does not block recording', async () => {
