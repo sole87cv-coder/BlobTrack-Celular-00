@@ -80,6 +80,80 @@ O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação
 | Região de interesse | `src/core/roiMask.js`, integração em `src/app.js` e `docs/ROI-decisao.md`. |
 | Rede entre blobs | controle persistido em `src/app.js` e desenho em `src/render/`. |
 
+### Manual de manutenção para quem está começando
+
+Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à vontade, outros mudam o sabor inteiro e alguns são a própria panela — se você mexer neles, a receita para de funcionar. Este guia é o seu semáforo. A regra de ouro é **mudar uma coisa pequena por vez e rodar os testes antes de seguir em frente**.
+
+#### 🟢 Pode mexer — é seguro e os testes avisam se algo escapou
+
+| Arquivo | O que pode alterar |
+|---|---|
+| `src/app.css` | Cores, espaçamento, tamanho de botão e layout. É só aparência. |
+| `src/ui/i18n/*.js` | Textos que aparecem na tela. **Sempre altere os quatro idiomas juntos** (pt-BR, es, en, fr). |
+| `src/render/render.js` | Cores, espessura de linha e tamanho dos pontos dos efeitos. Não mude o nome nem a ordem dos parâmetros das funções. |
+| `index.html` | Rótulos dos botões, ordem dos controles e textos de acessibilidade. |
+| `docs/` e `README.md` | Explicações. Não quebram o app. |
+
+#### 🟡 Pode mexer, mas meça e teste
+
+| Arquivo | Cuidado necessário |
+|---|---|
+| `src/app.js` | É o "cérebro" que liga tudo. Mude apenas o trecho do controle que você quer. Nunca altere a lista passada para `createRender({...})` sem entender para que serve cada linha. |
+| `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
+| `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
+| `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v51` → `v52`). Sem isso, o celular continua usando a versão antiga. |
+| `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
+
+#### 🔴 Não mexe sem supervisionar — é contrato congelado
+
+| Arquivo / trecho | Por que não |
+|---|---|
+| `src/domain/blobTrackerCore.js` | É o coração da detecção. As funções `updatePixels` e `update`, os limites de área e a lógica de IDs/zones são contratos usados por outros arquivos e pelos testes. |
+| `src/blob-tracker.js` | A ponte entre a câmera e o núcleo. Mudar a assinatura quebra o ciclo de quadro inteiro. |
+| Os testes de contrato congelado em `tests/` | Eles existem para impedir regressão silenciosa. Enfraquecê-los é perder o alarme. |
+| `src/session/sessionLock.js` | Garante que só uma sessão use a câmera por vez. |
+| Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
+| `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
+
+#### Exemplo prático: deixar o Pontilhado com pontos maiores
+
+Este é um bom primeiro trabalho porque toca só nas 🟢. Em `src/render/render.js` você encontra:
+
+```js
+const DITHER_CELL = 16, DITHER_DOT_RADIUS = 5.5;
+```
+
+`DITHER_CELL` é o tamanho da casa da grade; `DITHER_DOT_RADIUS` é o raio do ponto. Aumentar o raio de `5.5` para `7` deixa os pontos maiores sem criar trabalho por quadro: o desenho é feito uma única vez num mini-canvas e reaproveitado (`WeakMap`). Se mexer na grade, acompanhe também `cellSize` no shader de `src/app.js` para as duas partes continuarem combinando. Depois: suba o cache, rode os testes e confira o efeito no navegador.
+
+#### Rotina de segurança antes de publicar
+
+Copie e rode nesta ordem, na raiz do projeto:
+
+```powershell
+npm test
+node --check src/app.js
+node --check src/render/render.js
+git diff --check
+git status --short
+```
+
+- `npm test`: são 212 testes sem câmera física. Se algum falhar, **pare**.
+- `node --check`: confere se o JavaScript não tem erro de escrita.
+- `git diff --check`: procura espaços e quebras de linha problemáticos.
+- `git status --short`: mostra exatamente quais arquivos você mexeu.
+
+Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
+
+#### Se algo deu errado
+
+1. Veja o que mudou com `git diff` (mostra as diferenças linha a linha).
+2. Para descartar as alterações **não salvas** de um arquivo, use `git restore -- <arquivo>`. Atenção: isso apaga o que você escreveu nele desde o último commit — só use quando tiver certeza.
+3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
+4. Peça ajuda antes de mexer na zona 🔴.
+
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: aumenta pontos do efeito Pontilhado e sobe cache v52`.
+
 ### Alterações de título e marca (manutenção manual)
 
 O nome público exibido no app é **@V1su4rt**. Se precisar alterar o título ou a marca, atualize manualmente nos seguintes locais:
@@ -95,13 +169,9 @@ O nome público exibido no app é **@V1su4rt**. Se precisar alterar o título ou
 
 **Importante**: os testes de acessibilidade e i18n verificam a consistência do título entre idiomas. Rode `npm test` após qualquer alteração de marca para garantir que todos os idiomas estejam sincronizados.
 
-### Receita segura
+### Receita segura (resumo)
 
-1. Crie uma branch para a alteração.
-2. Mude uma coisa pequena e preserve as assinaturas públicas.
-3. Rode `npm test` e `node scripts/bench-blobtrack.js` três vezes.
-4. Abra a aplicação em HTTPS/localhost e valide câmera, blobs, áudio e palco. Quando não houver aparelho físico, registre **não medido**.
-5. Faça um commit pequeno com o motivo da mudança.
+O passo a passo completo está em **Manual de manutenção para quem está começando**. Em resumo: crie uma branch, mude uma coisa pequena e preserve as assinaturas públicas, rode os testes e a rotina de segurança, abra em HTTPS/localhost e valide câmera, blobs, áudio e palco (sem aparelho físico, registre **não medido**) e faça um commit pequeno com o motivo da mudança. Para mexer no núcleo, rode também `node scripts/bench-blobtrack.js` três vezes.
 
 Não altere sem ler [`docs/diagnostico-cirurgico.md`](docs/diagnostico-cirurgico.md) e [`docs/blobtrack-benchmark.md`](docs/blobtrack-benchmark.md): assinaturas de `updatePixels` e `update`, os sete testes de contrato congelado, IDs/zones e o orçamento de desempenho. Não adicione buffers por quadro ou alocações dentro do laço de pixels sem medição e justificativa.
 
@@ -120,7 +190,7 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 201 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,065`, `1,340` e `1,324 ms`; os valores ficam abaixo dos limites, com uma execução perto do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 212 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 
