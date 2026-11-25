@@ -1,6 +1,6 @@
 # Diagnóstico completo — 25/11/2026
 
-Base: commit `7905661` (`fix: corrige Pontilhado em cena escura e otimiza overlay, cache v55`), já publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. Este relatório não mudou runtime: cache continua `v55`.
+Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; a rodada atual inclui a mudança de runtime do Pontilhado, agora em `v56`.
 
 ## 1. Verificações executadas
 
@@ -21,7 +21,7 @@ Base: commit `7905661` (`fix: corrige Pontilhado em cena escura e otimiza overla
 | README apontava `docs/ROI-decisao.md`, que não existe | 🟢 Corrigido | Passou a apontar `docs/diagnostico-cirurgico.md`, onde a decisão de ROI está registrada. |
 | README citava `manifest.json`; o arquivo é `manifest.webmanifest` | 🟢 Corrigido | Mapa do projeto ajustado. |
 | Servir por `file://` ainda é possível de tentar | 🟡 Documentado | README explica que câmera exige `localhost` ou HTTPS e que service worker não registra fora de contexto seguro. |
-| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🔴 Divergência pendente | `sw.js` (`SHELL`, cache `v55`) **não** inclui `teste.html`, `teste.js` nem `teste.css`. `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige que `teste.html` e `teste.js` continuem no deploy. Decidir: incluir os três no `SHELL` (exige `v56` + testes + README) ou corrigir a redação histórica do relatório. Conteúdo preservado; decisão ainda pendente. |
+| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🔴 Divergência pendente | `sw.js` (`SHELL`, cache `v56`) **não** inclui `teste.html`, `teste.js` nem `teste.css`. `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige que `teste.html` e `teste.js` continuem no deploy. Decidir: incluir os três no `SHELL` (exige `v57` + testes + README) ou corrigir a redação histórica do relatório. Conteúdo preservado; decisão ainda pendente. |
 | `docs/historico/AUDITORIA.md` cita `http://localhost:4173/` | 🟢 Histórico | É registro da validação antiga; não é instrução atual. A URL vigente é `8000`. |
 
 ## 3. Permissões
@@ -82,7 +82,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação foi publicada no commit `525de4d`, sem deploy. A mudança de runtime do Pontilhado (`v56`) ainda não foi publicada: quando for, exige commit, push e deploy para atualizar o service worker. Até lá, `https://blobtrak.vercel.app` continua servindo `v55`.
+A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. Para publicar uma próxima mudança de runtime, suba o cache para `v57`, rode os testes e envie o commit.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -93,4 +93,4 @@ Opção A aprovada pelo V1su4rt e implementada:
 - O guard `state.effect === 'dither'` saiu de `drawRawVideoWindows`. Janela viva, Vídeo original, Inverter vídeo e mistura voltam a atuar com Pontilhado.
 - Os três rótulos de vídeo ganharam chaves nos quatro idiomas; antes ficavam presos em pt-BR.
 - Contrato congelado intacto: `src/domain/blobTrackerCore.js` e a assinatura de `src/blob-tracker.js` não foram tocados.
-- Verificação: `npm test` 222/222, `node --check` limpo, `git diff --check` limpo. No headless em `http://localhost:8000`, `#visual` ficou com 0% de branco, `#overlay` mostrou pontos só nas formas e não houve erro de console. CPU, FPS, bateria e aparência no aparelho físico: **não medidos**.
+- Verificação: `npm test` 222/222, `node --check` limpo, `git diff --check` limpo. No headless em `http://localhost:8000` e no site publicado, `#visual` ficou com 0% de branco, `#overlay` mostrou pontos só nas formas, as janelas mudaram a composição e não houve erro de console. CPU, FPS, bateria e aparência no aparelho físico: **não medidos**.
