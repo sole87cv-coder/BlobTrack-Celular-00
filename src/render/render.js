@@ -246,20 +246,27 @@ export function createRender({
     c.globalAlpha = .22 + state.envelopes.density * .2;
     c.strokeStyle = '#ed72ff';
     c.lineWidth = .7 + state.envelopes.speed * .8;
-    for (let y = 0; y <= viewHeight; y += spacing) {
+    // Garante cobertura total: linhas horizontais
+    const ySteps = [];
+    for (let y = 0; y <= viewHeight; y += spacing) ySteps.push(y);
+    if (ySteps[ySteps.length - 1] < viewHeight) ySteps.push(viewHeight);
+    const xSteps = [];
+    for (let x = 0; x <= viewWidth; x += spacing) xSteps.push(x);
+    if (xSteps[xSteps.length - 1] < viewWidth) xSteps.push(viewWidth);
+    for (const y of ySteps) {
       c.beginPath();
-      for (let x = 0; x <= viewWidth; x += spacing) {
+      for (const x of xSteps) {
         deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint);
-        if (x === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
+        if (x === xSteps[0]) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
         else c.lineTo(offsetX + gridPoint[0], gridPoint[1]);
       }
       c.stroke();
     }
-    for (let x = 0; x <= viewWidth; x += spacing) {
+    for (const x of xSteps) {
       c.beginPath();
-      for (let y = 0; y <= viewHeight; y += spacing) {
+      for (const y of ySteps) {
         deformGridPoint(x, y, blobs, count, viewWidth, viewHeight, gridPoint);
-        if (y === 0) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
+        if (y === ySteps[0]) c.moveTo(offsetX + gridPoint[0], gridPoint[1]);
         else c.lineTo(offsetX + gridPoint[0], gridPoint[1]);
       }
       c.stroke();
