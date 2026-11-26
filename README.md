@@ -131,6 +131,63 @@ const STIPPLE_LEVELS = 6;
 
 O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **6 níveis de raio**. `STIPPLE_SPACING` define a distância entre os pontos; `STIPPLE_LEVELS` define quantos tamanhos diferentes existem. A média da cena equaliza o contraste, então quarto escuro não vira tela preta. Para pontos maiores, aumente o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
+#### Manual dos três efeitos — explicado para um jovem de 16 anos
+
+Imagine o app como uma mesa de edição com **duas camadas**:
+
+1. **Palco** (`#visual`): a imagem grande. Quem pinta é o shader (WebGL) ou o plano B em Canvas 2D.
+2. **Janelas** (`#overlay`): retângulos que perseguem as pessoas/objetos detectados. É como colar pedaços do vídeo cru por cima do palco.
+
+Os três botões só escolhem qual “filtro” entra nessa montagem. O nome interno fica em `src/app.js` (`state.effect`); os textos dos botões ficam em `index.html` e em `src/ui/i18n/*.js` — por isso **Inverter** aparece como **Invertir** em espanhol, **Invert** em inglês e **Inverser** em francês. É o mesmo efeito, só o rótulo muda.
+
+| Botão | Nome no código | O que o olho vê | Onde mora |
+|---|---|---|---|
+| Inverter / Invertir | `invert` | negativo de filme **dentro das janelas** | `drawRawVideoWindows`, em `src/render/render.js` |
+| Preto e branco | `threshold` | cinza com contraste forte **dentro das janelas** | a mesma função |
+| Pontilhado | `dither` | papel branco com pontos pretos formando a imagem inteira | `drawStipple` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
+
+**Inverter e Preto e branco, passo a passo.** Os dois ficam juntos neste trecho de `src/render/render.js`:
+
+```js
+const effectFilter =
+  state.effect === 'invert' ? 'invert(1)'
+    : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+      : 'grayscale(1) contrast(2)';
+```
+
+É a mesma ideia dos filtros do Photoshop/Canva, só que escrito em código:
+
+- `invert(1)` troca claro por escuro, como um negativo. Quer mais fraco? Teste `invert(0.8)`. Atenção: existe um pedaço antigo no shader (`uEffect==0`, com `1.0-rgb`) que **hoje não é usado** por este botão — mexer nele não muda nada na tela.
+- `grayscale(1)` tira a cor; `contrast(8)` empurra o cinza para preto ou branco. Se ficar duro demais, baixe para `contrast(4)`.
+- Não confunda isso com **Sensibilidade do movimento** (`state.threshold`, em `src/app.js`): aquele número mexe no **rastreio** (o que o app considera movimento), não na cor da imagem. São coisas diferentes com nomes parecidos.
+
+**Pontilhado, passo a passo.** Lá em `src/render/render.js`, no topo do arquivo:
+
+```js
+const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
+const STIPPLE_SPACING = 3;
+const STIPPLE_LEVELS = 6;
+```
+
+Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais distância = pontos maiores), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. O papel branco vem do shader (`uEffect==2`); os pontos pretos são desenhados no overlay. Se você pintar o papel de preto, os pontos pretos desaparecem — já aconteceu na `v56`.
+
+**Regras do jogo, para os três efeitos:**
+
+1. Mude **uma** coisa por vez e anote o valor antigo.
+2. Rode `npm test` e `git diff --check`. Se falhar, pare.
+3. Abra `http://localhost:8000`, clique em **Iniciar câmera** e alterne os três botões. Confira também **Janela viva** e **Inverter vídeo** — eles podem esconder o efeito.
+4. Suba o número do cache em `sw.js` (de `v58` para `v59`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
+5. Sem aparelho físico na mão, escreva **não medido** na sua anotação.
+
+**Erros clássicos:**
+
+| Sintoma | Causa provável |
+|---|---|
+| “Apertei Inverter e nada mudou” | Inverter e Preto e branco vivem nas janelas: sem blob detectado não há janela. Mova a mão na frente da câmera. |
+| “Quero preto e branco no quadro inteiro” | Hoje o botão age só nas janelas. Mudar isso é uma reforma maior: meça antes. |
+| “Mudei o código, mas no celular segue igual” | Esqueceu de subir o cache do `sw.js` ou o service worker antigo ainda está ativo (faça Unregister e recarregue duas vezes). |
+| “Mudei `threshold` e o rastreio ficou maluco” | Você mexeu na sensibilidade de movimento, não no filtro de cor. Volte o valor e edite `effectFilter`. |
+
 #### Reaproveitamento de buffers (Pacote 1)
 
 Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32Array` da máscara, as linhas da malha (`xSteps`/`ySteps`), os pontos mapeados de cada blob (uma vez por olho), o gradiente da gravação e as referências `<b>` do HUD. As janelas de vídeo não desenham o quadro-base quando `videoBlend === 0` e há filtro, e o payload de áudio deixa de ser montado com som desligado, mudo ou sem porta. Nada disso altera o contrato congelado.
@@ -167,7 +224,7 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 222 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 226 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
