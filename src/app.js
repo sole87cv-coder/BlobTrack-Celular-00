@@ -518,15 +518,25 @@ function getTrackingRoi(source) {
 }
 
 function analyze(source = video) {
+  if (!source?.videoWidth || !source?.videoHeight) return null;
   const t0 = performance.now();
   const dt = state.lastSignalsAt ? Math.max(0.001, (t0 - state.lastSignalsAt) / 1000) : 1 / deviceProfile.fps;
   state.lastSignalsAt = t0;
-  const result = tracker.update(source, ctx, analysisCanvas, state.trackingWidth, state.threshold, dt, getTrackingRoi(source));
+  // Pacote 2: um único readback por quadro alimenta o tracker e o Pointillism.
+  const width = Math.max(1, Math.min(Math.round(state.trackingWidth) || 320, source.videoWidth));
+  const height = Math.max(1, Math.round(width * source.videoHeight / source.videoWidth));
+  if (analysisCanvas.width !== width || analysisCanvas.height !== height) {
+    analysisCanvas.width = width;
+    analysisCanvas.height = height;
+  }
+  ctx.drawImage(source, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const result = tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source));
   if (!result) return null;
   state.timing.tracking = performance.now() - t0;
   state.timing.analysis = state.timing.tracking;
   state.timing.camera = null;
-  return { ...result, dt };
+  return { ...result, dt, pixels, pixelWidth: width, pixelHeight: height };
 }
 function followEnvelope(current, target, dt, attack=.06, decay=.45) { const tau = target > current ? attack : decay; return current + (target - current) * (1 - Math.exp(-dt / tau)); }
 function updateSignals(raw, dt, blobs = [], now = performance.now()) {

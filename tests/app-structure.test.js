@@ -34,7 +34,7 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(render.includes('grid.error[i + 1] += diffusion * 7 / 16'));
   assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
   assert.ok(render.includes('const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS'));
-  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX)'));
+  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample)'));
   assert.ok(render.includes("fillStyle = '#fff'"));
   assert.ok(!render.includes('DOT_CELL'));
   assert.ok(!render.includes('DOT_RADIUS_SQ'));
@@ -44,6 +44,19 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(!render.includes("state.effect === 'dither') return;"));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
+});
+
+test('Pacote 2 compartilha o readback e atualiza textura e máscara sem realocar', async () => {
+  assert.ok(app.includes('const pixels = ctx.getImageData(0, 0, width, height).data;'));
+  assert.ok(app.includes('tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source))'));
+  assert.ok(app.includes('return { ...result, dt, pixels, pixelWidth: width, pixelHeight: height };'));
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  assert.ok(render.includes('gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source)'));
+  assert.ok(render.includes('const shared = sample?.data && sample.width > 0 && sample.height > 0'));
+  assert.ok(render.includes('if (changed) maskContext.putImageData(image, 0, 0);'));
+  const tracker = await readFile(new URL('../src/blob-tracker.js', import.meta.url), 'utf8');
+  assert.ok(tracker.includes('context.getImageData(0, 0, width, height).data'));
+  assert.ok(tracker.includes('update(video, context, canvas, trackingWidth, threshold, dt, roiMask = null)'));
 });
 
 test('recording snapshot retains identity shared with renderer', () => {

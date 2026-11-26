@@ -339,6 +339,83 @@ test('Pointillism no Gear VR respeita o contain e espelha o segundo olho', () =>
   }
 });
 
+test('Pointillism reaproveita os pixels do tracker sem segundo getImageData', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [];
+  let created = 0;
+  globalThis.document = {
+    createElement() { created++; throw new Error('não deve criar canvas'); },
+  };
+  try {
+    const state = makeState({ effect: 'dither', timing: {} });
+    const render = createRender({
+      state,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const width = 60, height = 36;
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        const value = col < width / 2 ? 240 : 10 + (col - width / 2) * 6;
+        const i = (row * width + col) * 4;
+        data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+      }
+    }
+    const c = {
+      fillStyle: '', save() {}, restore() {}, beginPath() {}, moveTo() {}, fill() {},
+      translate() {}, scale() {}, arc(...args) { arcs.push(args); },
+    };
+
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height });
+
+    assert.equal(created, 0);
+    assert.ok(arcs.length > 20, `pontos gerados: ${arcs.length}`);
+    assert.ok(arcs.filter(([x]) => x > 150).length > arcs.length * 0.7);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test('binarizada só publica no canvas quando a máscara muda', () => {
+  const width = 8, height = 4;
+  const mask = new Uint8Array(width * height);
+  let puts = 0;
+  const maskCanvas = { width: 0, height: 0 };
+  const maskContext = {
+    createImageData(w, h) { return { data: new Uint8ClampedArray(w * h * 4), width: w, height: h }; },
+    putImageData() { puts++; },
+  };
+  const state = makeState({ showMask: true, effect: 'threshold', timing: {} });
+  const render = createRender({
+    state,
+    overlayContext: {
+      clearRect() {}, save() {}, restore() {}, scale() {}, beginPath() {},
+      rect() {}, clip() {}, translate() {}, drawImage() {}, globalAlpha: 1,
+    },
+    overlayCanvas: { width: 320, height: 240 },
+    stageViewport: { width: 320, height: 240 },
+    video: { videoWidth: 640, videoHeight: 360 },
+    maskCanvas, maskContext, maskImage: null, maskView: null,
+    cropRect: new Float32Array(4),
+    mapPointA: new Float32Array(2),
+    mapPointB: new Float32Array(2),
+  });
+  const source = { videoWidth: 640, videoHeight: 360 };
+  const result = { blobs: [], width, height, mask };
+
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(puts, 1, 'primeira publicação');
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(puts, 1, 'máscara igual não repinta');
+  mask[0] = 1;
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(puts, 2, 'máscara diferente repinta');
+  render.drawMaskOverlay(result, source, {});
+  assert.equal(puts, 2, 'nova máscara igual não repinta');
+});
+
 test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
@@ -351,6 +428,7 @@ test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
     useProgram(value) { calls.push(['useProgram', value]); },
     bindTexture(target, value) { calls.push(['bindTexture', target, value]); },
     texImage2D(...args) { calls.push(['texImage2D', ...args]); },
+    texSubImage2D(...args) { calls.push(['texSubImage2D', ...args]); },
     uniform1i(name, value) { calls.push([name, value]); },
     uniform1f(name, value) { calls.push([name, value]); },
     viewport() {},
@@ -373,8 +451,13 @@ test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
   assert.ok(calls.some(([name, value]) => name === 'useProgram' && value === program));
   assert.ok(calls.some(([name, target, value]) => name === 'bindTexture' && target === gl.TEXTURE_2D && value === texture));
   assert.ok(calls.some(([name, , , , , , source]) => name === 'texImage2D' && source === video));
+  assert.equal(calls.filter(([name]) => name === 'texImage2D').length, 1);
   assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === 2));
   assert.ok(calls.some(([name]) => name === 'drawArrays'));
+
+  render.renderFrame({ threshold: 0.1 }, video);
+  assert.equal(calls.filter(([name]) => name === 'texImage2D').length, 1, 'textura não é realocada');
+  assert.ok(calls.some(([name, , , , , , , source]) => name === 'texSubImage2D' && source === video));
 });
 
 test('malha desenha todas as linhas com um único stroke', () => {

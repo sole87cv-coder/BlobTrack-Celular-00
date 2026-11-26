@@ -58,6 +58,7 @@ export function createRender({
   let stippleCanvas = null, stippleContext = null, stippleWarned = false;
   let stippleGrid = { width: 0, height: 0, luma: null, error: null, jitterX: null, jitterY: null, dotX: null, dotY: null, dotR: null, count: 0 };
   let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
+  let textureWidth = 0, textureHeight = 0;
   let overlayDirty = false;
 
   // ---------- geometria pura ----------
@@ -527,10 +528,26 @@ export function createRender({
     }
     gl.useProgram(glProgram);
     gl.bindTexture(gl.TEXTURE_2D, glTexture);
+    const frameWidth = source.videoWidth || source.width;
+    const frameHeight = source.videoHeight || source.height;
     try {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      if (textureWidth !== frameWidth || textureHeight !== frameHeight) {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        textureWidth = frameWidth;
+        textureHeight = frameHeight;
+      } else {
+        // Pacote 2: atualiza o mesmo storage em vez de realocar a textura todo quadro.
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      }
     } catch {
-      return;
+      // Se o sub-update falhar, tenta realocar uma vez antes de descartar o quadro.
+      try {
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+        textureWidth = frameWidth;
+        textureHeight = frameHeight;
+      } catch {
+        return;
+      }
     }
     state.timing.camera = performance.now() - t0;
     gl.uniform1i(uniforms.uTexture, 0);
@@ -585,25 +602,43 @@ export function createRender({
     return grid;
   }
 
-  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX) {
+  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null) {
     const srcWidth = source?.videoWidth || source?.width || 0;
     const srcHeight = source?.videoHeight || source?.height || 0;
-    if (!srcWidth || !srcHeight || typeof document === 'undefined') return;
+    if (!srcWidth || !srcHeight) return;
     try {
       const scale = Math.min(1, STIPPLE_MAX_WIDTH / srcWidth, STIPPLE_MAX_HEIGHT / srcHeight);
       const width = Math.max(STIPPLE_SPACING, Math.round(srcWidth * scale));
       const height = Math.max(STIPPLE_SPACING, Math.round(srcHeight * scale));
-      if (!stippleCanvas) {
-        stippleCanvas = document.createElement('canvas');
-        stippleContext = stippleCanvas.getContext('2d', { willReadFrequently: true });
-        if (!stippleContext) return;
+      // Pacote 2: os pixels já lidos pelo tracker evitam um segundo drawImage + getImageData.
+      const shared = sample?.data && sample.width > 0 && sample.height > 0
+        && sample.data.length >= sample.width * sample.height * 4 ? sample : null;
+      let data = null;
+      if (!shared) {
+        if (typeof document === 'undefined') return;
+        if (!stippleCanvas) {
+          stippleCanvas = document.createElement('canvas');
+          stippleContext = stippleCanvas.getContext('2d', { willReadFrequently: true });
+          if (!stippleContext) return;
+        }
+        if (stippleCanvas.width !== width || stippleCanvas.height !== height) {
+          stippleCanvas.width = width;
+          stippleCanvas.height = height;
+        }
+        stippleContext.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
+        data = stippleContext.getImageData(0, 0, width, height).data;
       }
-      if (stippleCanvas.width !== width || stippleCanvas.height !== height) {
-        stippleCanvas.width = width;
-        stippleCanvas.height = height;
-      }
-      stippleContext.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
-      const data = stippleContext.getImageData(0, 0, width, height).data;
+      const readLuma = (sx, sy) => {
+        let px = sx, py = sy, stride = width;
+        if (shared) {
+          px = Math.min(shared.width - 1, Math.floor(sx * shared.width / width));
+          py = Math.min(shared.height - 1, Math.floor(sy * shared.height / height));
+          stride = shared.width;
+        }
+        const pixels = shared ? shared.data : data;
+        const i = (py * stride + px) * 4;
+        return (pixels[i] * 77 + pixels[i + 1] * 150 + pixels[i + 2] * 29) / 65536;
+      };
       const cols = Math.max(16, Math.floor(width / STIPPLE_SPACING));
       const rows = Math.max(12, Math.floor(height / STIPPLE_SPACING));
       const grid = ensureStippleGrid(cols, rows);
@@ -614,8 +649,7 @@ export function createRender({
         const sy = Math.min(height - 1, Math.floor((y + .5) * cellH));
         for (let x = 0; x < cols; x++) {
           const sx = Math.min(width - 1, Math.floor((x + .5) * cellW));
-          const i = (sy * width + sx) * 4;
-          grid.luma[y * cols + x] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) / 65536;
+          grid.luma[y * cols + x] = readLuma(sx, sy);
           mean += grid.luma[y * cols + x];
         }
       }
@@ -712,7 +746,8 @@ export function createRender({
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
     if (state.showMask) {
-      if (maskCanvas.width !== result.width || maskCanvas.height !== result.height) {
+      const resized = maskCanvas.width !== result.width || maskCanvas.height !== result.height;
+      if (resized) {
         maskCanvas.width = result.width;
         maskCanvas.height = result.height;
         maskImage = maskContext.createImageData(result.width, result.height);
@@ -722,8 +757,16 @@ export function createRender({
       const mask = result.mask;
       const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
       const ON = 0xFFFFFFFF, OFF = 0xFF000000;
-      for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
-      maskContext.putImageData(image, 0, 0);
+      let changed = resized;
+      for (let i = 0, n = mask.length; i < n; i++) {
+        const value = mask[i] ? ON : OFF;
+        if (packed[i] !== value) {
+          packed[i] = value;
+          changed = true;
+        }
+      }
+      // Pacote 2: só publica no canvas quando a binarizada realmente mudou.
+      if (changed) maskContext.putImageData(image, 0, 0);
     }
     let windowCost = 0, overlayCost = 0;
     for (let eye = 0; eye < eyeCount; eye++) {
@@ -739,7 +782,12 @@ export function createRender({
         c.clip();
       }
       const mirrorX = (state.camera === 'user') !== state.flip;
-      if (dotted) drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX);
+      if (dotted) {
+        const sample = result.pixels && result.pixelWidth && result.pixelHeight
+          ? { data: result.pixels, width: result.pixelWidth, height: result.pixelHeight }
+          : null;
+        drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample);
+      }
       if (state.videoWindows) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
