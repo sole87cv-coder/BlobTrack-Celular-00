@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v59`, publicado em `d46829b`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v59`); a rodada `v60` está pronta localmente e entra no site só depois da autorização do V1su4rt.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -105,7 +105,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v58` → `v59`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v59` → `v60`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -142,8 +142,8 @@ Os três botões só escolhem qual “filtro” entra nessa montagem. O nome int
 
 | Botão | Nome no código | O que o olho vê | Onde mora |
 |---|---|---|---|
-| Inverter / Invertir | `invert` | negativo de filme **dentro das janelas** | `drawRawVideoWindows`, em `src/render/render.js` |
-| Preto e branco | `threshold` | cinza com contraste forte **dentro das janelas** | a mesma função |
+| Inverter / Invertir | `invert` | negativo de filme **dentro das janelas** quando Vídeo original está ligado (`v60`) | `drawRawVideoWindows`, em `src/render/render.js` |
+| Preto e branco | `threshold` | cinza com contraste forte **dentro das janelas** quando Vídeo original está ligado (`v60`) | a mesma função |
 | Pontilhado | `dither` | papel branco com pontos pretos formando a imagem inteira **e também as janelas** (`v59`) | `drawStipple` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
 
 **Inverter e Preto e branco, passo a passo.** Os dois ficam juntos neste trecho de `src/render/render.js`:
@@ -176,7 +176,7 @@ Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais dist�
 1. Mude **uma** coisa por vez e anote o valor antigo.
 2. Rode `npm test` e `git diff --check`. Se falhar, pare.
 3. Abra `http://localhost:8000`, clique em **Iniciar câmera** e alterne os três botões. Confira também **Janela viva** e **Inverter vídeo** — eles podem esconder o efeito.
-4. Suba o número do cache em `sw.js` (de `v58` para `v59`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
+4. Suba o número do cache em `sw.js` (de `v59` para `v60`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
 5. Sem aparelho físico na mão, escreva **não medido** na sua anotação.
 
 **Erros clássicos:**
@@ -198,9 +198,9 @@ Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo do
 
 Na `v56` eu tinha entendido “só as formas” como “só dentro dos retângulos dos blobs”: a base ficava preta e os pontos brancos apareciam apenas na máscara. Você esclareceu que o certo é a **imagem inteira virar pontilhismo**, como o exemplo de diffusion dither. Agora o branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam papel branco, e `drawStipple` desenha os pontos pretos no overlay com difusão de erro, raio quantizado e leve deslocamento orgânico.
 
-**Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos, então o vídeo cru aparece dentro dos retângulos dos blobs. Na `v59` os pontos também são pintados **dentro das janelas**, por cima do vídeo, reaproveitando a mesma grade — sem segundo `getImageData`. O contrato congelado continua intacto.
+**Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos do palco. Na `v59` os pontos passaram a ser pintados também **dentro das janelas**, por cima do vídeo, reaproveitando a mesma grade — sem segundo `getImageData`. Na `v60` o botão **Vídeo original** ganhou a semântica que você pediu: **ligado = efeito na janela; desligado = vídeo cru dentro do blob**, sem pontos. O contrato congelado continua intacto.
 
-🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. Suíte atual: **228/228** (inclui Gear VR, readback compartilhado, máscara `dirty` e Pontilhado nas janelas). Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
+🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. Suíte atual: **231/231** (inclui Gear VR, readback compartilhado, máscara `dirty`, Pontilhado nas janelas, a semântica ligado/desligado do Vídeo original e as três otimizações da janela). Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
 
 #### Pacote 2 — uma leitura por quadro (cache v58)
 
@@ -214,7 +214,35 @@ Você pediu para os pontos também “viverem dentro das janelas dos blobs”. A
 
 Resultado: o quadro inteiro continua em pointillism (sua regra de ouro) e a janela vira uma “lupa pontilhada”. Não há segundo `getImageData`, nem nova difusão de erro.
 
-🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **228/228**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v59` com `?cb=<timestamp>` e `cache: 'no-store'`; a prova repetida no deploy mostrou a janela com 100% de pixels pintados e 22,2% a 29,2% pretos, arcos de ~130 mil contra ~65 mil sem janela e `erros []`. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
+🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **230/230**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v59` com `?cb=<timestamp>` e `cache: 'no-store'`; a prova repetida no deploy mostrou a janela com 100% de pixels pintados e 22,2% a 29,2% pretos, arcos de ~130 mil contra ~65 mil sem janela e `erros []`. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
+
+#### Vídeo original com efeito legal na janela (cache v60, local)
+
+Você pediu: **com o botão ligado, os três efeitos aparecem na janela; desligado, fica só o vídeo dentro do blob, como Janela viva**. A regra em `src/render/render.js` agora é:
+
+```js
+const enableEffect = state.originalVideoWindows || state.videoBlend > 0;
+const effectPart = enableEffect ? effectFilter : '';
+const filter = (effectPart + invertPart).trim() || 'none';
+```
+
+E o Pontilhado dentro da janela tem o mesmo guard:
+
+```js
+if (state.effect === 'dither' && state.originalVideoWindows) {
+  paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
+}
+```
+
+Em palavras de adolescente: **botão ligado = a janela ganha o efeito escolhido** (Inverter, Preto e branco ou Pontilhado com pontos por cima do vídeo). **Botão desligado = lupa limpa**, o vídeo cru entra dentro do retângulo e os pontos não são repintados ali. Inverter vídeo e a mistura continuam com prioridade quando você os aciona.
+
+Depois de fixada a semântica, três otimizações entraram na mesma rodada, uma de cada vez:
+
+1. **Poda dos pontos na janela:** `paintStipple` recebe a união dos retângulos dos blobs e só coloca no caminho os pontos que cruzam essa caixa. Os arcos por segundo com a janela ligada caíram de **~130 mil** para **~66 mil** — quase o mesmo valor da janela desligada (~65 mil), porque o trabalho duplicado desapareceu.
+2. **Higiene de estado do canvas:** `save()`/`restore()` já devolvem `filter` e `globalAlpha`, então os resets manuais depois do `restore()` saíram. As escritas de `filter` caíram de **58** para **29 por segundo**, sem mudar a imagem.
+3. **Recorte da origem pelo bbox dos blobs:** o `drawImage` agora amostra só o pedaço do quadro que os blobs ocupam, preservando espelho, `cover`/`contain` e Gear VR. No cenário Inverter ligado, `tRender` passou de `~0,24 ms` para `~0,19 ms`; no Gear VR, de `~4,54 ms` para `~2,69 ms`.
+
+🟡 Mexa só com medição: no local com `?cb=<timestamp>` e blobs detectados, **Inverter ligado** aplicou `invert(1)` (luma ~171) e **desligado** não aplicou filtro (luma ~95). **Preto e branco ligado** aplicou `grayscale(1) contrast(8)` (0% de cor, ~83% de preto) e **desligado** ficou 100% colorido. **Pontilhado ligado** aplicou `grayscale(1) contrast(2)` e repintou só os pontos da janela (~64 mil arcos); **desligado** não aplicou filtro e ficou com ~58 mil arcos (só o palco), 100% colorido. `tRender` do Pontilhado com janela `~1,14 ms`, sem janela `~1,06 ms`, com Inverter `~0,19 ms` e Gear VR `~2,69 ms`; FPS `28,8`; `erros []`. `npm test`: **231/231**. Nada em aparelho físico.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 
@@ -232,12 +260,14 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 228 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 231 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
 
 Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000 --bind 127.0.0.1`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
+
+**Diagnóstico final da `v60` (o que foi conferido antes do deploy):** com câmera fake em Chromium, a sessão iniciou (`Traseira principal`, `400×225 · fps 29`, 1 blob), os três efeitos trocaram de estado, os oito botões de efeito voltaram ao valor original, as quatro abas trocaram de painel, o mudo alternou, a gravação foi `idle → recording → idle`, o service worker controlou a página com o cache `blobtrack-celular-00-v60` e o app reabriu offline. Console e rede terminaram com **0 erros**. Câmera real, bateria, gravação em aparelho e aparência final continuam **não medidos**.
 
 #### Se algo deu errado
 
@@ -246,7 +276,7 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
 4. Peça ajuda antes de mexer na zona 🔴.
 
-Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `feat: leva o Pontilhado para dentro das janelas e sobe cache v59`.
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: Vídeo original aplica efeito na janela quando ligado (v60)`.
 
 ### Alterações de título e marca (manutenção manual)
 

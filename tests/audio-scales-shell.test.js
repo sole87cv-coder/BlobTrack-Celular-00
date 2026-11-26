@@ -4,9 +4,9 @@ import { readFile } from 'node:fs/promises';
 
 const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
 
-test('service worker v59 precaches all runtime modules', () => {
+test('service worker v60 precaches all runtime modules', () => {
   const cache = sw.match(/const CACHE = '([^']+)';/);
-  assert.equal(cache?.[1], 'blobtrack-celular-00-v59');
+  assert.equal(cache?.[1], 'blobtrack-celular-00-v60');
   const shell = sw.match(/const SHELL = \[(.*?)\];/s)?.[1] || '';
   for (const path of ['./src/audio/scales.js', './src/audio/scale-router.js', './src/ui/scales-ui.js']) {
     assert.match(shell, new RegExp(`['"]${path.replaceAll('.', '\\.')}['"]`));

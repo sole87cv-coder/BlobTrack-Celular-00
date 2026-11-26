@@ -129,7 +129,7 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(out1[1] < out2[1]);
 });
 
-test('Pontilhado mantém Janela Viva, Vídeo original e o filtro das janelas', () => {
+test('Pontilhado mantém Janela Viva, aplica o efeito ligado e deixa vídeo cru desligado', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   function run(originalVideoWindows) {
@@ -150,19 +150,53 @@ test('Pontilhado mantém Janela Viva, Vídeo original e o filtro das janelas', (
     render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
     return { images, filters };
   }
-  const raw = run(true);
+  const enhanced = run(true);
+  assert.equal(enhanced.images, 1);
+  assert.deepEqual(enhanced.filters, ['grayscale(1) contrast(2)']);
+  const raw = run(false);
   assert.equal(raw.images, 1);
   assert.deepEqual(raw.filters, []);
-  const filtered = run(false);
-  assert.equal(filtered.images, 1);
-  assert.ok(filtered.filters.includes('grayscale(1) contrast(2)'));
+});
+
+test('Vídeo original ligado aplica o efeito nos três; desligado devolve vídeo cru', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
+  function filtrosDe(effect, originalVideoWindows, extra = {}) {
+    const state = makeState({
+      effect, videoWindows: true, originalVideoWindows,
+      invertBlend: false, videoBlend: 0, ...extra,
+    });
+    const render = createRender({
+      state, video,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const vistos = [];
+    const c = {
+      save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {}, drawImage() {},
+    };
+    Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { vistos.push(value); } });
+    render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
+    return vistos;
+  }
+  assert.deepEqual(filtrosDe('invert', true), ['invert(1)']);
+  assert.deepEqual(filtrosDe('invert', false), []);
+  assert.deepEqual(filtrosDe('threshold', true), ['grayscale(1) contrast(8)']);
+  assert.deepEqual(filtrosDe('threshold', false), []);
+  assert.deepEqual(filtrosDe('dither', true), ['grayscale(1) contrast(2)']);
+  assert.deepEqual(filtrosDe('dither', false), []);
+  assert.deepEqual(filtrosDe('dither', true, { invertBlend: true }), ['grayscale(1) contrast(2) invert(1)']);
+  assert.deepEqual(filtrosDe('dither', false, { invertBlend: true }), ['invert(1)']);
+  assert.deepEqual(filtrosDe('dither', false, { videoBlend: 0.5 }), ['grayscale(1) contrast(2)']);
 });
 
 test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement() { throw new Error('não deve criar canvas'); } };
   try {
-    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows: false, invertBlend: false, videoBlend: 0, timing: {} });
+    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows: true, invertBlend: false, videoBlend: 0, timing: {} });
     const render = createRender({
       state,
       video: { videoWidth: 640, videoHeight: 360 },
@@ -174,7 +208,7 @@ test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
     const data = new Uint8ClampedArray(width * height * 4);
     for (let row = 0; row < height; row++) {
       for (let col = 0; col < width; col++) {
-        const value = col < width / 2 ? 240 : 10 + (col - width / 2) * 6;
+        const value = col < width / 2 ? 10 + col * 6 : 240;
         const i = (row * width + col) * 4;
         data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
       }
@@ -192,8 +226,13 @@ test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
     assert.ok(dotsNoPalco > 20, `pontos no palco: ${dotsNoPalco}`);
     arcs = 0;
     render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, { videoWidth: 640, videoHeight: 360 });
-    assert.equal(arcs, dotsNoPalco, 'a janela pinta a mesma grade, sem recalcular');
-    assert.equal(images, 1, 'o vídeo cru continua na janela');
+    assert.ok(arcs > 0 && arcs < dotsNoPalco, `pontos podados na janela: ${arcs} de ${dotsNoPalco}`);
+    assert.equal(images, 1, 'o vídeo continua na janela');
+    state.originalVideoWindows = false;
+    arcs = 0;
+    render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, { videoWidth: 640, videoHeight: 360 });
+    assert.equal(arcs, 0, 'desligado não repinta pontos dentro do blob');
+    assert.equal(images, 2, 'desligado ainda desenha o vídeo cru na janela');
   } finally {
     globalThis.document = previousDocument;
   }
@@ -215,6 +254,24 @@ test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
   }
   assert.equal(drawImageCalls(0), 1);
   assert.equal(drawImageCalls(0.5), 2);
+});
+
+test('Janela viva amostra só o pedaço da origem ocupado pelos blobs', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  const state = makeState({ effect: 'invert', videoWindows: true, originalVideoWindows: true });
+  const render = createRender({ state, video, cropRect: new Float32Array(4), mapPointA: new Float32Array(2), mapPointB: new Float32Array(2) });
+  const calls = [];
+  const c = {
+    save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    translate() {}, scale() {}, drawImage(...args) { calls.push(args); },
+  };
+  render.drawRawVideoWindows(c, [{ left: 0.2, top: 0.2, right: 0.4, bottom: 0.4 }], 320, 240, 0, video);
+  assert.equal(calls.length, 1);
+  const [, sx, sy, sw, sh, dx, dy, dw, dh] = calls[0];
+  assert.ok(Math.abs(sx - 128) < 1e-6 && Math.abs(sw - 128) < 1e-6, `recorte em x: ${sx} + ${sw}`);
+  assert.ok(Math.abs(sy - 72) < 1e-6 && Math.abs(sh - 72) < 1e-6, `recorte em y: ${sy} + ${sh}`);
+  assert.ok(dx >= 0 && dx + dw <= 320 + 1e-6, `destino em x: ${dx} + ${dw}`);
+  assert.ok(dy >= 0 && dy + dh <= 240 + 1e-6, `destino em y: ${dy} + ${dh}`);
 });
 
 test('ondas reaproveitam os pontos de view já calculados para o olho', () => {

@@ -412,35 +412,87 @@ export function createRender({
         : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
           : 'grayscale(1) contrast(2)';
     const invertPart = state.invertBlend ? ' invert(1)' : '';
-    const filter = (!state.originalVideoWindows || state.invertBlend || state.videoBlend > 0)
-      ? (effectFilter + invertPart)
-      : 'none';
+    // Botão ligado = efeito na janela. Desligado = vídeo cru dentro do blob, como Janela viva.
+    // Inverter vídeo e a mistura continuam com prioridade quando acionados.
+    const enableEffect = state.originalVideoWindows || state.videoBlend > 0;
+    const effectPart = enableEffect ? effectFilter : '';
+    const filter = (effectPart + invertPart).trim() || 'none';
     c.beginPath();
+    let clipLeft = Infinity, clipTop = Infinity, clipRight = -Infinity, clipBottom = -Infinity;
+    let visibleRects = 0;
+    let uMin = 1, vMin = 1, uMax = 0, vMax = 0;
     for (const blob of blobs) {
+      uMin = Math.min(uMin, blob.left);
+      vMin = Math.min(vMin, blob.top);
+      uMax = Math.max(uMax, blob.right);
+      vMax = Math.max(vMax, blob.bottom);
       mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
       mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
       const left = Math.min(mapPointA[0], mapPointB[0]);
       const top = Math.min(mapPointA[1], mapPointB[1]);
       const right = Math.max(mapPointA[0], mapPointB[0]);
       const bottom = Math.max(mapPointA[1], mapPointB[1]);
-      c.rect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
+      const x = offsetX + left * viewWidth;
+      const y = top * viewHeight;
+      const w = (right - left) * viewWidth;
+      const h = (bottom - top) * viewHeight;
+      if (w <= 0 || h <= 0 || x + w <= offsetX || x >= offsetX + viewWidth || y + h <= 0 || y >= viewHeight) continue;
+      c.rect(x, y, w, h);
+      clipLeft = Math.min(clipLeft, x);
+      clipTop = Math.min(clipTop, y);
+      clipRight = Math.max(clipRight, x + w);
+      clipBottom = Math.max(clipBottom, y + h);
+      visibleRects++;
+    }
+    if (!visibleRects) {
+      c.restore();
+      return;
     }
     c.clip();
     const mirrorX = (state.camera === 'user') !== state.flip;
+    // Desenha só o pedaço da origem que os blobs ocupam; o clip continua desenhando as bordas.
     const drawSource = () => {
+      const sourceWidth = source.videoWidth, sourceHeight = source.videoHeight;
       if (state.gearVr) {
-        calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+        calculateContainRect(sourceWidth, sourceHeight, viewWidth, viewHeight, cropRect);
+        const sx = uMin * sourceWidth;
+        const sy = vMin * sourceHeight;
+        const sw = (uMax - uMin) * sourceWidth;
+        const sh = (vMax - vMin) * sourceHeight;
+        let dx = cropRect[0] + uMin * cropRect[2];
+        let dy = cropRect[1] + vMin * cropRect[3];
+        const dw = (uMax - uMin) * cropRect[2];
+        const dh = (vMax - vMin) * cropRect[3];
+        if (mirrorX) dx = viewWidth - (dx + dw);
         c.save();
         c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
         c.scale(mirrorX ? -1 : 1, 1);
-        c.drawImage(source, 0, 0, source.videoWidth, source.videoHeight, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+        c.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
         c.restore();
       } else {
-        calculateCoverCrop(source.videoWidth, source.videoHeight, viewWidth, viewHeight, cropRect);
+        calculateCoverCrop(sourceWidth, sourceHeight, viewWidth, viewHeight, cropRect);
+        const su0 = cropRect[0] / sourceWidth;
+        const su1 = (cropRect[0] + cropRect[2]) / sourceWidth;
+        const sv0 = cropRect[1] / sourceHeight;
+        const sv1 = (cropRect[1] + cropRect[3]) / sourceHeight;
+        const ua = Math.max(su0, Math.min(su1, uMin));
+        const ub = Math.max(su0, Math.min(su1, uMax));
+        const va = Math.max(sv0, Math.min(sv1, vMin));
+        const vb = Math.max(sv0, Math.min(sv1, vMax));
+        if (ub <= ua || vb <= va) return;
+        const sx = ua * sourceWidth;
+        const sy = va * sourceHeight;
+        const sw = (ub - ua) * sourceWidth;
+        const sh = (vb - va) * sourceHeight;
+        let dx = ((ua - su0) / (su1 - su0)) * viewWidth;
+        let dy = ((va - sv0) / (sv1 - sv0)) * viewHeight;
+        const dw = ((ub - ua) / (su1 - su0)) * viewWidth;
+        const dh = ((vb - va) / (sv1 - sv0)) * viewHeight;
+        if (mirrorX) dx = viewWidth - (dx + dw);
         c.save();
         c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
         c.scale(mirrorX ? -1 : 1, 1);
-        c.drawImage(source, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+        c.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
         c.restore();
       }
     };
@@ -454,17 +506,16 @@ export function createRender({
       c.filter = filter;
       drawSource();
       c.restore();
-      c.globalAlpha = 1;
-      c.filter = 'none';
     } else if (filter !== 'none' && state.videoBlend === 0) {
       c.save();
       c.filter = filter;
       drawSource();
       c.restore();
-      c.filter = 'none';
     }
-    // Pontilhado também vive nas janelas: reaproveita a grade já calculada para o palco.
-    if (state.effect === 'dither') paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+    // Pontilhado vive na janela só com o botão ligado: desligado, o blob fica com vídeo cru.
+    if (state.effect === 'dither' && state.originalVideoWindows) {
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
+    }
     c.restore();
   }
 
@@ -702,7 +753,7 @@ export function createRender({
     }
   }
 
-  function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX) {
+  function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect = null) {
     if (!stippleReady || !stippleGrid.count) return;
     const width = stippleSampleWidth, height = stippleSampleHeight;
     const cr = stippleCropRect;
@@ -719,6 +770,12 @@ export function createRender({
       const x = baseX + stippleGrid.dotX[i] * scaleX;
       const y = baseY + stippleGrid.dotY[i] * scaleY;
       const r = Math.max(.35, stippleGrid.dotR[i] * Math.min(scaleX, scaleY));
+      // Na janela, só os pontos que cruzam a união dos blobs entram no caminho.
+      if (clipRect) {
+        const screenX = offsetX + (mirrorX ? viewWidth - x : x);
+        if (screenX + r < clipRect[0] || screenX - r > clipRect[2]
+          || y + r < clipRect[1] || y - r > clipRect[3]) continue;
+      }
       c.moveTo(x + r, y);
       c.arc(x, y, r, 0, STIPPLE_TAU);
     }
