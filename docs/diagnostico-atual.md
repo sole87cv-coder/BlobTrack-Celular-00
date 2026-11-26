@@ -1,6 +1,6 @@
 # Diagnóstico completo — 25/11/2026
 
-Base publicada: commit `d46829b` (`feat: leva Pontilhado para dentro das janelas e sobe cache v59`) em `https://blobtrak.vercel.app`, com `sw.js` em `blobtrack-celular-00-v59`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion), `v58` (readback compartilhado), `v59` (pontos também dentro das janelas, publicado) e agora registra o `v60` (Vídeo original ligado = efeito na janela; desligado = vídeo cru, mais três otimizações da janela), pronto localmente e aguardando autorização.
+Base publicada: commit `8725a69` (`feat: Video original aplica efeito na janela e otimiza render (v60)`) em `https://blobtrak.vercel.app`, com `sw.js` em `blobtrack-celular-00-v60`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion), `v58` (readback compartilhado), `v59` (pontos também dentro das janelas, publicado) e agora registra o `v60` publicado (Vídeo original ligado = efeito na janela; desligado = vídeo cru, mais três otimizações da janela).
 
 ## 1. Verificações executadas
 
@@ -21,7 +21,7 @@ Base publicada: commit `d46829b` (`feat: leva Pontilhado para dentro das janelas
 | README apontava `docs/ROI-decisao.md`, que não existe | 🟢 Corrigido | Passou a apontar `docs/diagnostico-cirurgico.md`, onde a decisão de ROI está registrada. |
 | README citava `manifest.json`; o arquivo é `manifest.webmanifest` | 🟢 Corrigido | Mapa do projeto ajustado. |
 | Servir por `file://` ainda é possível de tentar | 🟡 Documentado | README explica que câmera exige `localhost` ou HTTPS e que service worker não registra fora de contexto seguro. |
-| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🟢 Corrigido no texto histórico | A afirmação era válida no cache `v34`; `5bc2b1e` (22/11) removeu `teste.*` do `SHELL`. Hoje `android/app/build.gradle` inclui `teste.html`, `teste.js` e `teste.css` no APK, mas `sw.js` (`v59` publicado, `v60` local) não inclui nenhum dos três; `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige só `html` e `js` no deploy. O `AUDITORIA.md` ganhou notas explicativas; decisão do V1su4rt: **não** mudar o runtime. |
+| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🟢 Corrigido no texto histórico | A afirmação era válida no cache `v34`; `5bc2b1e` (22/11) removeu `teste.*` do `SHELL`. Hoje `android/app/build.gradle` inclui `teste.html`, `teste.js` e `teste.css` no APK, mas `sw.js` (`v60` publicado) não inclui nenhum dos três; `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige só `html` e `js` no deploy. O `AUDITORIA.md` ganhou notas explicativas; decisão do V1su4rt: **não** mudar o runtime. |
 | `docs/historico/AUDITORIA.md` cita `http://localhost:4173/` | 🟢 Histórico | É registro da validação antiga; não é instrução atual. A URL vigente é `8000`. |
 
 ## 3. Permissões
@@ -55,9 +55,9 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 - **Pacote 2:** aplicado e publicado no `v58` (ver seção 10).
 - **Pontilhado nas janelas:** publicado no `v59` em `d46829b` (ver seção 11).
-- **Vídeo original:** semântica invertida localmente no `v60` — ligado aplica o efeito na janela, desligado deixa vídeo cru (ver seção 12); publicação aguardando autorização.
+- **Vídeo original:** semântica aplicada no `v60` publicado — ligado aplica o efeito na janela, desligado deixa vídeo cru (ver seção 12).
 - **Pacote 3:** medir em aparelho real FPS, bateria, tamanho dos pontos, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
-- Confirmar no aparelho o Pointillism (`v59` publicado; `v60` local ajusta Vídeo original): papel branco, pontos pretos de tamanhos diferentes formando a imagem, janelas de vídeo por cima e pontos também dentro das janelas. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
+- Confirmar no aparelho o Pointillism (`v60` publicado com Vídeo original ajustado): papel branco, pontos pretos de tamanhos diferentes formando a imagem, janelas de vídeo por cima e pontos também dentro das janelas. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
 
@@ -84,7 +84,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar versão anterior por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) foi publicada com autorização em `e982772` (commit + push; deploy automático) e a checagem com `?cb=<timestamp>` confirmou `sw.js` em `blobtrack-celular-00-v58`. A documentação didática dos três efeitos entrou em `9af154b`, sem mudança de runtime. A rodada `v59` foi publicada em `d46829b` (commit + push, deploy automático); a checagem com `?cb=<timestamp>` e `cache: 'no-store'` confirmou `sw.js` em `blobtrack-celular-00-v59`, `prepareStipple`/`paintStipple` no render servido e a prova de janela repetida no site com zero erros. A rodada `v60` está pronta localmente e ainda não foi publicada.
+A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar versão anterior por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) foi publicada com autorização em `e982772` (commit + push; deploy automático) e a checagem com `?cb=<timestamp>` confirmou `sw.js` em `blobtrack-celular-00-v58`. A documentação didática dos três efeitos entrou em `9af154b`, sem mudança de runtime. A rodada `v59` foi publicada em `d46829b` (commit + push, deploy automático); a checagem com `?cb=<timestamp>` e `cache: 'no-store'` confirmou `sw.js` em `blobtrack-celular-00-v59`, `prepareStipple`/`paintStipple` no render servido e a prova de janela repetida no site com zero erros. A rodada `v60` foi publicada em `8725a69` (commit + push, deploy automático); a checagem com `?cb=<timestamp>` e `cache: 'no-store'` confirmou `sw.js` em `blobtrack-celular-00-v60`, o tooltip novo no HTML servido e o QA completo no site com câmera fake: sessão, três efeitos, oito toggles, quatro abas, mudo, gravação, service worker e offline, com console e rede sem erros.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -172,7 +172,7 @@ Pedido do V1su4rt: o Pontilhado também deve “viver dentro das janelas dos blo
 - Prova no deploy (`https://blobtrak.vercel.app/?cb=<timestamp>`): `sw.js` em `blobtrack-celular-00-v59` com `cache: 'no-store'`, `prepareStipple` e `paintStipple` presentes no render servido. Com Janela viva e blobs detectados, a janela ficou com 100% de pixels pintados e 22,2% a 29,2% pretos; fora dela, ~19% a 20% pintados e pretos. Sem janela, ~21% pintados e pretos. Arcos no overlay ~130 mil com janela contra ~65 mil sem; `clip` 58 contra 29 em 1 s. `tRender` `1,58–2,16 ms` com janela e `0,98–1,07 ms` sem; FPS `28,8`; `erros []` em quatro repetições.
 - Status: publicado em `d46829b` com autorização do V1su4rt. CPU, bateria, câmera real, gravação, ROI e aparência final em aparelho físico: **não medidos**.
 
-## 12. Vídeo original com efeito na janela (cache v60, local)
+## 12. Vídeo original com efeito na janela (cache v60, publicado)
 
 Pedido literal do V1su4rt: “Inverter e Preto e branco e pontilhado tenha um efeito legal quando esta ligado o ‘video original’ e quando esta desligado so deixar o video dentro dos blob como no janela viva”. Ou seja, o botão passa a significar o contrário do que significava: **ligado = efeito na janela; desligado = janela crua**.
 

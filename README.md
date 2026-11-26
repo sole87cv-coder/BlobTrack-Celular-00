@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v59`); a rodada `v60` está pronta localmente e entra no site só depois da autorização do V1su4rt.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v60`, publicado em `8725a69`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -216,7 +216,7 @@ Resultado: o quadro inteiro continua em pointillism (sua regra de ouro) e a jane
 
 🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **230/230**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v59` com `?cb=<timestamp>` e `cache: 'no-store'`; a prova repetida no deploy mostrou a janela com 100% de pixels pintados e 22,2% a 29,2% pretos, arcos de ~130 mil contra ~65 mil sem janela e `erros []`. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
 
-#### Vídeo original com efeito legal na janela (cache v60, local)
+#### Vídeo original com efeito legal na janela (cache v60, publicado)
 
 Você pediu: **com o botão ligado, os três efeitos aparecem na janela; desligado, fica só o vídeo dentro do blob, como Janela viva**. A regra em `src/render/render.js` agora é:
 
@@ -267,7 +267,7 @@ git status --short
 
 Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000 --bind 127.0.0.1`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
 
-**Diagnóstico final da `v60` (o que foi conferido antes do deploy):** com câmera fake em Chromium, a sessão iniciou (`Traseira principal`, `400×225 · fps 29`, 1 blob), os três efeitos trocaram de estado, os oito botões de efeito voltaram ao valor original, as quatro abas trocaram de painel, o mudo alternou, a gravação foi `idle → recording → idle`, o service worker controlou a página com o cache `blobtrack-celular-00-v60` e o app reabriu offline. Console e rede terminaram com **0 erros**. Câmera real, bateria, gravação em aparelho e aparência final continuam **não medidos**.
+**Diagnóstico final da `v60` (conferido antes e depois do deploy):** com câmera fake em Chromium, a sessão iniciou (`Traseira principal`, `400×225 · fps 29`, 1 blob), os três efeitos trocaram de estado, os oito botões de efeito voltaram ao valor original, as quatro abas trocaram de painel, o mudo alternou, a gravação foi `idle → recording → idle`, o service worker controlou a página com o cache `blobtrack-celular-00-v60` e o app reabriu offline. Console e rede terminaram com **0 erros**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v60` com `?cb=<timestamp>` e `cache: 'no-store'`, e o mesmo QA passou sem erros. Câmera real, bateria, gravação em aparelho e aparência final continuam **não medidos**.
 
 #### Se algo deu errado
 
