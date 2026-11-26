@@ -288,6 +288,57 @@ test('Pointillism difunde erro e desenha pontos pretos de tamanhos diferentes', 
   }
 });
 
+test('Pointillism no Gear VR respeita o contain e espelha o segundo olho', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [], transforms = [];
+  const offscreenContext = {
+    drawImage() {},
+    getImageData(x, y, width, height) {
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let row = 0; row < height; row++) {
+        for (let col = 0; col < width; col++) {
+          const value = col < width / 2 ? 20 : 230;
+          const i = (row * width + col) * 4;
+          data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+        }
+      }
+      return { data, width, height };
+    },
+  };
+  globalThis.document = {
+    createElement() { return { width: 0, height: 0, getContext() { return offscreenContext; } }; },
+  };
+  try {
+    const state = makeState({ effect: 'dither', gearVr: true, timing: {} });
+    const render = createRender({
+      state,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const c = {
+      fillStyle: '',
+      save() {}, restore() {}, beginPath() {}, moveTo() {}, fill() {},
+      translate(...args) { transforms.push(['translate', ...args]); },
+      scale(...args) { transforms.push(['scale', ...args]); },
+      arc(...args) { arcs.push(args); },
+    };
+
+    render.drawStipple(c, { width: 60, height: 36 }, 160, 240, 0, false);
+    render.drawStipple(c, { width: 60, height: 36 }, 160, 240, 160, true);
+
+    assert.ok(arcs.length > 20, `pontos gerados: ${arcs.length}`);
+    // 60×36 dentro de 160×240: contain dá faixa 160×96 centrada em y=72..168.
+    assert.ok(arcs.every(([, y]) => y > 70 && y < 170), 'pontos fora da faixa contain');
+    assert.ok(arcs.every(([x]) => x > 0 && x < 160), 'pontos fora da largura do olho');
+    assert.ok(transforms.some(([kind, x]) => kind === 'translate' && x === 0));
+    assert.ok(transforms.some(([kind, x]) => kind === 'translate' && x === 320));
+    assert.ok(transforms.some(([kind, sx]) => kind === 'scale' && sx === -1));
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',

@@ -143,7 +143,7 @@ Na `v56` eu tinha entendido “só as formas” como “só dentro dos retângul
 
 **Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos, então o vídeo cru aparece dentro dos retângulos dos blobs. O contrato congelado continua intacto.
 
-🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. `npm test`: 222/222. Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
+🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. `npm test`: **223/223** (inclui o teste de Gear VR do Pointillism). Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 

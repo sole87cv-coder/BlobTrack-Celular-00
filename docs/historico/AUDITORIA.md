@@ -37,7 +37,7 @@ O projeto não depende de backend nem de serviços remotos em runtime. Não há 
 - As abas agora expõem relações tab/tablist/tabpanel, seleção, foco móvel e navegação pelas setas, Home e End.
 - O canvas visual tem nome e descrição textual; um resumo anuncia mudanças na quantidade de regiões sem inundar o leitor de tela.
 - O indicador de zonas apresenta atividade em texto acessível. O controle de retângulo também pode ser usado por teclado: setas posicionam o cursor, Enter marca os cantos, Shift acelera e Escape cancela.
-- O CSS inclui classe para conteúdo apenas para leitores de tela; os estilos da página de diagnóstico passaram para `teste.css`, incluído no PWA e no APK.
+- O CSS inclui classe para conteúdo apenas para leitores de tela; os estilos da página de diagnóstico passaram para `teste.css`, incluído no PWA e no APK. **Nota de atualização (25/11/2026):** isto valia no cache `v34` da auditoria; o commit `5bc2b1e` (22/11) removeu `teste.html`, `teste.js` e `teste.css` do `SHELL` do service worker. Hoje o APK inclui os três, mas o cache offline não.
 - Uma Content Security Policy foi adicionada às páginas e uma política de cabeçalhos ao `vercel.json`, com limites de câmera/microfone, bloqueio de incorporação externa, MIME estrito e política de referenciador. O microfone permanece desabilitado.
 - O service worker atual usa cache v34 com 29 recursos, incluindo a navegação, as escalas e os recursos de marca web. A limpeza de cache apaga apenas versões anteriores do prefixo técnico; o fallback offline continua restrito à navegação e falhas de módulos/scripts não são substituídas por HTML.
 
@@ -98,7 +98,7 @@ O teste no emulador comprova empacotamento, instalação e abertura, mas não su
 
 - Não foram apagados arquivos do projeto nem removidos os APKs locais. O APK anterior ao build foi copiado para a pasta de resultados desta tarefa.
 - O repositório já continha alterações locais e módulos não rastreados quando o trabalho começou. Eles foram preservados; não houve reset, staging, commit ou push.
-- `teste.css` é agora asset separado e necessário; `src/domain/blobTrackerCore.js` é importado pelo adaptador. Ambos fazem parte do shell e do pacote Android.
+- `teste.css` é agora asset separado e necessário; `src/domain/blobTrackerCore.js` é importado pelo adaptador. Ambos faziam parte do shell e do pacote Android na auditoria; desde `5bc2b1e`, `teste.*` segue só no pacote Android e é servido pelo deploy, sem entrar no cache offline (`sw.js` em `v57`). `blobTrackerCore.js` continua no shell.
 - Revisar a configuração de cabeçalhos no ambiente efetivamente usado se a publicação não ocorrer na Vercel; `vercel.json` só configura deploys Vercel.
 ## Decisão — escalas musicais no painel de áudio
 

@@ -1,12 +1,12 @@
 # Diagnóstico completo — 25/11/2026
 
-Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara) e agora registra o `v57` (Pointillism por error diffusion), publicado em `https://blobtrak.vercel.app`.
+Base: commit `54ff65d` (`docs: confirma publicacao v57 do pointillism e registra medicao`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara) e agora registra o `v57` (Pointillism por error diffusion), publicado em `https://blobtrak.vercel.app`.
 
 ## 1. Verificações executadas
 
 | Checagem | Resultado |
 |---|---|
-| `npm test` | 222/222 aprovados. |
+| `npm test` | 223/223 aprovados (inclui o teste de Gear VR do Pointillism). |
 | `node --check` em todos os `.js`/`.mjs` do projeto (fora caches/Android build/dist) | Nenhuma falha. |
 | `git diff --check` | Limpo. |
 | Links relativos em todos os `.md` | Nenhum link quebrado após as correções deste relatório. |
@@ -21,7 +21,7 @@ Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas 
 | README apontava `docs/ROI-decisao.md`, que não existe | 🟢 Corrigido | Passou a apontar `docs/diagnostico-cirurgico.md`, onde a decisão de ROI está registrada. |
 | README citava `manifest.json`; o arquivo é `manifest.webmanifest` | 🟢 Corrigido | Mapa do projeto ajustado. |
 | Servir por `file://` ainda é possível de tentar | 🟡 Documentado | README explica que câmera exige `localhost` ou HTTPS e que service worker não registra fora de contexto seguro. |
-| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🔴 Divergência pendente | `sw.js` (`SHELL`, cache `v56`) **não** inclui `teste.html`, `teste.js` nem `teste.css`. `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige que `teste.html` e `teste.js` continuem no deploy. Decidir: incluir os três no `SHELL` (exige `v57` + testes + README) ou corrigir a redação histórica do relatório. Conteúdo preservado; decisão ainda pendente. |
+| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🟢 Corrigido no texto histórico | A afirmação era válida no cache `v34`; `5bc2b1e` (22/11) removeu `teste.*` do `SHELL`. Hoje `android/app/build.gradle` inclui `teste.html`, `teste.js` e `teste.css` no APK, mas `sw.js` (`v57`) não inclui nenhum dos três; `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige só `html` e `js` no deploy. O `AUDITORIA.md` ganhou notas explicativas; decisão do V1su4rt: **não** mudar o runtime. |
 | `docs/historico/AUDITORIA.md` cita `http://localhost:4173/` | 🟢 Histórico | É registro da validação antiga; não é instrução atual. A URL vigente é `8000`. |
 
 ## 3. Permissões
@@ -42,8 +42,8 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 ### Medido agora
 
-- Benchmark do núcleo (`scripts/bench-blobtrack.js`), três execuções nesta máquina: p50 `0,744 / 0,877 / 0,956 ms`, p95 `1,531 / 2,106 / 2,341 ms`, pico `2,245 / 4,576 / 3,541 ms`.
-- O teto histórico é p95 ≤ `1,347 ms` (baseline × 1,15). As três amostras ficaram acima, **sem alteração** em `src/domain/blobTrackerCore.js` nem em `src/blob-tracker.js`. O histórico em `docs/perf-antes-depois.md` já registrou p95 entre `1,44` e `1,52 ms` em execuções carregadas. Tratar como ruído/contenda da máquina: repetir com a máquina parada antes de falar em regressão. Nenhuma mudança de núcleo foi feita por causa destes números.
+- Benchmark do núcleo (`scripts/bench-blobtrack.js`), três execuções com a máquina em repouso em `25/11/2026`: p50 `0,786 / 0,734 / 0,744 ms` (mediana `0,744`), p95 `1,233 / 1,505 / 1,248 ms` (mediana `1,248`), pico `1,959 / 1,921 / 1,697 ms` (mediana `1,921`).
+- O teto histórico é p95 ≤ `1,347 ms` (baseline × 1,15). A mediana atual (`1,248 ms`) está **dentro** do teto. A rodada anterior (p95 `1,531 / 2,106 / 2,341 ms`, registrada na `v56`) rodou sob contenda da máquina e não indicou regressão: não houve alteração em `src/domain/blobTrackerCore.js` nem em `src/blob-tracker.js` entre `c4cc4e0..HEAD`. Nenhuma mudança de núcleo foi feita por causa destes números.
 
 ### Gargalo conhecido
 
@@ -53,8 +53,8 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 ### Pendências
 
-- **Pacote 2:** compartilhar o readback de `analyze`, usar `texSubImage2D` e marcar `dirty` da máscara. São caminhos de CPU, mas tocam no contrato congelado: só com medição e aprovação.
-- **Pacote 3:** medir em aparelho real FPS, bateria, tamanho do halftone, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
+- **Pacote 2:** compartilhar o readback de `analyze`, usar `texSubImage2D` e marcar `dirty` da máscara. Agora há um **segundo** `getImageData` por quadro quando o Pointillism está ligado (mini-canvas `200×120`); compartilhar a leitura ficou mais valioso, mas toca no contrato congelado: só com medição e aprovação.
+- **Pacote 3:** medir em aparelho real FPS, bateria, tamanho dos pontos, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
 - Confirmar no aparelho o Pointillism (`v57`): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
@@ -82,7 +82,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. A rodada do Pointillism (`v57`) foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar `v56` por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes.
+A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar `v56` por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -104,3 +104,45 @@ Opção B escolhida pelo V1su4rt depois de ver o exemplo de diffusion dither do 
 - O Pontilhado não depende mais da máscara dos blobs; o laço de empacotamento da máscara voltou a servir só ao botão “Ver binarizada”. Contrato congelado intacto.
 - Custo medido em Chromium headless com câmera fake: `getImageData` extra p50 `1,5 ms` / p95 `4,7 ms`, `tComposition` `2,2 ms`, FPS `28,8` (sem mudança). `#visual` 100% de branco; `#overlay` com pontos pretos de `3,5` a `7,5 px`. `npm test` 222/222. Nada disso é medição em aparelho físico.
 - Status: publicado no commit `a039e80`. No site com URL sem cache: `#visual` 100% de branco, pontos pretos de `2` a `7,5 px` no `#overlay`, leitura extra p50 `1,4 ms` (p95 `8,8 ms` na primeira amostra e `3,9 ms` na segunda), `tComposition` `2,2–2,4 ms`, FPS `28,83` e nenhum erro de console. Continue sem medição em aparelho físico.
+
+## 9. Diagnóstico geral consolidado (25/11/2026)
+
+Escopo pedido pelo V1su4rt: **BlobTrack v57 publicado**, sem alterar runtime.
+
+### Repositório e deploy
+
+- Git em `54ff65d` com documentação e testes pendentes de publicação; `npm test` **223/223**; `node --check` limpo em **58** arquivos `.js`; `git diff --check` limpo.
+- Contrato congelado intacto: nenhuma mudança em `src/domain/blobTrackerCore.js` nem na assinatura de `src/blob-tracker.js` entre `c4cc4e0..HEAD`.
+- Site com `?cb=<timestamp>` e `cache: 'no-store'`: `sw.js` em `blobtrack-celular-00-v57`, `drawStipple` presente no render, `DOT_CELL` ausente, `uEffect==2` com papel branco no shader, botões Pontilhado / Janela viva / Vídeo original no HTML. Cache-Control do `sw.js`: `public, max-age=0, must-revalidate`.
+
+### Comportamento no navegador (Chromium headless, câmera fake, site com bypass de cache)
+
+| Cenário | `#visual` branco | `#overlay` preto / pintado | `tRender` | `tComposition` | FPS | leitura `200×120` p50 / p95 |
+|---|---|---|---|---|---|---|
+| Inverter (efeito base) | 0% (papel preto, esperado) | 0% / 0% | 1,0 ms | 0,2 ms | 22,3 (aquecimento) | — |
+| Limiar | 0% | — / 25,7% | 0,25 ms | 0,1 ms | 28,7 | — |
+| Pointillism + Janela viva | 100% | 17,6% / 53,4% | 3,15 ms | 3,3 ms | 28,8 | 1,7 / 8,1 ms |
+| Pointillism sem Janela viva | 100% | 21,8% / 21,8% | 2,89 ms | 2,6 ms | 28,8 | 1,7 / 7,0 ms |
+| Pointillism sem Vídeo original | 100% | 24,4% / 37,3% | 4,17 ms | 2,8 ms | 28,0 | 1,6 / 6,1 ms |
+| Pointillism com Inverter vídeo | 100% | 54,9% / 66,1% | 3,41 ms | 2,9 ms | 28,7 | 1,7 / 5,4 ms |
+| Gear VR | 13,5% (faixa contain, esperado) | 6,8% / 7,0% | 6,59 ms | 6,4 ms | 28,6 | 1,7 / 4,8 ms |
+
+- `WebGL2 ativo`; **zero erros de console** em todos os cenários. A janela compõe por cima dos pontos (área pintada sobe de 21,8% para 53,4% com Janela viva); Inverter vídeo troca a maioria dos pontos para branco sobre papel preto. Gear VR é o cenário mais caro por causa da geometria `contain`.
+- O hook de `uEffect` não capturou o valor nesta rodada (o objeto `WebGLUniformLocation` não expõe o nome como string); a confirmação do branch veio do `#visual` 100% branco e do texto do shader servido, não desse hook.
+
+### Desempenho do núcleo
+
+- Três execuções em máquina em repouso: p50 `0,786 / 0,734 / 0,744 ms`, p95 `1,233 / 1,505 / 1,248 ms`, pico `1,959 / 1,921 / 1,697 ms`. p95 mediano `1,248 ms` ≤ teto `1,347 ms`: **sem regressão**. O p95 alto da rodada da `v56` era contenda da máquina.
+
+### Documentação
+
+- 10 arquivos `.md` visitados, **0 links relativos quebrados**.
+- Corrigidos nesta rodada: base do relatório (`da6b1d7` → `54ff65d`), detalhe da divergência `teste.css` (APK inclui; `SHELL` não inclui), benchmark superado, índice (`v34` → `v57` em vez de `v55`) e redação contradictória sobre qual versão o site serve.
+- Cobertura acrescentada no fechamento: `Pointillism no Gear VR respeita o contain e espelha o segundo olho` em `tests/render/render.test.js`. A suíte passou de 222 para **223** testes. Nenhuma linha de runtime mudou.
+- **Resolvido no texto:** `docs/historico/AUDITORIA.md` dizia que `teste.css` estava no shell offline e no APK — verdadeiro na `v34`, falso desde `5bc2b1e`. O APK inclui os três arquivos (`android/app/build.gradle:29-31`), `teste.html` referencia `teste.css` e `teste.js`, mas `sw.js` (`v57`) não inclui nenhum no `SHELL` e `tests/deployment-config.test.js` exige só `html` e `js`. Por decisão do V1su4rt, o texto histórico foi corrigido com notas; o service worker **não** foi alterado.
+
+### Limites e pendências
+
+- **Não medido em aparelho físico:** câmera real, bateria, gravação, ROI, aparência final e FPS em dispositivo. Headless com câmera fake não substitui celular.
+- **Pacote 2:** o Pointillism adicionou um segundo `getImageData` por quadro; compartilhar o readback com `analyze`, usar `texSubImage2D` e marcar `dirty` da máscara continua bloqueado pelo contrato congelado — só com medição e aprovação.
+- Nenhum arquivo de runtime foi alterado nesta rodada. As correções de documentação ficaram **locais, sem commit nem publicação** até autorização.
