@@ -1,6 +1,6 @@
 # Diagnóstico completo — 25/11/2026
 
-Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara) e agora registra o `v57` (Pointillism por error diffusion), ainda em validação local.
+Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara) e agora registra o `v57` (Pointillism por error diffusion), publicado em `https://blobtrak.vercel.app`.
 
 ## 1. Verificações executadas
 
@@ -82,7 +82,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. A rodada seguinte (`v57`) já está implementada e validada localmente, mas **ainda não foi publicada**; para publicá-la, é preciso commit + push com autorização do V1su4rt.
+A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. A rodada do Pointillism (`v57`) foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar `v56` por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -103,4 +103,4 @@ Opção B escolhida pelo V1su4rt depois de ver o exemplo de diffusion dither do 
 - O branch `uEffect==2` do shader em `src/app.js` e o fallback 2D pintam papel branco; os pontos pretos vivem no overlay. `Janela viva`, `Vídeo original`, `Inverter vídeo` e mistura seguem ativos: as janelas são compostas **depois** dos pontos.
 - O Pontilhado não depende mais da máscara dos blobs; o laço de empacotamento da máscara voltou a servir só ao botão “Ver binarizada”. Contrato congelado intacto.
 - Custo medido em Chromium headless com câmera fake: `getImageData` extra p50 `1,5 ms` / p95 `4,7 ms`, `tComposition` `2,2 ms`, FPS `28,8` (sem mudança). `#visual` 100% de branco; `#overlay` com pontos pretos de `3,5` a `7,5 px`. `npm test` 222/222. Nada disso é medição em aparelho físico.
-- Status: implementado e validado localmente; **não publicado** até autorização de commit + push.
+- Status: publicado no commit `a039e80`. No site com URL sem cache: `#visual` 100% de branco, pontos pretos de `2` a `7,5 px` no `#overlay`, leitura extra p50 `1,4 ms` (p95 `8,8 ms` na primeira amostra e `3,9 ms` na segunda), `tComposition` `2,2–2,4 ms`, FPS `28,83` e nenhum erro de console. Continue sem medição em aparelho físico.
