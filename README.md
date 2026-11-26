@@ -46,6 +46,55 @@ cd android
 
 O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação de desenvolvimento, não destinada à Play Store. Veja requisitos e instalação USB em [`android/README.md`](android/README.md).
 
+### Testar no Android sem celular (emulador em 1 comando)
+
+Pense no emulador como um **celular de mentira dentro do notebook**: ele tem tela pequena, Android, Chrome e câmera virtual. Ele serve para conferir se o fluxo funciona no Android; **não** serve para dizer que o app está bom em aparelho real. Bateria, calor, GPU, sensor de câmera e iPhone continuam **não medidos**.
+
+Na raiz do projeto, dê dois cliques em **`start-emulador.bat`** (ou rode no PowerShell):
+
+```powershell
+.\start-emulador.bat
+```
+
+Ele faz, em ordem, o que você fazia na mão:
+
+1. Encontra o Android SDK dentro de `android/.local-build` — não precisa instalar nada globalmente.
+2. Se não há emulador ligado, inicia o AVD `BlobTrackEmulator` e espera o Android terminar de carregar (leva um ou dois minutos).
+3. Instala o APK de `dist/BlobTrack-Celular-00-debug.apk` com `adb install -r`.
+4. Abre a porta `9222` do Chrome para você inspecionar a página como se fosse DevTools (isso é o CDP).
+5. Concede câmera e áudio ao Chrome e abre `https://blobtrak.vercel.app/`.
+
+Quando aparecer a mensagem **Pronto**, abra o Chrome do emulador, toque em **Iniciar sessão** e aceite a permissão. A câmera aparece como `Traseira principal` ou `Frontal` e o canto mostra `WebGL2 ativo` com algo como `160×284 · fps 20`.
+
+Para conferir sem clicar em tudo, rode o QA automático (ele abre a sessão, troca os três efeitos, os oito botões e as quatro abas, reaprende o fundo e imprime um relatório em JSON):
+
+```powershell
+node scripts/qa-emulador.mjs
+```
+
+Outros comandos úteis:
+
+```powershell
+.\start-emulador.bat -Url 'https://seu-endereço-https/'   # abrir outra URL HTTPS
+.\start-emulador.bat -SemApk                              # só abrir o Chrome, sem reinstalar o APK
+.\start-emulador.bat -Parar                               # encerrar o emulador
+```
+
+🟢 Escrever e ajustar esses scripts é seguro: eles não tocam no app nem no cache do service worker. 🟡 Se mudar código que roda no app, aí sim vale o semáforo de sempre: suba o número em `sw.js`, rode `npm test` e escreva **não medido** no aparelho físico.
+
+**Quando algo não sair como esperado:**
+
+| Sintoma | O que fazer |
+|---|---|
+| "adb não encontrado" | Rode `cd android` e `.\build-apk.ps1` uma vez; o script prepara o SDK local. |
+| "AVD não existe" | O erro lista os AVDs disponíveis; passe outro com `-Avd NOME`. |
+| "BlobTrack Celular-00 já está aberto em outra aba" | Feche as abas duplicadas do app no Chrome. É o controle de aba única, não um defeito. |
+| Botão **Gravar vídeo** desabilitado | Este Chrome só oferece WebM e o gravador aceita só MP4 (`4cdf5cc`); decisão confirmada, sem fallback. Veja [`docs/gravacao.md`](docs/gravacao.md). |
+| `http://127.0.0.1:9222/json` não responde | Rode `.\start-emulador.bat` de novo para refazer o `adb forward`. |
+| Tela preta ou Android travado | Android Studio → Device Manager → **Cold Boot Now** no AVD. |
+
+O passo a passo completo, com os resultados medidos no emulador e o que ainda depende de celular, está em [`docs/device-matrix.md`](docs/device-matrix.md).
+
 ## Mapa do projeto
 
 | Caminho | Para que serve |
@@ -63,7 +112,9 @@ O APK é copiado para `dist/BlobTrack-Celular-00-debug.apk`. É uma compilação
 | `sw.js`, `manifest.webmanifest`, ícones | Instalação e cache offline da PWA. Atualize o número de cache ao alterar recursos de runtime. |
 | `tests/` | Testes automatizados sem câmera física. |
 | `scripts/bench-blobtrack.js` | Cenário reproduzível de tempo do núcleo de rastreamento. |
+| `scripts/qa-emulador.mjs` | QA funcional no Chrome do emulador via CDP, sem pacotes extras. |
 | `start-local.bat`, `start-local.sh` | Atalhos para subir o servidor local na porta 8000. |
+| `start-emulador.bat`, `android/start-emulador.ps1` | Um comando para ligar o AVD, instalar o APK, liberar o CDP e abrir o app. |
 | `docs/` | Diagnóstico, medições, matriz física e decisões de manutenção. Comece por [`docs/INDICE.md`](docs/INDICE.md). |
 | `android/` | Projeto WebView e compilação do APK debug. |
 | `teste.html`, `teste.js`, `teste.css` | Ferramentas de diagnóstico manual mantidas no repositório. |
@@ -268,6 +319,8 @@ git status --short
 Para ver o resultado na tela, inicie o servidor local com `python -m http.server 8000 --bind 127.0.0.1`, abra `http://localhost:8000`, toque em **Iniciar câmera** e teste o controle que você alterou. Se não tiver aparelho físico, escreva **não medido** na sua anotação em vez de inventar um número.
 
 **Diagnóstico final da `v60` (conferido antes e depois do deploy):** com câmera fake em Chromium, a sessão iniciou (`Traseira principal`, `400×225 · fps 29`, 1 blob), os três efeitos trocaram de estado, os oito botões de efeito voltaram ao valor original, as quatro abas trocaram de painel, o mudo alternou, a gravação foi `idle → recording → idle`, o service worker controlou a página com o cache `blobtrack-celular-00-v60` e o app reabriu offline. Console e rede terminaram com **0 erros**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v60` com `?cb=<timestamp>` e `cache: 'no-store'`, e o mesmo QA passou sem erros. Câmera real, bateria, gravação em aparelho e aparência final continuam **não medidos**.
+
+**Pacote 3 (25/11/2026, pré-checagem no emulador):** sem aparelho físico, rodamos a parte funcional no AVD Android `BlobTrackEmulator` com Chrome 124, câmera virtual e `WebGL2 ativo`. Sessão em `160×284 · fps 20`, três efeitos, oito toggles, quatro abas, mudo, ROI, blobs `0 → 1 → 2`, retorno do segundo plano e rotação preservaram a sessão; recarga offline reconstruiu o app com o service worker `v60`. Console e rede sem erros. **Gravação ficou desabilitada**: este Chrome só oferece WebM e o gravador da `v60` aceita somente MP4 (`4cdf5cc`) — não é defeito novo, é a limitação da decisão MP4-only (confirmada pelo V1su4rt em 25/11/2026: sem fallback WebM, sem cache `v61`); veja [`docs/gravacao.md`](docs/gravacao.md). Bateria, câmera real, calor/GPU, gravação em aparelho, toque na ROI e iPhone/Safari seguem **não medidos**; o emulador não substitui celular. Detalhes em [`docs/device-matrix.md`](docs/device-matrix.md).
 
 #### Se algo deu errado
 

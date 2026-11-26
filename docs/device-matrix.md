@@ -1,6 +1,31 @@
 # Matriz de validação em aparelhos
 
-Status deste ciclo: itens abaixo ainda não foram medidos em aparelhos físicos. Testes automatizados não substituem esta verificação.
+Status deste ciclo: os itens da tabela abaixo ainda **não foram medidos em aparelhos físicos**. Testes automatizados não substituem esta verificação. Em 25/11/2026 foi executada uma pré-checagem funcional no emulador Android (detalhe a seguir); ela prova fluxo, não hardware, bateria, câmera real nem aparência final.
+
+## Pré-checagem no emulador Android (25/11/2026)
+
+Ambiente: AVD `BlobTrackEmulator`, Android 10, `sdk_gphone64_x86_64`, Chrome 124.0.0.0, viewport `160×284`, site publicado `https://blobtrak.vercel.app/` com cache `blobtrack-celular-00-v60`. Câmera e áudio concedidos ao Chrome via `adb shell pm grant`; CDP em `http://127.0.0.1:9222` via `adb forward tcp:9222 localabstract:chrome_devtools_remote`. APK debug `dist/BlobTrack-Celular-00-debug.apk` instalado (`com.blobtrack.celular00.debug`), mas a navegação funcional foi feita no Chrome.
+
+| Item | Resultado no emulador | Limite do emulador |
+|---|---|---|
+| Câmera e WebGL | `Traseira principal`, `WebGL2 ativo`, quadro `160×284 · fps 20` | Câmera é virtual; não prova sensor, foco, luz ou cores reais |
+| Três efeitos | `invert`, `threshold`, `dither` alternaram; janela de custo respondeu (`0,3 ms · 2 recortes` no threshold) | Não mede aparência final em tela física |
+| Oito toggles e quatro abas | Todos ligaram/desligaram e voltaram ao estado original; abas trocaram de painel | — |
+| Mudo e áudio | `#stageMuteButton` alternou `aria-pressed` | Áudio é sintético; não mede saída real nem latência |
+| ROI / Retângulo | `#rectangleButton` com `aria-pressed=true`; ajuda por teclado presente | Não houve arrasto real com dedo nem validação de região em tela física |
+| Blobs | Após **Reaprender fundo**: `0 → 1 → 2` blobs; energia `5%`, densidade `26%` | Fundo é estático; não prova rastreio de objeto real |
+| Segundo plano | Home por ~6 s e retorno na mesma aba: sessão preservada (`Traseira principal`, palco visível, `fps ~18,7`, 2 blobs) | Não houve interrupção de chamada, bloqueio de tela real ou corte de energia |
+| Rotação | Paisagem `160×90 · fps 19`, sessão preservada; rotação revertida ao final | Orientação forçada por `settings put system user_rotation` |
+| Service worker / offline | Recarga sem rede reconstruiu a tela; `navigator.serviceWorker.controller` em `https://blobtrak.vercel.app/sw.js` | Não mede persistência em armazenamento real nem PWA instalada |
+| Gravação | **Indisponível**: botão desabilitado, `title="Gravação não suportada neste navegador."` | Chrome 124 só oferece WebM; o gravador da `v60` aceita só MP4 (decisão `4cdf5cc`). Ver [`gravacao.md`](gravacao.md) |
+| Console e rede | `consoleErrors []`, `failedRequests []` em todas as rotinas | — |
+| Estabilidade 5 min | 30 amostras em 300,4 s: FPS p50 `19,7` / p95 `20,0` / mín `17,8`; `tAnalysis` p50 `16,28 ms` / p95 `20,44 ms` / pico `21,63 ms`; `tRender` p50 `0,80 ms` / p95 `1,04 ms` / pico `1,12 ms`; blobs `0–2`; quadros `160×284` a `15–21 fps`; `consoleErrors []` | Emulador x86 com câmera virtual: FPS e tempos **não** representam aparelho |
+
+O soak acima é pré-checagem de estabilidade, não medição de celular: a queda para `15–16 fps` e o `tAnalysis` de ~`16–21 ms` ocorreram no x86 com câmera sintética. Não atribuir esses números a hardware real nem usá-los como baseline de regressão. Detalhe em [`perf-antes-depois.md`](perf-antes-depois.md).
+
+A sessão é encerrada ao abrir uma **segunda aba** do app ("BlobTrack Celular-00 já está aberto em outra aba"); isso é o controle de aba única funcionando, não um defeito. Não confundir com o teste de segundo plano, que manteve a sessão ao sair e voltar na **mesma** aba.
+
+## Matriz em aparelho físico (pendente)
 
 | Plataforma / cenário | Verificação | Estado |
 |---|---|---|
