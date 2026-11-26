@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v58`); a rodada `v59` está pronta localmente e entra no site só depois da autorização do V1su4rt.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v59`, publicado em `d46829b`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -208,13 +208,13 @@ O Pacote 2 tira o segundo `getImageData` do Pointillism. Agora `analyze` lê os 
 
 🟡 Mexa só com medição: em Chromium headless com câmera fake, o app passou a fazer **1** `getImageData` por quadro (`400×225`) em vez de 2, com 60 `texSubImage2D` e 0 `texImage2D` em 60 quadros, e `putImageData` da máscara em 25 de 60 quadros. `tRender` caiu de ~`3,15 ms` para ~`1,0 ms` no Pointillism e de `6,59 ms` para `2,28 ms` no Gear VR; FPS seguiu em `28,8`. `npm test`: **226/226**, zero erros de console. Nove rodadas do benchmark do núcleo deram p95 mediano `1,340 ms` (teto `1,347 ms`). Depois do deploy, a prova no site com `?cb=<timestamp>` confirmou `sw.js` em `v58`, `tRender` `0,95–1,22 ms` no Pointillism e `2,71 ms` no Gear VR, FPS `28,8`, `erros []` e a máscara publicada em `400×225`. O tamanho do readback acompanha a qualidade automática (`400×225` ou `480×270`), mas continua sendo **uma** leitura por quadro. Nada disso é aparelho físico: bateria, câmera real e gravação seguem **não medidos**.
 
-#### Pontilhado dentro das janelas (cache v59, local)
+#### Pontilhado dentro das janelas (cache v59, publicado)
 
 Você pediu para os pontos também “viverem dentro das janelas dos blobs”. A solução escolhida foi **pontos por cima do vídeo cru**, reaproveitando a grade já calculada para o palco. Em `src/render/render.js`, `prepareStipple` calcula a grade uma vez por quadro e `paintStipple` desenha essa mesma grade duas vezes: uma no palco e outra dentro do `clip` de cada janela, em `drawRawVideoWindows`. `stippleReady` é zerado no começo de `drawMaskOverlay` para a janela nunca usar pontos do quadro anterior.
 
 Resultado: o quadro inteiro continua em pointillism (sua regra de ouro) e a janela vira uma “lupa pontilhada”. Não há segundo `getImageData`, nem nova difusão de erro.
 
-🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **228/228**. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
+🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **228/228**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v59` com `?cb=<timestamp>` e `cache: 'no-store'`; a prova repetida no deploy mostrou a janela com 100% de pixels pintados e 22,2% a 29,2% pretos, arcos de ~130 mil contra ~65 mil sem janela e `erros []`. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 
