@@ -98,7 +98,7 @@ O teste no emulador comprova empacotamento, instalação e abertura, mas não su
 
 - Não foram apagados arquivos do projeto nem removidos os APKs locais. O APK anterior ao build foi copiado para a pasta de resultados desta tarefa.
 - O repositório já continha alterações locais e módulos não rastreados quando o trabalho começou. Eles foram preservados; não houve reset, staging, commit ou push.
-- `teste.css` é agora asset separado e necessário; `src/domain/blobTrackerCore.js` é importado pelo adaptador. Ambos faziam parte do shell e do pacote Android na auditoria; desde `5bc2b1e`, `teste.*` segue só no pacote Android e é servido pelo deploy, sem entrar no cache offline (`sw.js` em `v58`). `blobTrackerCore.js` continua no shell.
+- `teste.css` é agora asset separado e necessário; `src/domain/blobTrackerCore.js` é importado pelo adaptador. Ambos faziam parte do shell e do pacote Android na auditoria; desde `5bc2b1e`, `teste.*` segue só no pacote Android e é servido pelo deploy, sem entrar no cache offline (`sw.js` em `v58` no site, `v59` local). `blobTrackerCore.js` continua no shell.
 - Revisar a configuração de cabeçalhos no ambiente efetivamente usado se a publicação não ocorrer na Vercel; `vercel.json` só configura deploys Vercel.
 ## Decisão — escalas musicais no painel de áudio
 

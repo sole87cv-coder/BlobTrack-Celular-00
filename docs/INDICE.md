@@ -15,7 +15,7 @@ Comece aqui para encontrar explicações sem precisar abrir todo o repositório.
 | Documento | Quando ler |
 |---|---|
 | [`diagnostico-cirurgico.md`](diagnostico-cirurgico.md) | Os cinco achados corrigidos (efeitos, blob parado, IDs, ROI, escalas) e o orçamento congelado. |
-| [`perf-antes-depois.md`](perf-antes-depois.md) | Histórico de medições por cache (`v34` → `v58`, publicado) e pendência do Pacote 3. |
+| [`perf-antes-depois.md`](perf-antes-depois.md) | Histórico de medições por cache (`v34` → `v59`, com `v58` publicado e `v59` local) e pendência do Pacote 3. |
 | [`blobtrack-benchmark.md`](blobtrack-benchmark.md) | Como reproduzir o benchmark do núcleo e o que os números significam. |
 | [`device-matrix.md`](device-matrix.md) | Matriz de aparelhos e o que ainda depende de teste físico. |
 

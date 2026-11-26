@@ -158,6 +158,47 @@ test('Pontilhado mantém Janela Viva, Vídeo original e o filtro das janelas', (
   assert.ok(filtered.filters.includes('grayscale(1) contrast(2)'));
 });
 
+test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement() { throw new Error('não deve criar canvas'); } };
+  try {
+    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows: false, invertBlend: false, videoBlend: 0, timing: {} });
+    const render = createRender({
+      state,
+      video: { videoWidth: 640, videoHeight: 360 },
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const width = 60, height = 36;
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let row = 0; row < height; row++) {
+      for (let col = 0; col < width; col++) {
+        const value = col < width / 2 ? 240 : 10 + (col - width / 2) * 6;
+        const i = (row * width + col) * 4;
+        data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+      }
+    }
+    let arcs = 0, images = 0;
+    const c = {
+      fillStyle: '', filter: 'none', globalAlpha: 1,
+      save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {}, drawImage() { images++; },
+      moveTo() {}, arc() { arcs++; }, fill() {},
+    };
+
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height });
+    const dotsNoPalco = arcs;
+    assert.ok(dotsNoPalco > 20, `pontos no palco: ${dotsNoPalco}`);
+    arcs = 0;
+    render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, { videoWidth: 640, videoHeight: 360 });
+    assert.equal(arcs, dotsNoPalco, 'a janela pinta a mesma grade, sem recalcular');
+    assert.equal(images, 1, 'o vídeo cru continua na janela');
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   const video = { videoWidth: 640, videoHeight: 360 };

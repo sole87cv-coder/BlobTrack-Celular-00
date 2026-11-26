@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v58`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v58`); a rodada `v59` está pronta localmente e entra no site só depois da autorização do V1su4rt.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -144,7 +144,7 @@ Os três botões só escolhem qual “filtro” entra nessa montagem. O nome int
 |---|---|---|---|
 | Inverter / Invertir | `invert` | negativo de filme **dentro das janelas** | `drawRawVideoWindows`, em `src/render/render.js` |
 | Preto e branco | `threshold` | cinza com contraste forte **dentro das janelas** | a mesma função |
-| Pontilhado | `dither` | papel branco com pontos pretos formando a imagem inteira | `drawStipple` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
+| Pontilhado | `dither` | papel branco com pontos pretos formando a imagem inteira **e também as janelas** (`v59`) | `drawStipple` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
 
 **Inverter e Preto e branco, passo a passo.** Os dois ficam juntos neste trecho de `src/render/render.js`:
 
@@ -198,15 +198,23 @@ Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo do
 
 Na `v56` eu tinha entendido “só as formas” como “só dentro dos retângulos dos blobs”: a base ficava preta e os pontos brancos apareciam apenas na máscara. Você esclareceu que o certo é a **imagem inteira virar pontilhismo**, como o exemplo de diffusion dither. Agora o branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam papel branco, e `drawStipple` desenha os pontos pretos no overlay com difusão de erro, raio quantizado e leve deslocamento orgânico.
 
-**Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos, então o vídeo cru aparece dentro dos retângulos dos blobs. O contrato congelado continua intacto.
+**Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos, então o vídeo cru aparece dentro dos retângulos dos blobs. Na `v59` os pontos também são pintados **dentro das janelas**, por cima do vídeo, reaproveitando a mesma grade — sem segundo `getImageData`. O contrato congelado continua intacto.
 
-🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. Suíte atual: **226/226** (inclui Gear VR, readback compartilhado e máscara `dirty`). Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
+🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. Suíte atual: **228/228** (inclui Gear VR, readback compartilhado, máscara `dirty` e Pontilhado nas janelas). Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
 
 #### Pacote 2 — uma leitura por quadro (cache v58)
 
 O Pacote 2 tira o segundo `getImageData` do Pointillism. Agora `analyze` lê os pixels uma única vez em `src/app.js` e entrega esse mesmo buffer ao tracker (`tracker.updatePixels`) e a `drawStipple`; a textura WebGL é alocada uma vez com `texImage2D` e atualizada com `texSubImage2D`; a imagem binarizada só é publicada no canvas quando a máscara muda. Os arquivos congelados (`src/domain/blobTrackerCore.js` e a assinatura de `src/blob-tracker.js`) não foram alterados.
 
 🟡 Mexa só com medição: em Chromium headless com câmera fake, o app passou a fazer **1** `getImageData` por quadro (`400×225`) em vez de 2, com 60 `texSubImage2D` e 0 `texImage2D` em 60 quadros, e `putImageData` da máscara em 25 de 60 quadros. `tRender` caiu de ~`3,15 ms` para ~`1,0 ms` no Pointillism e de `6,59 ms` para `2,28 ms` no Gear VR; FPS seguiu em `28,8`. `npm test`: **226/226**, zero erros de console. Nove rodadas do benchmark do núcleo deram p95 mediano `1,340 ms` (teto `1,347 ms`). Depois do deploy, a prova no site com `?cb=<timestamp>` confirmou `sw.js` em `v58`, `tRender` `0,95–1,22 ms` no Pointillism e `2,71 ms` no Gear VR, FPS `28,8`, `erros []` e a máscara publicada em `400×225`. O tamanho do readback acompanha a qualidade automática (`400×225` ou `480×270`), mas continua sendo **uma** leitura por quadro. Nada disso é aparelho físico: bateria, câmera real e gravação seguem **não medidos**.
+
+#### Pontilhado dentro das janelas (cache v59, local)
+
+Você pediu para os pontos também “viverem dentro das janelas dos blobs”. A solução escolhida foi **pontos por cima do vídeo cru**, reaproveitando a grade já calculada para o palco. Em `src/render/render.js`, `prepareStipple` calcula a grade uma vez por quadro e `paintStipple` desenha essa mesma grade duas vezes: uma no palco e outra dentro do `clip` de cada janela, em `drawRawVideoWindows`. `stippleReady` é zerado no começo de `drawMaskOverlay` para a janela nunca usar pontos do quadro anterior.
+
+Resultado: o quadro inteiro continua em pointillism (sua regra de ouro) e a janela vira uma “lupa pontilhada”. Não há segundo `getImageData`, nem nova difusão de erro.
+
+🟡 Mexa só com medição: em Chromium headless com câmera fake, a janela ficou com **100%** dos pixels pintados e **22,2%** pretos (pontos sobre o vídeo); fora dela, **20,1%** pintados e pretos. Em 1 segundo, os arcos no overlay passaram de **64.924** (sem janela) para **130.934** (com janela) e os `clip` de **29** para **58** — ou seja, a grade é pintada duas vezes, sem recalcular. `tRender` foi de `~0,87 ms` sem janela para `~1,59 ms` com janela; com Gear VR, `~3,21 ms`. FPS `28,8` e `erros []`. `npm test`: **228/228**. CPU, bateria, câmera real, gravação e aparência em aparelho físico: **não medidos**.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 
@@ -224,7 +232,7 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 226 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 228 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
@@ -238,7 +246,7 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
 4. Peça ajuda antes de mexer na zona 🔴.
 
-Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: corrige Pontilhado em cena escura e sobe cache v58`.
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `feat: leva o Pontilhado para dentro das janelas e sobe cache v59`.
 
 ### Alterações de título e marca (manutenção manual)
 

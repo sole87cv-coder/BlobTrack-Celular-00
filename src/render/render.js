@@ -57,6 +57,7 @@ export function createRender({
   const stippleCropRect = new Float32Array(4);
   let stippleCanvas = null, stippleContext = null, stippleWarned = false;
   let stippleGrid = { width: 0, height: 0, luma: null, error: null, jitterX: null, jitterY: null, dotX: null, dotY: null, dotR: null, count: 0 };
+  let stippleReady = false, stippleSampleWidth = 0, stippleSampleHeight = 0;
   let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
   let textureWidth = 0, textureHeight = 0;
   let overlayDirty = false;
@@ -462,6 +463,8 @@ export function createRender({
       c.restore();
       c.filter = 'none';
     }
+    // Pontilhado também vive nas janelas: reaproveita a grade já calculada para o palco.
+    if (state.effect === 'dither') paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
     c.restore();
   }
 
@@ -602,10 +605,12 @@ export function createRender({
     return grid;
   }
 
-  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null) {
+  // A grade é calculada uma vez por quadro; pintar de novo nas janelas não repete a difusão.
+  function prepareStipple(source, viewWidth, viewHeight, sample = null) {
+    stippleReady = false;
     const srcWidth = source?.videoWidth || source?.width || 0;
     const srcHeight = source?.videoHeight || source?.height || 0;
-    if (!srcWidth || !srcHeight) return;
+    if (!srcWidth || !srcHeight) return false;
     try {
       const scale = Math.min(1, STIPPLE_MAX_WIDTH / srcWidth, STIPPLE_MAX_HEIGHT / srcHeight);
       const width = Math.max(STIPPLE_SPACING, Math.round(srcWidth * scale));
@@ -615,11 +620,11 @@ export function createRender({
         && sample.data.length >= sample.width * sample.height * 4 ? sample : null;
       let data = null;
       if (!shared) {
-        if (typeof document === 'undefined') return;
+        if (typeof document === 'undefined') return false;
         if (!stippleCanvas) {
           stippleCanvas = document.createElement('canvas');
           stippleContext = stippleCanvas.getContext('2d', { willReadFrequently: true });
-          if (!stippleContext) return;
+          if (!stippleContext) return false;
         }
         if (stippleCanvas.width !== width || stippleCanvas.height !== height) {
           stippleCanvas.width = width;
@@ -680,35 +685,50 @@ export function createRender({
         }
       }
       grid.count = count;
-      if (!count) return;
+      if (!count) return false;
       if (state.gearVr) {
         calculateContainRect(width, height, viewWidth, viewHeight, stippleCropRect);
       } else {
         calculateCoverCrop(width, height, viewWidth, viewHeight, stippleCropRect);
       }
-      const cr = stippleCropRect;
-      const scaleX = state.gearVr ? cr[2] / width : viewWidth / cr[2];
-      const scaleY = state.gearVr ? cr[3] / height : viewHeight / cr[3];
-      const baseX = state.gearVr ? cr[0] : -cr[0] * scaleX;
-      const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
-      c.save();
-      c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
-      c.scale(mirrorX ? -1 : 1, 1);
-      c.fillStyle = '#000';
-      c.beginPath();
-      for (let i = 0; i < count; i++) {
-        const x = baseX + grid.dotX[i] * scaleX;
-        const y = baseY + grid.dotY[i] * scaleY;
-        const r = Math.max(.35, grid.dotR[i] * Math.min(scaleX, scaleY));
-        c.moveTo(x + r, y);
-        c.arc(x, y, r, 0, STIPPLE_TAU);
-      }
-      c.fill();
-      c.restore();
+      stippleSampleWidth = width;
+      stippleSampleHeight = height;
+      stippleReady = true;
+      return true;
     } catch (e) {
       if (!stippleWarned && typeof log === 'function') log(`Pointillism indisponível: ${e.message}`);
       stippleWarned = true;
+      return false;
     }
+  }
+
+  function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX) {
+    if (!stippleReady || !stippleGrid.count) return;
+    const width = stippleSampleWidth, height = stippleSampleHeight;
+    const cr = stippleCropRect;
+    const scaleX = state.gearVr ? cr[2] / width : viewWidth / cr[2];
+    const scaleY = state.gearVr ? cr[3] / height : viewHeight / cr[3];
+    const baseX = state.gearVr ? cr[0] : -cr[0] * scaleX;
+    const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
+    c.save();
+    c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+    c.scale(mirrorX ? -1 : 1, 1);
+    c.fillStyle = '#000';
+    c.beginPath();
+    for (let i = 0; i < stippleGrid.count; i++) {
+      const x = baseX + stippleGrid.dotX[i] * scaleX;
+      const y = baseY + stippleGrid.dotY[i] * scaleY;
+      const r = Math.max(.35, stippleGrid.dotR[i] * Math.min(scaleX, scaleY));
+      c.moveTo(x + r, y);
+      c.arc(x, y, r, 0, STIPPLE_TAU);
+    }
+    c.fill();
+    c.restore();
+  }
+
+  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null) {
+    if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
+    paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
   }
 
   // ---------- overlay e gravação ----------
@@ -733,6 +753,7 @@ export function createRender({
       return;
     }
     overlayDirty = true;
+    stippleReady = false;
     const rect = stageViewport || overlayCanvas.getBoundingClientRect();
     c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
     if (!rect.width || !rect.height) {

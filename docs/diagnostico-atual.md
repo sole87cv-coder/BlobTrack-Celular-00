@@ -1,12 +1,12 @@
 # Diagnóstico completo — 25/11/2026
 
-Base publicada: commit `e982772` (`perf: compartilha readback do tracker e sobe cache v58`) em `https://blobtrak.vercel.app`, com `sw.js` em `blobtrack-celular-00-v58`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion) e agora registra o `v58` (readback compartilhado), publicado com autorização do V1su4rt.
+Base publicada: commit `9af154b` (`docs: explica manutencao dos tres efeitos em linguagem didatica`) em `https://blobtrak.vercel.app`, com `sw.js` em `blobtrack-celular-00-v58`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion), `v58` (readback compartilhado, publicado) e agora registra o `v59` (pontos também dentro das janelas), pronto localmente e aguardando autorização para publicação.
 
 ## 1. Verificações executadas
 
 | Checagem | Resultado |
 |---|---|
-| `npm test` | 226/226 aprovados (inclui Gear VR, readback compartilhado e máscara `dirty`). |
+| `npm test` | 228/228 aprovados (inclui Gear VR, readback compartilhado, máscara `dirty` e Pontilhado nas janelas). |
 | `node --check` em todos os `.js`/`.mjs` do projeto (fora caches/Android build/dist) | Nenhuma falha. |
 | `git diff --check` | Limpo. |
 | Links relativos em todos os `.md` | Nenhum link quebrado após as correções deste relatório. |
@@ -21,7 +21,7 @@ Base publicada: commit `e982772` (`perf: compartilha readback do tracker e sobe 
 | README apontava `docs/ROI-decisao.md`, que não existe | 🟢 Corrigido | Passou a apontar `docs/diagnostico-cirurgico.md`, onde a decisão de ROI está registrada. |
 | README citava `manifest.json`; o arquivo é `manifest.webmanifest` | 🟢 Corrigido | Mapa do projeto ajustado. |
 | Servir por `file://` ainda é possível de tentar | 🟡 Documentado | README explica que câmera exige `localhost` ou HTTPS e que service worker não registra fora de contexto seguro. |
-| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🟢 Corrigido no texto histórico | A afirmação era válida no cache `v34`; `5bc2b1e` (22/11) removeu `teste.*` do `SHELL`. Hoje `android/app/build.gradle` inclui `teste.html`, `teste.js` e `teste.css` no APK, mas `sw.js` (`v58`) não inclui nenhum dos três; `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige só `html` e `js` no deploy. O `AUDITORIA.md` ganhou notas explicativas; decisão do V1su4rt: **não** mudar o runtime. |
+| `docs/historico/AUDITORIA.md` afirma que `teste.css` está no shell offline e no APK | 🟢 Corrigido no texto histórico | A afirmação era válida no cache `v34`; `5bc2b1e` (22/11) removeu `teste.*` do `SHELL`. Hoje `android/app/build.gradle` inclui `teste.html`, `teste.js` e `teste.css` no APK, mas `sw.js` (`v58` publicado, `v59` local) não inclui nenhum dos três; `teste.html` referencia `teste.css` e `teste.js`, e `tests/deployment-config.test.js` exige só `html` e `js` no deploy. O `AUDITORIA.md` ganhou notas explicativas; decisão do V1su4rt: **não** mudar o runtime. |
 | `docs/historico/AUDITORIA.md` cita `http://localhost:4173/` | 🟢 Histórico | É registro da validação antiga; não é instrução atual. A URL vigente é `8000`. |
 
 ## 3. Permissões
@@ -54,8 +54,9 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 ### Pendências
 
 - **Pacote 2:** aplicado e publicado no `v58` (ver seção 10).
+- **Pontilhado nas janelas:** aplicado localmente no `v59` (ver seção 11); publicação aguardando autorização.
 - **Pacote 3:** medir em aparelho real FPS, bateria, tamanho dos pontos, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
-- Confirmar no aparelho o Pointillism (`v58` publicado): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
+- Confirmar no aparelho o Pointillism (`v58` publicado; `v59` local acrescenta pontos dentro das janelas): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
 
@@ -82,7 +83,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar versão anterior por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) foi publicada com autorização em `e982772` (commit + push; deploy automático) e a checagem com `?cb=<timestamp>` confirmou `sw.js` em `blobtrack-celular-00-v58`.
+A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar versão anterior por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) foi publicada com autorização em `e982772` (commit + push; deploy automático) e a checagem com `?cb=<timestamp>` confirmou `sw.js` em `blobtrack-celular-00-v58`. A documentação didática dos três efeitos entrou em `9af154b`, sem mudança de runtime. A rodada `v59` está pronta localmente e ainda não foi publicada.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -138,14 +139,14 @@ Escopo pedido pelo V1su4rt: **aplicar os pacotes faltantes e fazer acabamentos �
 ### Documentação
 
 - 10 arquivos `.md` visitados, **0 links relativos quebrados**.
-- Corrigidos nesta rodada: base do relatório (`da6b1d7` → `54ff65d`), detalhe da divergência `teste.css` (APK inclui; `SHELL` não inclui), benchmark superado, índice (`v34` → `v58`, antes `v57`) e redação contradictória sobre qual versão o site serve.
+- Corrigidos nesta rodada: base do relatório (`da6b1d7` → `54ff65d`), detalhe da divergência `teste.css` (APK inclui; `SHELL` não inclui), benchmark superado, índice (`v34` → `v59`, passando por `v58`) e redação contradictória sobre qual versão o site serve.
 - Cobertura acrescentada no fechamento: `Pointillism no Gear VR respeita o contain e espelha o segundo olho` em `tests/render/render.test.js`. A suíte passou de 222 para **223** testes; com o Pacote 2 chegou a **226**.
 - **Resolvido no texto:** `docs/historico/AUDITORIA.md` dizia que `teste.css` estava no shell offline e no APK — verdadeiro na `v34`, falso desde `5bc2b1e`. O APK inclui os três arquivos (`android/app/build.gradle:29-31`), `teste.html` referencia `teste.css` e `teste.js`, mas `sw.js` (`v58`) não inclui nenhum no `SHELL` e `tests/deployment-config.test.js` exige só `html` e `js`. Por decisão do V1su4rt, o texto histórico foi corrigido com notas; o service worker **não** inclui `teste.*`.
 
 ### Limites e pendências
 
 - **Não medido em aparelho físico:** câmera real, bateria, gravação, ROI, aparência final e FPS em dispositivo. Headless com câmera fake não substitui celular.
-- **Pacote 2:** aplicado localmente — leitura única em `analyze`, `drawStipple(..., sample)`, `texSubImage2D` e máscara `dirty`. Contrato congelado preservado. Falta autorização para commit + push + deploy.
+- **Pacote 2:** publicado em `e982772` — leitura única em `analyze`, `drawStipple(..., sample)`, `texSubImage2D` e máscara `dirty`. Contrato congelado preservado.
 - **Pacote 3:** depende de aparelho físico; câmera real, bateria, gravação, ROI e aparência final continuam **não medidos**.
 
 ## 10. Pacote 2 — readback compartilhado (cache v58, publicado)
@@ -156,3 +157,15 @@ Escopo pedido pelo V1su4rt: **aplicar os pacotes faltantes e fazer acabamentos �
 - Validação: `npm test` **226/226** (novos testes de readback compartilhado, `texSubImage2D`, máscara `dirty` e Gear VR), `node --check` limpo em 58 arquivos, `git diff --check` limpo, nove rodadas de benchmark com p95 mediano `1,340 ms` ≤ teto `1,347 ms`.
 - Prova no deploy (`https://blobtrak.vercel.app/?cb=<timestamp>`): `sw.js` em `v58`, código publicado com `tracker.updatePixels`, `texSubImage2D`, `sample?.data` e máscara `dirty`; `#visual` 100% branco com 2000 pontos por quadro no Pointillism, `tRender` `0,95–1,22 ms` e Gear VR `2,71 ms`, FPS `28,8`, `erros []`. A instrumentação no site viu leituras em `400×225` e `480×270` conforme a qualidade automática — sempre **uma** por quadro —, 1 `texImage2D` (alocação inicial) + 49 `texSubImage2D` em 50 quadros e `putImageData` da máscara em `400×225`.
 - Status: publicado em `e982772` com autorização do V1su4rt. Nada aqui é medição em aparelho físico.
+
+## 11. Pontilhado dentro das janelas (cache v59, local)
+
+Pedido do V1su4rt: o Pontilhado também deve “viver dentro das janelas dos blobs”. Opção escolhida: **pontos por cima do vídeo cru**, reaproveitando a grade já calculada para o palco — sem segunda difusão de erro e sem segundo `getImageData`.
+
+- `src/render/render.js`: `prepareStipple` separou o cálculo da grade; `paintStipple` desenha a mesma grade no palco e de novo dentro do `clip` em `drawRawVideoWindows` quando `state.effect === 'dither'`. `stippleReady` é zerado no início de `drawMaskOverlay` para evitar pintura com grade de quadro anterior. `drawStipple` virou wrapper, mantendo a assinatura pública.
+- Contrato congelado intacto: `src/domain/blobTrackerCore.js` e a assinatura de `src/blob-tracker.js` não mudaram. Cache local em `blobtrack-celular-00-v59`; testes de cache ajustados.
+- Validação: `npm test` **228/228** (novo teste em `tests/render/render.test.js` confirma o mesmo número de arcos dentro da janela e nenhum `document.createElement`; novo teste estático em `tests/app-structure.test.js` travou `prepareStipple`/`paintStipple`).
+- Prova headless em `http://127.0.0.1:8000/?cb=<timestamp>` com câmera fake, Janela viva ligada: dentro da janela `[13,212,412,427]`, **100%** dos pixels pintados e **22,21%** pretos (pontos sobre o vídeo); fora dela, **20,08%** pintados e **19,83%** pretos. Sem Janela viva, o overlay fica **21,57%** pintado e **21,57%** preto (só pontos).
+- Em 1 segundo de medição: arcos no overlay **130.934** com janela contra **64.924** sem janela; `clip` **58** contra **29**. A grade é pintada duas vezes por quadro, sem recalcular.
+- `tRender`: `~1,59 ms` com janela, `~0,87 ms` sem janela; cenários do diagnóstico geral: `dither + janela` `1,63 ms`, `dither sem janela` `1,00 ms`, `dither sem vídeo original` `1,47 ms`, `com inverter vídeo` `1,68 ms`, Gear VR `3,21 ms`. FPS `28,8`; `erros []`. Instrumentação: 1 `getImageData` por quadro (`400×225`), 0 `texImage2D`, 60 `texSubImage2D`, `putImageData` da máscara em 25 de 60 quadros.
+- Status: **local, aguardando autorização** para commit + push + deploy. Após a publicação, conferir `sw.js` em `blobtrack-celular-00-v59` com `?cb=<timestamp>` e `cache: 'no-store'`. CPU, bateria, câmera real, gravação, ROI e aparência final em aparelho físico: **não medidos**.

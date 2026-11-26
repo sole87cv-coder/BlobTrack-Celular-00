@@ -59,6 +59,15 @@ test('Pacote 2 compartilha o readback e atualiza textura e máscara sem realocar
   assert.ok(tracker.includes('update(video, context, canvas, trackingWidth, threshold, dt, roiMask = null)'));
 });
 
+test('Pontilhado nas janelas reaproveita a grade calculada para o palco', async () => {
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  assert.ok(render.includes('function prepareStipple(source, viewWidth, viewHeight, sample = null)'));
+  assert.ok(render.includes('function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX)'));
+  assert.ok(render.includes(`if (state.effect === 'dither') paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);`));
+  assert.ok(render.includes('function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null)'));
+  assert.ok(render.includes('stippleReady = false;'));
+});
+
 test('recording snapshot retains identity shared with renderer', () => {
   assert.ok(app.includes('Object.assign(recordingSnapshot, snapshot);'));
   assert.ok(!app.includes('recordingSnapshot = snapshot;'));
