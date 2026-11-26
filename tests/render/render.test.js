@@ -203,14 +203,14 @@ test('ondas reaproveitam os pontos de view já calculados para o olho', () => {
   assert.ok(arcs.every(([x, y]) => Math.abs(x - 80) < 1e-6 && Math.abs(y - 120) < 1e-6));
 });
 
-test('fallback do Pontilhado pinta base preta, sem halftone no quadro inteiro', () => {
+test('fallback do Pontilhado pinta papel branco, sem desenhar o quadro inteiro', () => {
   const state = makeState({ effect: 'dither', timing: {} });
   const fills = [];
   const c = {
     filter: '',
     fillStyle: '',
     save() {}, restore() {},
-    fillRect(...args) { fills.push(args); },
+    fillRect(...args) { fills.push([...args, c.fillStyle]); },
     drawImage() { throw new Error('base do Pontilhado não deve desenhar o quadro inteiro'); },
     beginPath() {}, rect() {}, clip() {}, translate() {}, scale() {},
   };
@@ -228,63 +228,67 @@ test('fallback do Pontilhado pinta base preta, sem halftone no quadro inteiro', 
   render.renderFrame({}, { videoWidth: 640, videoHeight: 360 });
   render.renderFrame({}, { videoWidth: 640, videoHeight: 360 });
 
-  assert.deepEqual(fills, [[0, 0, 320, 240], [0, 0, 320, 240]]);
+  assert.deepEqual(fills, [
+    [0, 0, 320, 240, '#fff'],
+    [0, 0, 320, 240, '#fff'],
+  ]);
   assert.equal(c.filter, 'none');
 });
 
-test('Pontilhado desenha pontos somente dentro da máscara dos blobs', () => {
-  const width = 40, height = 24;
-  const mask = new Uint8Array(width * height);
-  for (let y = 10; y < 12; y++) {
-    for (let x = 10; x < 12; x++) mask[y * width + x] = 1;
-  }
-  let image = null;
-  let puts = 0;
-  const maskCanvas = { width: 0, height: 0 };
-  const maskContext = {
-    createImageData(w, h) {
-      image = { data: new Uint8ClampedArray(w * h * 4), width: w, height: h };
-      return image;
-    },
-    putImageData() { puts++; },
-  };
-  const state = makeState({ effect: 'dither', timing: {} });
-  const render = createRender({
-    state,
-    overlayContext: {
-      clearRect() {}, save() {}, restore() {}, scale() {}, beginPath() {},
-      rect() {}, clip() {}, translate() {}, drawImage() {}, globalAlpha: 1,
-    },
-    overlayCanvas: { width: 320, height: 240 },
-    stageViewport: { width: 320, height: 240 },
-    video: { videoWidth: 640, videoHeight: 360 },
-    maskCanvas, maskContext, maskImage: null, maskView: null,
-    cropRect: new Float32Array(4),
-    mapPointA: new Float32Array(2),
-    mapPointB: new Float32Array(2),
-  });
-
-  render.drawMaskOverlay({ blobs: [], width, height, mask }, { videoWidth: 640, videoHeight: 360 }, {});
-
-  assert.equal(maskCanvas.width, width);
-  assert.equal(puts, 1);
-  const packed = new Uint32Array(image.data.buffer);
-  let inside = 0, outside = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const value = packed[y * width + x];
-      if (mask[y * width + x]) {
-        if (value === 0xFFFFFFFF) inside++;
-      } else if (value !== 0) {
-        outside++;
+test('Pointillism difunde erro e desenha pontos pretos de tamanhos diferentes', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [];
+  let fills = 0, created = 0, reads = 0;
+  const offscreenContext = {
+    drawImage() {},
+    getImageData(x, y, width, height) {
+      reads++;
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let row = 0; row < height; row++) {
+        for (let col = 0; col < width; col++) {
+          const value = col < width / 2 ? 240 : 10 + (col - width / 2) * 6;
+          const i = (row * width + col) * 4;
+          data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+        }
       }
-    }
+      return { data, width, height };
+    },
+  };
+  const sampleCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
+  globalThis.document = {
+    createElement(tag) { assert.equal(tag, 'canvas'); created++; return sampleCanvas; },
+  };
+  try {
+    const state = makeState({ effect: 'dither', timing: {} });
+    const render = createRender({
+      state,
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const c = {
+      fillStyle: '', save() {}, restore() {}, translate() {}, scale() {},
+      beginPath() {}, moveTo() {}, fill() { fills++; },
+      arc(...args) { arcs.push(args); },
+    };
+
+    render.drawStipple(c, { width: 60, height: 36 }, 320, 240, 0, false);
+    render.drawStipple(c, { width: 60, height: 36 }, 320, 240, 0, false);
+
+    assert.equal(created, 1);
+    assert.equal(reads, 2);
+    assert.equal(sampleCanvas.width, 60);
+    assert.equal(fills, 2);
+    assert.ok(arcs.length > 20, `pontos gerados: ${arcs.length}`);
+    assert.ok(arcs.filter(([x]) => x > 150).length > arcs.length * 0.7);
+    assert.ok(new Set(arcs.map(([, , radius]) => radius.toFixed(2))).size >= 3);
+    assert.ok(arcs.every(([, , radius]) => radius > 0 && radius < 11));
+  } finally {
+    globalThis.document = previousDocument;
   }
-  assert.ok(inside > 0 && inside <= 4, `pontos dentro do blob: ${inside}`);
-  assert.equal(outside, 0);
 });
 
-test('WebGL mantém uEffect 2 para a base limpa do Pontilhado', () => {
+test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
     'uImageAspect', 'uViewportAspect', 'uMirror', 'uFlip', 'uFit',

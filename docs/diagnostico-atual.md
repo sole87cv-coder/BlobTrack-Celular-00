@@ -1,6 +1,6 @@
 # Diagnóstico completo — 25/11/2026
 
-Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; a rodada atual inclui a mudança de runtime do Pontilhado, agora em `v56`.
+Base: commit `da6b1d7` (`fix: pontilhado desenha só as formas e libera janelas de vídeo, cache v56`), publicado em `https://blobtrak.vercel.app`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara) e agora registra o `v57` (Pointillism por error diffusion), ainda em validação local.
 
 ## 1. Verificações executadas
 
@@ -55,7 +55,7 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 - **Pacote 2:** compartilhar o readback de `analyze`, usar `texSubImage2D` e marcar `dirty` da máscara. São caminhos de CPU, mas tocam no contrato congelado: só com medição e aprovação.
 - **Pacote 3:** medir em aparelho real FPS, bateria, tamanho do halftone, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
-- Confirmar no aparelho o Pontilhado de formas (`v56`): base limpa, pontos só nos blobs e janelas de vídeo ativas. O comportamento anterior (`v55`, 19,7% de branco no headless) foi substituído; o overlay ocioso continua o mesmo.
+- Confirmar no aparelho o Pointillism (`v57`): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
 
@@ -82,7 +82,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. Para publicar uma próxima mudança de runtime, suba o cache para `v57`, rode os testes e envie o commit.
+A rodada de documentação entrou no commit `525de4d` e a mudança de runtime do Pontilhado foi publicada no commit `da6b1d7` (commit + push). O deploy foi automático pela integração do Vercel com o GitHub: `https://blobtrak.vercel.app` agora serve `v56`, confirmado em `sw.js` e nos arquivos de runtime. A rodada seguinte (`v57`) já está implementada e validada localmente, mas **ainda não foi publicada**; para publicá-la, é preciso commit + push com autorização do V1su4rt.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -94,3 +94,13 @@ Opção A aprovada pelo V1su4rt e implementada:
 - Os três rótulos de vídeo ganharam chaves nos quatro idiomas; antes ficavam presos em pt-BR.
 - Contrato congelado intacto: `src/domain/blobTrackerCore.js` e a assinatura de `src/blob-tracker.js` não foram tocados.
 - Verificação: `npm test` 222/222, `node --check` limpo, `git diff --check` limpo. No headless em `http://localhost:8000` e no site publicado, `#visual` ficou com 0% de branco, `#overlay` mostrou pontos só nas formas, as janelas mudaram a composição e não houve erro de console. CPU, FPS, bateria e aparência no aparelho físico: **não medidos**.
+
+## 8. Pointillism por error diffusion (cache v57)
+
+Opção B escolhida pelo V1su4rt depois de ver o exemplo de diffusion dither do Photoshop:
+
+- A imagem passa a ser o pontilhado. `drawStipple` em `src/render/render.js` reduz o quadro para até `200×120`, lê a luma uma vez, equaliza pelo contraste médio da cena e aplica Floyd–Steinberg com 6 níveis de raio (`STIPPLE_LEVELS`) e jitter pequeno por célula. Todos os pontos são desenhados num único `fill()`.
+- O branch `uEffect==2` do shader em `src/app.js` e o fallback 2D pintam papel branco; os pontos pretos vivem no overlay. `Janela viva`, `Vídeo original`, `Inverter vídeo` e mistura seguem ativos: as janelas são compostas **depois** dos pontos.
+- O Pontilhado não depende mais da máscara dos blobs; o laço de empacotamento da máscara voltou a servir só ao botão “Ver binarizada”. Contrato congelado intacto.
+- Custo medido em Chromium headless com câmera fake: `getImageData` extra p50 `1,5 ms` / p95 `4,7 ms`, `tComposition` `2,2 ms`, FPS `28,8` (sem mudança). `#visual` 100% de branco; `#overlay` com pontos pretos de `3,5` a `7,5 px`. `npm test` 222/222. Nada disso é medição em aparelho físico.
+- Status: implementado e validado localmente; **não publicado** até autorização de commit + push.

@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v56`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v56`; a próxima versão sobe para `v57`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -105,7 +105,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v56` → `v57`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v57` → `v58`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -119,16 +119,17 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
 | `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
 
-#### Exemplo prático: ajustar o Pontilhado (pontos nas formas)
+#### Exemplo prático: ajustar o Pointillism
 
-O Pontilhado não pinta mais o quadro inteiro. A base fica limpa e os pontos nascem **dentro da máscara dos blobs**, no overlay. Em `src/render/render.js` você encontra:
+O Pontilhado transforma a **imagem** em pontos pretos: fundo claro fica vazio, e a pessoa ou o prédio aparecem como pontos de tamanhos diferentes. Tudo vive em `src/render/render.js`, na função `drawStipple`:
 
 ```js
-const DOT_CELL = 14;
-const DOT_RADIUS_SQ = 0.55;
+const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
+const STIPPLE_SPACING = 3;
+const STIPPLE_LEVELS = 6;
 ```
 
-`DOT_CELL` é a célula medida no palco; o código converte para pixels de rastreio usando o mesmo crop da máscara. Para pontos maiores, aumente a célula; para mais finos, diminua. `DOT_RADIUS_SQ` controla o diâmetro do ponto dentro da célula. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **6 níveis de raio**. `STIPPLE_SPACING` define a distância entre os pontos; `STIPPLE_LEVELS` define quantos tamanhos diferentes existem. A média da cena equaliza o contraste, então quarto escuro não vira tela preta. Para pontos maiores, aumente o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
 #### Reaproveitamento de buffers (Pacote 1)
 
@@ -136,13 +137,13 @@ Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32A
 
 Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo dos efeitos no canvas de overlay) e `tComposition` (tempo total de montar o overlay). As chaves antigas (`fps`, `tAnalysis`, `tRender`, `tCapture`, `blobsAtivos`, `idsNovosUltimos60s`, `recordingState`, `effectsPaused`) continuam iguais. Abra o console do navegador e rode `window.__blobtrackMetrics` para comparar.
 
-#### Pontilhado de formas e janelas vivas (cache v56)
+#### Pointillism de verdade (cache v57)
 
-Até a `v55`, o Pontilhado era um halftone da luminosidade do quadro inteiro: toda célula ganhava um ponto, inclusive no fundo. Isso enchia a tela e, com câmera subexposta, o palco podia parecer preto. Agora o branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam só a base limpa; os pontos brancos são gerados no laço que já empacota a máscara (`drawMaskOverlay`), sem novo `getImageData` e sem tocar no contrato congelado.
+Na `v56` eu tinha entendido “só as formas” como “só dentro dos retângulos dos blobs”: a base ficava preta e os pontos brancos apareciam apenas na máscara. Você esclareceu que o certo é a **imagem inteira virar pontilhismo**, como o exemplo de diffusion dither. Agora o branch `uEffect==2` do shader em `src/app.js` e o fallback em `src/render/render.js` pintam papel branco, e `drawStipple` desenha os pontos pretos no overlay com difusão de erro, raio quantizado e leve deslocamento orgânico.
 
-Efeito colateral desejado: **Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura voltam a funcionar com Pontilhado — as janelas são compostas antes dos pontos. Os três rótulos de vídeo também passaram a ter tradução real em pt-BR, en, es e fr.
+**Janela viva**, **Vídeo original**, **Inverter vídeo** e a mistura continuam funcionando: as janelas são compostas **depois** dos pontos, então o vídeo cru aparece dentro dos retângulos dos blobs. O contrato congelado continua intacto.
 
-🟡 Mexa só com medição: `DOT_CELL`/`DOT_RADIUS_SQ` em `src/render/render.js` definem a grade; a base limpa vive em `src/app.js` (`uEffect==2`) e no fallback. O teste `Pontilhado desenha pontos somente dentro da máscara dos blobs` protege o comportamento. Em navegador headless com câmera falsa, o `#visual` ficou com **0%** de branco e os pontos apareceram só no `#overlay`; isso não é medição em aparelho físico.
+🟡 Mexa só com medição: a leitura extra em `200×120` custou p50 `1,5 ms` e p95 `4,7 ms` em Chromium headless; `tComposition` ficou em `2,2 ms` e o FPS em `28,8` — o mesmo do estado anterior. No mesmo teste, o `#visual` ficou com **100%** de branco e os pontos no `#overlay` tinham raios entre `3,5` e `7,5 px`. `npm test`: 222/222. Isso não é medição em aparelho físico: confirme no celular antes de falar em ganho.
 
 #### Overlay ocioso e traços agrupados (cache v55)
 
@@ -174,7 +175,7 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 3. Se o problema já entrou num commit, use `git revert <hash>`: ele cria um commit novo que desfaz o anterior sem apagar histórico.
 4. Peça ajuda antes de mexer na zona 🔴.
 
-Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: corrige Pontilhado em cena escura e sobe cache v57`.
+Um commit deve contar **uma** ideia. Exemplo de mensagem boa: `fix: corrige Pontilhado em cena escura e sobe cache v58`.
 
 ### Alterações de título e marca (manutenção manual)
 

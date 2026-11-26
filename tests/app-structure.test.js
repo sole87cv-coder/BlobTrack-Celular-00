@@ -23,23 +23,25 @@ test('binary mask renderer receives the live mask context', () => {
   assert.ok(!app.includes('maskContext: null'));
 });
 
-test('Pontilhado desenha só as formas: base limpa e pontos na máscara', async () => {
+test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos', async () => {
   assert.ok(!app.includes('bayer8'));
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
-  assert.ok(app.includes('else if(uEffect==2){rgb=vec3(0.0);}'));
-  assert.ok(!app.includes('mix(0.16,0.62'));
+  assert.ok(app.includes('else if(uEffect==2){rgb=vec3(1.0);}'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const DOT_CELL = 14;'));
-  assert.ok(render.includes('DOT_RADIUS_SQ'));
-  assert.ok(render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
+  assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
+  assert.ok(render.includes('const STIPPLE_LEVELS = 6;'));
+  assert.ok(render.includes('grid.error[i + 1] += diffusion * 7 / 16'));
+  assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
+  assert.ok(render.includes('const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS'));
+  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX)'));
+  assert.ok(render.includes("fillStyle = '#fff'"));
+  assert.ok(!render.includes('DOT_CELL'));
+  assert.ok(!render.includes('DOT_RADIUS_SQ'));
+  assert.ok(!render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
   assert.ok(!render.includes('getHalftoneFrame'));
-  assert.ok(!render.includes('HALFTONE_MAX_PIXELS'));
   assert.ok(render.includes("uniforms.uEffect, state.effect === 'dither' ? 2 : 3"));
   assert.ok(!render.includes("state.effect === 'dither') return;"));
-  assert.ok(render.includes("const dotted = state.effect === 'dither';"));
-  assert.ok(!render.includes('getDitherPattern'));
-  assert.ok(!render.includes('diffuseFloydSteinberg'));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
 });

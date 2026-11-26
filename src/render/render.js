@@ -1,8 +1,10 @@
 import { clamp } from '../core/utils.js';
 
-// Pontilhado de formas: a célula é medida no palco e convertida para pixels de rastreio.
-const DOT_CELL = 14;
-const DOT_RADIUS_SQ = 0.55; // raio de 0,74 × meia-célula: ponto visível mesmo com máscara pequena.
+// Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
+const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
+const STIPPLE_SPACING = 3;
+const STIPPLE_LEVELS = 6;
+const STIPPLE_TAU = Math.PI * 2;
 
 export function createRender({
   state,
@@ -52,7 +54,9 @@ export function createRender({
   const distancePairSquared = new Float64Array(distancePairCapacity);
   const distancePairUsed = new Uint8Array(distancePairCapacity);
   const distanceDegree = new Uint8Array(TRAIL_SLOTS);
-  const maskCropRect = new Float32Array(4);
+  const stippleCropRect = new Float32Array(4);
+  let stippleCanvas = null, stippleContext = null, stippleWarned = false;
+  let stippleGrid = { width: 0, height: 0, luma: null, error: null, jitterX: null, jitterY: null, dotX: null, dotY: null, dotR: null, count: 0 };
   let meshSteps = { width: 0, height: 0, spacing: 0, x: null, y: null };
   let overlayDirty = false;
 
@@ -473,10 +477,10 @@ export function createRender({
     if (useFallback) {
       if (fallbackContext) {
         if (state.effect === 'dither') {
-          // Base limpa: os pontos agora vivem na máscara do overlay, não no quadro inteiro.
+          // Papel branco: os pontos pretos são desenhados no overlay por drawStipple.
           fallbackContext.save();
           fallbackContext.filter = 'none';
-          fallbackContext.fillStyle = '#000';
+          fallbackContext.fillStyle = '#fff';
           fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
           fallbackContext.restore();
         } else {
@@ -558,6 +562,121 @@ export function createRender({
     state.timing.cycle = performance.now() - t0;
   }
 
+  // ---------- pointillism (difusão de erro em CPU) ----------
+
+  function ensureStippleGrid(cols, rows) {
+    if (stippleGrid.width === cols && stippleGrid.height === rows) return stippleGrid;
+    const n = cols * rows;
+    const fract = value => value - Math.floor(value);
+    const grid = {
+      width: cols, height: rows, count: 0,
+      luma: new Float32Array(n), error: new Float32Array(n),
+      jitterX: new Float32Array(n), jitterY: new Float32Array(n),
+      dotX: new Float32Array(n), dotY: new Float32Array(n), dotR: new Float32Array(n),
+    };
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        grid.jitterX[i] = (fract(Math.sin(x * 127.1 + y * 311.7) * 43758.5453) - .5) * .44;
+        grid.jitterY[i] = (fract(Math.sin(x * 269.5 + y * 183.3) * 43758.5453) - .5) * .44;
+      }
+    }
+    stippleGrid = grid;
+    return grid;
+  }
+
+  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX) {
+    const srcWidth = source?.videoWidth || source?.width || 0;
+    const srcHeight = source?.videoHeight || source?.height || 0;
+    if (!srcWidth || !srcHeight || typeof document === 'undefined') return;
+    try {
+      const scale = Math.min(1, STIPPLE_MAX_WIDTH / srcWidth, STIPPLE_MAX_HEIGHT / srcHeight);
+      const width = Math.max(STIPPLE_SPACING, Math.round(srcWidth * scale));
+      const height = Math.max(STIPPLE_SPACING, Math.round(srcHeight * scale));
+      if (!stippleCanvas) {
+        stippleCanvas = document.createElement('canvas');
+        stippleContext = stippleCanvas.getContext('2d', { willReadFrequently: true });
+        if (!stippleContext) return;
+      }
+      if (stippleCanvas.width !== width || stippleCanvas.height !== height) {
+        stippleCanvas.width = width;
+        stippleCanvas.height = height;
+      }
+      stippleContext.drawImage(source, 0, 0, srcWidth, srcHeight, 0, 0, width, height);
+      const data = stippleContext.getImageData(0, 0, width, height).data;
+      const cols = Math.max(16, Math.floor(width / STIPPLE_SPACING));
+      const rows = Math.max(12, Math.floor(height / STIPPLE_SPACING));
+      const grid = ensureStippleGrid(cols, rows);
+      const cellW = width / cols, cellH = height / rows;
+      const maxR = Math.min(cellW, cellH) * .48;
+      let mean = 0;
+      for (let y = 0; y < rows; y++) {
+        const sy = Math.min(height - 1, Math.floor((y + .5) * cellH));
+        for (let x = 0; x < cols; x++) {
+          const sx = Math.min(width - 1, Math.floor((x + .5) * cellW));
+          const i = (sy * width + sx) * 4;
+          grid.luma[y * cols + x] = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) / 65536;
+          mean += grid.luma[y * cols + x];
+        }
+      }
+      mean /= cols * rows;
+      const cut = clamp(.14 + (state.threshold || 0) * .2 + (state.bias || 0) * .08, .08, .4);
+      grid.error.fill(0);
+      let count = 0;
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const i = y * cols + x;
+          const stretched = clamp(.5 + (grid.luma[i] - mean) * 2.6, 0, 1);
+          const value = 1 - stretched + grid.error[i];
+          const tone = Math.pow(clamp((value - cut) / (1 - cut), 0, 1), .75);
+          const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS;
+          const diffusion = (value - quantized) * .85;
+          if (x + 1 < cols) grid.error[i + 1] += diffusion * 7 / 16;
+          if (y + 1 < rows) {
+            const below = i + cols;
+            if (x > 0) grid.error[below - 1] += diffusion * 3 / 16;
+            grid.error[below] += diffusion * 5 / 16;
+            if (x + 1 < cols) grid.error[below + 1] += diffusion / 16;
+          }
+          if (quantized <= 0) continue;
+          grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW;
+          grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH;
+          grid.dotR[count] = maxR * quantized;
+          count++;
+        }
+      }
+      grid.count = count;
+      if (!count) return;
+      if (state.gearVr) {
+        calculateContainRect(width, height, viewWidth, viewHeight, stippleCropRect);
+      } else {
+        calculateCoverCrop(width, height, viewWidth, viewHeight, stippleCropRect);
+      }
+      const cr = stippleCropRect;
+      const scaleX = state.gearVr ? cr[2] / width : viewWidth / cr[2];
+      const scaleY = state.gearVr ? cr[3] / height : viewHeight / cr[3];
+      const baseX = state.gearVr ? cr[0] : -cr[0] * scaleX;
+      const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
+      c.save();
+      c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+      c.scale(mirrorX ? -1 : 1, 1);
+      c.fillStyle = '#000';
+      c.beginPath();
+      for (let i = 0; i < count; i++) {
+        const x = baseX + grid.dotX[i] * scaleX;
+        const y = baseY + grid.dotY[i] * scaleY;
+        const r = Math.max(.35, grid.dotR[i] * Math.min(scaleX, scaleY));
+        c.moveTo(x + r, y);
+        c.arc(x, y, r, 0, STIPPLE_TAU);
+      }
+      c.fill();
+      c.restore();
+    } catch (e) {
+      if (!stippleWarned && typeof log === 'function') log(`Pointillism indisponível: ${e.message}`);
+      stippleWarned = true;
+    }
+  }
+
   // ---------- overlay e gravação ----------
 
   function drawMaskOverlay(result, source = video, applied = {}) {
@@ -592,7 +711,7 @@ export function createRender({
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
-    if (state.showMask || dotted) {
+    if (state.showMask) {
       if (maskCanvas.width !== result.width || maskCanvas.height !== result.height) {
         maskCanvas.width = result.width;
         maskCanvas.height = result.height;
@@ -602,33 +721,8 @@ export function createRender({
       const image = maskImage;
       const mask = result.mask;
       const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
-      const ON = 0xFFFFFFFF;
-      if (dotted) {
-        // A célula do palco vira célula do rastreio usando o mesmo crop da máscara.
-        if (state.gearVr && source.videoWidth && source.videoHeight) {
-          calculateContainRect(source.videoWidth, source.videoHeight, viewWidth, viewHeight, maskCropRect);
-        } else {
-          calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, maskCropRect);
-        }
-        const cellW = Math.max(2, DOT_CELL * maskCropRect[2] / viewWidth);
-        const cellH = Math.max(2, DOT_CELL * maskCropRect[3] / viewHeight);
-        const halfW = cellW * .5;
-        for (let y = 0; y < result.height; y++) {
-          const cy = (Math.floor(y / cellH) + .5) * cellH;
-          const dy = (y + .5 - cy) / (cellH * .5);
-          const dy2 = dy * dy;
-          for (let x = 0; x < result.width; x++) {
-            const i = y * result.width + x;
-            if (!mask[i]) { packed[i] = 0; continue; }
-            const cx = (Math.floor(x / cellW) + .5) * cellW;
-            const dx = (x + .5 - cx) / halfW;
-            packed[i] = (dx * dx + dy2 <= DOT_RADIUS_SQ) ? ON : 0;
-          }
-        }
-      } else {
-        const OFF = 0xFF000000;
-        for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
-      }
+      const ON = 0xFFFFFFFF, OFF = 0xFF000000;
+      for (let i = 0, n = mask.length; i < n; i++) packed[i] = mask[i] ? ON : OFF;
       maskContext.putImageData(image, 0, 0);
     }
     let windowCost = 0, overlayCost = 0;
@@ -644,20 +738,21 @@ export function createRender({
         c.rect(offsetX + cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
         c.clip();
       }
+      const mirrorX = (state.camera === 'user') !== state.flip;
+      if (dotted) drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX);
       if (state.videoWindows) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
       }
-      if (state.showMask || dotted) {
+      if (state.showMask) {
         if (state.gearVr) {
           calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
         } else {
           calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
         }
         c.save();
-        c.globalAlpha = dotted ? 1 : .7;
-        const mirrorX = (state.camera === 'user') !== state.flip;
+        c.globalAlpha = .7;
         c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
         c.scale(mirrorX ? -1 : 1, 1);
         if (state.gearVr) {
@@ -753,6 +848,7 @@ export function createRender({
     drawBlobNetwork,
     drawDistanceTelemetry,
     drawRawVideoWindows,
+    drawStipple,
     renderFrame,
     drawMaskOverlay,
     drawRecordingComposite,
