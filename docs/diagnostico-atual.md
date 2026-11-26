@@ -1,6 +1,6 @@
 # Diagnóstico completo — 25/11/2026
 
-Base publicada: commit `54ff65d` (`docs: confirma publicacao v57 do pointillism e registra medicao`) em `https://blobtrak.vercel.app`. Rodada atual: `v58` (Pacote 2) implementada localmente, sem publicação até autorização. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion) e agora registra o `v58` (readback compartilhado).
+Base publicada: commit `e982772` (`perf: compartilha readback do tracker e sobe cache v58`) em `https://blobtrak.vercel.app`, com `sw.js` em `blobtrack-celular-00-v58`. Servidor local em `http://localhost:8000`, preso a `127.0.0.1`. O diagnóstico começou no `v55`; passou pelo `v56` (pontos na máscara), `v57` (Pointillism por error diffusion) e agora registra o `v58` (readback compartilhado), publicado com autorização do V1su4rt.
 
 ## 1. Verificações executadas
 
@@ -53,9 +53,9 @@ Conclusão: não há permissão pendente **de código**. O que falta é evidênc
 
 ### Pendências
 
-- **Pacote 2:** aplicado localmente no `v58` (ver seção 10). Falta apenas autorização para publicar; o site ainda serve `v57`.
+- **Pacote 2:** aplicado e publicado no `v58` (ver seção 10).
 - **Pacote 3:** medir em aparelho real FPS, bateria, tamanho dos pontos, ROI, gravação e os cinco efeitos. Sem isso, qualquer ganho no celular é hipótese, não resultado.
-- Confirmar no aparelho o Pointillism (`v57` publicado; `v58` local): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
+- Confirmar no aparelho o Pointillism (`v58` publicado): papel branco, pontos pretos de tamanhos diferentes formando a imagem e janelas de vídeo por cima. As versões anteriores (`v55` halftone branco, `v56` pontos na máscara) foram substituídas; o overlay ocioso continua o mesmo.
 
 ## 5. Organização de pastas e arquivos
 
@@ -82,7 +82,7 @@ Movimento autorizado pelo V1su4rt e executado preservando o histórico do Git.
 
 ## 6. Publicação
 
-A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar `v56` por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) está pronta localmente e **não** foi publicada nem commitada até autorização do V1su4rt.
+A rodada de documentação entrou no commit `525de4d`, a mudança de runtime do Pontilhado de formas foi publicada no commit `da6b1d7` (cache `v56`) e a rodada do Pointillism foi publicada no commit `a039e80` (commit + push, com autorização do V1su4rt). O deploy é automático pela integração do Vercel com o GitHub; a checagem final do site com bypass de cache confirma `v57`. O deploy automático entrou no ar; a checagem direta com bypass de cache confirmou `sw.js` em `v57`, `drawStipple` no render e papel branco no shader. A resposta sem bypass ainda pode mostrar versão anterior por cache da CDN; nesse caso, faça Unregister do service worker e recarregue duas vezes. A rodada `v58` (Pacote 2) foi publicada com autorização em `e982772` (commit + push; deploy automático) e a checagem com `?cb=<timestamp>` confirmou `sw.js` em `blobtrack-celular-00-v58`.
 
 ## 7. Pontilhado de formas (cache v56)
 
@@ -107,13 +107,13 @@ Opção B escolhida pelo V1su4rt depois de ver o exemplo de diffusion dither do 
 
 ## 9. Diagnóstico geral consolidado (25/11/2026)
 
-Escopo pedido pelo V1su4rt: **aplicar os pacotes faltantes e fazer acabamentos à prova de erros**. Site publicado em `v57`; rodada `v58` (Pacote 2) pronta localmente, sem publicação.
+Escopo pedido pelo V1su4rt: **aplicar os pacotes faltantes e fazer acabamentos à prova de erros**. Rodada `v58` (Pacote 2) aplicada e publicada; site em `v58`.
 
 ### Repositório e deploy
 
-- Git em `e23a20f` com a rodada `v58` (runtime + testes + documentação) pendente de publicação; `npm test` **226/226**; `node --check` limpo em **58** arquivos `.js`; `git diff --check` limpo.
+- Git em `e982772` com a rodada `v58` (runtime + testes + documentação) publicada; `npm test` **226/226**; `node --check` limpo em **58** arquivos `.js`; `git diff --check` limpo.
 - Contrato congelado intacto: nenhuma mudança em `src/domain/blobTrackerCore.js` nem na assinatura de `src/blob-tracker.js`. `analyze` chama direto `tracker.updatePixels` com os pixels já lidos.
-- Site com `?cb=<timestamp>` e `cache: 'no-store'`: `sw.js` em `blobtrack-celular-00-v57`, `drawStipple` presente no render, `DOT_CELL` ausente, `uEffect==2` com papel branco no shader, botões Pontilhado / Janela viva / Vídeo original no HTML. Cache-Control do `sw.js`: `public, max-age=0, must-revalidate`. Localmente o cache está em `blobtrack-celular-00-v58`.
+- Site com `?cb=<timestamp>` e `cache: 'no-store'`: `sw.js` em `blobtrack-celular-00-v58`, `drawStipple` presente no render com `sample?.data` e `texSubImage2D`, `DOT_CELL` ausente, `uEffect==2` com papel branco no shader, botões Pontilhado / Janela viva / Vídeo original no HTML. Cache-Control do `sw.js`: `public, max-age=0, must-revalidate`.
 
 ### Comportamento no navegador (Chromium headless, câmera fake, local `v58` com bypass de cache)
 
@@ -148,10 +148,11 @@ Escopo pedido pelo V1su4rt: **aplicar os pacotes faltantes e fazer acabamentos �
 - **Pacote 2:** aplicado localmente — leitura única em `analyze`, `drawStipple(..., sample)`, `texSubImage2D` e máscara `dirty`. Contrato congelado preservado. Falta autorização para commit + push + deploy.
 - **Pacote 3:** depende de aparelho físico; câmera real, bateria, gravação, ROI e aparência final continuam **não medidos**.
 
-## 10. Pacote 2 — readback compartilhado (cache v58, local)
+## 10. Pacote 2 — readback compartilhado (cache v58, publicado)
 
 - `src/app.js`: `analyze` lê os pixels uma vez (`ctx.getImageData`), chama `tracker.updatePixels` com esse buffer e devolve `{ ...result, dt, pixels, pixelWidth, pixelHeight }`. `src/blob-tracker.js` e `src/domain/blobTrackerCore.js` não mudaram.
 - `src/render/render.js`: `drawStipple(..., sample)` reaproveita os pixels do tracker quando válidos (com fallback ao mini-canvas); a textura WebGL é alocada uma vez com `texImage2D` e atualizada com `texSubImage2D` (fallback de realocação se o sub-update falhar); `putImageData` da binarizada só acontece quando a máscara muda ou o canvas é redimensionado.
 - Prova headless em `http://127.0.0.1:8000/?cb=<timestamp>`: 1 `getImageData` por quadro (`400×225`), 60 `texSubImage2D`, 0 `texImage2D`, `putImageData` em 25 de 60 quadros; `tRender` ~`0,96–1,09 ms` no Pointillism e `2,28 ms` no Gear VR; FPS `28,83`; `erros []`.
 - Validação: `npm test` **226/226** (novos testes de readback compartilhado, `texSubImage2D`, máscara `dirty` e Gear VR), `node --check` limpo em 58 arquivos, `git diff --check` limpo, nove rodadas de benchmark com p95 mediano `1,340 ms` ≤ teto `1,347 ms`.
-- Status: implementado e medido em Chromium headless. **Não** publicado; o site segue em `v57`. Nada aqui é medição em aparelho físico.
+- Prova no deploy (`https://blobtrak.vercel.app/?cb=<timestamp>`): `sw.js` em `v58`, código publicado com `tracker.updatePixels`, `texSubImage2D`, `sample?.data` e máscara `dirty`; `#visual` 100% branco com 2000 pontos por quadro no Pointillism, `tRender` `0,95–1,22 ms` e Gear VR `2,71 ms`, FPS `28,8`, `erros []`. A instrumentação no site viu leituras em `400×225` e `480×270` conforme a qualidade automática — sempre **uma** por quadro —, 1 `texImage2D` (alocação inicial) + 49 `texSubImage2D` em 50 quadros e `putImageData` da máscara em `400×225`.
+- Status: publicado em `e982772` com autorização do V1su4rt. Nada aqui é medição em aparelho físico.
