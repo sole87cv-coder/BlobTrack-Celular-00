@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v60`, publicado em `8725a69`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v60` até o próximo deploy; este código prepara o `v61`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -156,7 +156,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | `src/core/deviceProfile.js` e `src/core/qualityController.js` | Mudam quando o app pausa efeitos e qual resolução usa. Afetam FPS e bateria. |
 | `src/audio/scales.js`, `src/audio/scale-router.js` | Notas e escalas. Teste o som depois. |
 | `src/recorder.js`, `src/recording-canvas.js`, `src/recording-export.js` | Gravação. Teste um vídeo curto de verdade. |
-| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v59` → `v60`). Sem isso, o celular continua usando a versão antiga. |
+| `sw.js` | **Só o número do cache pode mudar.** Se você alterou qualquer arquivo que roda no app, suba o número (ex.: `v60` → `v61`). Sem isso, o celular continua usando a versão antiga. |
 | `tests/` | Se mudou um comportamento, atualize ou acrescente o teste correspondente. **Nunca apague um teste só para ele passar.** |
 
 #### 🔴 Não mexe sem supervisionar — é contrato congelado
@@ -227,7 +227,7 @@ Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais dist�
 1. Mude **uma** coisa por vez e anote o valor antigo.
 2. Rode `npm test` e `git diff --check`. Se falhar, pare.
 3. Abra `http://localhost:8000`, clique em **Iniciar câmera** e alterne os três botões. Confira também **Janela viva** e **Inverter vídeo** — eles podem esconder o efeito.
-4. Suba o número do cache em `sw.js` (de `v59` para `v60`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
+4. Suba o número do cache em `sw.js` (de `v60` para `v61`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
 5. Sem aparelho físico na mão, escreva **não medido** na sua anotação.
 
 **Erros clássicos:**
@@ -320,7 +320,13 @@ Para ver o resultado na tela, inicie o servidor local com `python -m http.server
 
 **Diagnóstico final da `v60` (conferido antes e depois do deploy):** com câmera fake em Chromium, a sessão iniciou (`Traseira principal`, `400×225 · fps 29`, 1 blob), os três efeitos trocaram de estado, os oito botões de efeito voltaram ao valor original, as quatro abas trocaram de painel, o mudo alternou, a gravação foi `idle → recording → idle`, o service worker controlou a página com o cache `blobtrack-celular-00-v60` e o app reabriu offline. Console e rede terminaram com **0 erros**. No site publicado, `sw.js` respondeu `blobtrack-celular-00-v60` com `?cb=<timestamp>` e `cache: 'no-store'`, e o mesmo QA passou sem erros. Câmera real, bateria, gravação em aparelho e aparência final continuam **não medidos**.
 
-**Pacote 3 (25/11/2026, pré-checagem no emulador):** sem aparelho físico, rodamos a parte funcional no AVD Android `BlobTrackEmulator` com Chrome 124, câmera virtual e `WebGL2 ativo`. Sessão em `160×284 · fps 20`, três efeitos, oito toggles, quatro abas, mudo, ROI, blobs `0 → 1 → 2`, retorno do segundo plano e rotação preservaram a sessão; recarga offline reconstruiu o app com o service worker `v60`. Console e rede sem erros. **Gravação ficou desabilitada**: este Chrome só oferece WebM e o gravador da `v60` aceita somente MP4 (`4cdf5cc`) — não é defeito novo, é a limitação da decisão MP4-only (confirmada pelo V1su4rt em 25/11/2026: sem fallback WebM, sem cache `v61`); veja [`docs/gravacao.md`](docs/gravacao.md). Bateria, câmera real, calor/GPU, gravação em aparelho, toque na ROI e iPhone/Safari seguem **não medidos**; o emulador não substitui celular. Detalhes em [`docs/device-matrix.md`](docs/device-matrix.md).
+**Pacote 3 (25/11/2026, pré-checagem no emulador):** sem aparelho físico, rodamos a parte funcional no AVD Android `BlobTrackEmulator` com Chrome 124, câmera virtual e `WebGL2 ativo`. Sessão em `160×284 · fps 20`, três efeitos, oito toggles, quatro abas, mudo, ROI, blobs `0 → 1 → 2`, retorno do segundo plano e rotação preservaram a sessão; recarga offline reconstruiu o app com o service worker `v60`. Console e rede sem erros. **Gravação ficou desabilitada**: este Chrome só oferece WebM e o gravador da `v60` aceita somente MP4 (`4cdf5cc`) — não é defeito novo, é a limitação da decisão MP4-only (confirmada pelo V1su4rt em 25/11/2026: sem fallback WebM; naquele pedido não houve bump para `v61`); veja [`docs/gravacao.md`](docs/gravacao.md). Bateria, câmera real, calor/GPU, gravação em aparelho, toque na ROI e iPhone/Safari seguem **não medidos**; o emulador não substitui celular. Detalhes em [`docs/device-matrix.md`](docs/device-matrix.md).
+
+#### Orçamento de gravação (cache v61)
+
+O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Quando **Todos os efeitos** estão ligados e a gravação começa, o app agora mantém o vídeo e o efeito base nas janelas, mas corta só o trabalho repetido: o segundo pontilhado dentro das janelas e os efeitos reativos (rastro, ondas, malha, rede e telemetria). A sua lista de efeitos não é alterada e o arquivo continua **MP4 sem áudio**.
+
+🟢 Mexer nesse orçamento em `src/render/render.js` é seguro: os testes avisam se o shell mudar. 🟡 Como é código de runtime, `sw.js` subiu para `v61`; rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. O ganho no aparelho ainda é **não medido**: o teste no link da Vercel é quem vai confirmar.
 
 #### Se algo deu errado
 

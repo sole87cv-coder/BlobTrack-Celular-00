@@ -92,7 +92,7 @@ test('service worker install precaches the shell and activates immediately', asy
   const waits = [];
   listeners.get('install')({ waitUntil(promise) { waits.push(promise); } });
   await Promise.all(waits);
-  assert.ok(caches.stores.has('blobtrack-celular-00-v60'));
+  assert.ok(caches.stores.has('blobtrack-celular-00-v61'));
 });
 
 test('activation removes only previous BlobTrack caches', async () => {
@@ -103,19 +103,31 @@ test('activation removes only previous BlobTrack caches', async () => {
   assert.deepEqual(await caches.keys(), ['another-app-v1']);
 });
 
+test('activation preserves current cache and deletes only older BlobTrack caches', async () => {
+  const sw = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+  const current = sw.match(/const CACHE = '([^']+)';/)?.[1];
+  const { listeners, caches } = await loadWorker({
+    names: ['blobtrack-celular-00-v25', current, 'another-app-v1'],
+  });
+  const waits = [];
+  listeners.get('activate')({ waitUntil(promise) { waits.push(promise); } });
+  await Promise.all(waits);
+  assert.deepEqual(await caches.keys(), [current, 'another-app-v1']);
+});
+
 test('successful same-origin network response is cached and its write is awaited', async () => {
   const { listeners, caches } = await loadWorker({ fetchImpl: async () => new Response('asset') });
   const request = { method: 'GET', mode: 'cors', url: 'https://app.test/src/new-module.js' };
   const event = dispatchFetch(listeners.get('fetch'), request);
   assert.equal(await (await event.responsePromise).text(), 'asset');
   await Promise.all(event.waits);
-  const cached = await (await caches.open('blobtrack-celular-00-v60')).match(request);
+  const cached = await (await caches.open('blobtrack-celular-00-v61')).match(request);
   assert.equal(await cached.text(), 'asset');
 });
 
 test('offline navigation falls back to cached index', async () => {
   const { listeners, caches } = await loadWorker({ fetchImpl: async () => { throw new Error('offline'); } });
-  const cache = await caches.open('blobtrack-celular-00-v60');
+  const cache = await caches.open('blobtrack-celular-00-v61');
   await cache.put('./index.html', new Response('cached app shell'));
   const event = dispatchFetch(listeners.get('fetch'), { method: 'GET', mode: 'navigate', url: 'https://app.test/' });
   assert.equal(await (await event.responsePromise).text(), 'cached app shell');
