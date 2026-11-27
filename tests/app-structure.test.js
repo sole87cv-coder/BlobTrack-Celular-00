@@ -31,7 +31,10 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(app.includes('float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
-  assert.ok(render.includes('const STIPPLE_LEVELS = 6;'));
+  assert.ok(render.includes('const STIPPLE_LEVELS = 8;'));
+  assert.ok(render.includes('const jitter = 1 - .75 * edge;'));
+  assert.ok(render.includes('Math.abs(l - below)) / .15,'));
+  assert.ok(render.includes('grid.jitterX[i] * cellW * jitter'));
   assert.ok(render.includes('grid.error[i + 1] += diffusion * 7 / 16'));
   assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
   assert.ok(render.includes('const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS'));

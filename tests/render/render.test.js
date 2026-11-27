@@ -476,6 +476,45 @@ test('Pointillism reaproveita os pixels do tracker sem segundo getImageData', ()
   }
 });
 
+test('Pointillism reduz o jitter na borda sem leitura nova', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [];
+  const width = 60, height = 36;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const value = col < 30 ? 10 : 50; // dois tons escuros: os dois lados têm pontos
+      const i = (row * width + col) * 4;
+      data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+    }
+  }
+  globalThis.document = { createElement() { throw new Error('não deve criar canvas'); } };
+  try {
+    const render = createRender({
+      state: makeState({ effect: 'dither', timing: {} }),
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const c = {
+      fillStyle: '', save() {}, restore() {}, beginPath() {}, moveTo() {}, fill() {},
+      translate() {}, scale() {}, arc(...args) { arcs.push(args); },
+    };
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height });
+
+    // cover de 60×36 em 320×240 corta 6 colunas: centro da célula x = 20x - 30.
+    const deviation = x => Math.abs(x - (20 * Math.round((x + 30) / 20) - 30));
+    const flat = arcs.filter(([x]) => x > 60 && x < 130).map(([x]) => deviation(x));
+    const edge = arcs.filter(([x]) => x > 140 && x < 180).map(([x]) => deviation(x));
+    assert.ok(flat.length > 4, `pontos em área plana: ${flat.length}`);
+    assert.ok(edge.length > 4, `pontos na borda: ${edge.length}`);
+    const max = list => Math.max(...list);
+    assert.ok(max(edge) < max(flat) * .5, `borda ${max(edge)} vs plano ${max(flat)}`);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('binarizada só publica no canvas quando a máscara muda', () => {
   const width = 8, height = 4;
   const mask = new Uint8Array(width * height);
