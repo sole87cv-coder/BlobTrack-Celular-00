@@ -18,6 +18,32 @@ test('audio bus keeps only the latest signals until the next frame', () => {
   assert.deepEqual(sent, [{ type: 'signals', value: 3 }]);
 });
 
+test('flushSignals posts in the same frame and keeps option debouncing intact', () => {
+  const sent = [];
+  const timers = new Map();
+  let nextId = 0;
+  let frameCancelled = 0;
+  let frameCallback;
+  const bus = createAudioBus({
+    getPort: () => ({ postMessage: message => sent.push(message) }),
+    requestFrame: callback => { frameCallback = callback; return 1; },
+    cancelFrame: () => { frameCancelled++; frameCallback = null; },
+    setTimer: (callback, delay) => { const id = ++nextId; timers.set(id, { callback, delay }); return id; },
+    clearTimer: id => timers.delete(id),
+  });
+  bus.scheduleOptions({ oscillation: .1, pitchRange: 2, key: 0, timbre: 0, soundEffects: {} }, 80);
+  bus.queueSignals({ type: 'signals', value: 1 });
+  bus.queueSignals({ type: 'signals', value: 2 });
+  assert.equal(frameCancelled, 0);
+  bus.flushSignals();
+  assert.deepEqual(sent, [{ type: 'signals', value: 2 }]);
+  assert.equal(frameCancelled, 1);
+  assert.equal(frameCallback, null);
+  assert.equal(timers.size, 1, 'debounced options must survive a signal flush');
+  bus.flushSignals();
+  assert.equal(sent.length, 1, 'a second flush must not duplicate the packet');
+});
+
 test('audio options are posted once until a shallow sound value changes', () => {
   const sent = [];
   const bus = createAudioBus({ getPort: () => ({ postMessage: message => sent.push(message) }) });

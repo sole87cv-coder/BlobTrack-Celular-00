@@ -108,6 +108,16 @@ test('production app uses the tested audio and session factories', () => {
   assert.ok(!app.includes('async function makeAudio()'));
 });
 
+test('blob signals are delivered in the same frame with the AudioContext clock', () => {
+  const queueIndex = app.indexOf('audioBus.queueSignals({ type:\'signals\'');
+  const flushIndex = app.indexOf('audioBus.flushSignals();');
+  assert.ok(queueIndex > 0);
+  assert.ok(flushIndex > queueIndex);
+  assert.ok(app.includes('capturedAt:now, audioTime'));
+  assert.ok(app.includes('bandMode:true'));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v78'"));
+});
+
 test('camera loop initializes the device profile factory before using its FPS', () => {
   const factoryIndex = app.indexOf("import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';");
   const profileIndex = app.indexOf('const deviceProfile = createDeviceProfile();');

@@ -120,6 +120,7 @@ export function createAudioBus({
   const sameOptions = (a, b) => Boolean(a && b
     && a.oscillation === b.oscillation && a.pitchRange === b.pitchRange
     && a.key === b.key && a.timbre === b.timbre && a.rhythmEnabled === b.rhythmEnabled
+    && a.bandMode === b.bandMode
     && a.soundEffects?.echo === b.soundEffects?.echo
     && a.soundEffects?.space === b.soundEffects?.space
     && a.soundEffects?.chorus === b.soundEffects?.chorus);
@@ -129,6 +130,17 @@ export function createAudioBus({
     const sent = post({ type: 'sound', ...snapshot });
     if (sent) lastOptions = snapshot;
     return sent;
+  };
+  // P0: o sinal vai no mesmo quadro da captura; só este canal é liberado aqui,
+  // para não quebrar o debounce de 80 ms dos sliders e do Tom base.
+  const flushSignals = () => {
+    if (frameHandle !== null) {
+      cancelFrame(frameHandle);
+      frameHandle = null;
+    }
+    const latest = latestSignals;
+    latestSignals = null;
+    if (latest) post(latest);
   };
 
   return {
@@ -164,14 +176,9 @@ export function createAudioBus({
         if (latest) post(latest);
       }, delay);
     },
+    flushSignals,
     flush() {
-      if (frameHandle !== null) {
-        cancelFrame(frameHandle);
-        frameHandle = null;
-      }
-      const latest = latestSignals;
-      latestSignals = null;
-      if (latest) post(latest);
+      flushSignals();
       if (optionsTimer !== null) clearTimer(optionsTimer);
       optionsTimer = null;
       if (pendingOptions) sendOptions(pendingOptions);

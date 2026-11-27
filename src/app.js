@@ -143,7 +143,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v77',
+    cacheVersion: 'blobtrack-celular-00-v78',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -306,7 +306,7 @@ function flushPendingPreferences() {
   preferencesSaveTimer = null;
   savePreferences();
 }
-function soundOptions() { return {oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,soundEffects:state.audioEffects}; }
+function soundOptions() { return {oscillation:state.audioOscillation,pitchRange:state.audioPitchRange,key:state.audioKey,timbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,bandMode:true,soundEffects:state.audioEffects}; }
 function postAudioScale(scale) { state.worklet?.port.postMessage({type:'scale',id:scale.id,degrees:scale.degrees}); }
 function sendAudioOptions(debounce = false) { if(debounce) audioBus.scheduleOptions(soundOptions(),80); else audioBus.sendOptions(soundOptions()); if(!debounce && audioScaleRouter.hasStoredChoice()) postAudioScale(audioScaleRouter.getScale()); }
 const scalesUi = attachScalesUI({ root:$('audioScales'), router:audioScaleRouter, onSelect:postAudioScale, getAudioContext:()=>state.audio, getKey:()=>state.audioKey, isAudible:()=>state.audioEnabled&&!state.muted&&state.reacting&&state.master>0 });
@@ -619,7 +619,9 @@ function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   const t0 = performance.now();
   // Sem porta, com som desligado, mudo ou no modo "Só visual", não há por que montar o payload.
   if (state.audioEnabled && !state.muted && !state.visualOnly && typeof state.worklet?.port?.postMessage === 'function') {
-    audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, frameTime: now });
+    const audioTime = Number.isFinite(state.audio?.currentTime) ? state.audio.currentTime : null;
+    audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, capturedAt:now, audioTime, frameTime: now });
+    audioBus.flushSignals();
   }
   state.timing.bus = performance.now() - t0;
   return applied;

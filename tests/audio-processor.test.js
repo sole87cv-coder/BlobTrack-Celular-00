@@ -154,3 +154,68 @@ test('scale messages change only the six base frequencies and key changes preser
   processor.port.onmessage({ data: { type: 'scale', id: 'not-valid', degrees: [0, 1, 2, 3, 4, 5] } });
   assert.deepEqual([...processor.baseFrequency], live.map(degree => 130.8128 * 2 ** ((2 + degree) / 12)));
 });
+
+test('band mode maps the top of the screen to Hi and the bottom to Low', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: false, oscillation: 0, pitchRange: 0 } });
+  const send = y => processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .4, speed: .7, coherence: .5, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 1, x: .5, y, size: 600, speed: .7 }] }, master: 1, sensitivity: 1, audioEnabled: true, muted: false } });
+  send(.1);
+  processBlock(processor);
+  assert.equal(processor.blobBands.get('1'), 2);
+  assert.ok(processor.bandTargets[4] > 0 && processor.bandTargets[5] > 0);
+  assert.equal(processor.bandTargets[0], 0);
+  assert.equal(processor.bandTargets[2], 0);
+  send(.9);
+  processBlock(processor);
+  assert.equal(processor.blobBands.get('1'), 0);
+  assert.ok(processor.bandTargets[0] > 0 && processor.bandTargets[1] > 0);
+  assert.ok(processor.bandFrequency[4] > processor.bandFrequency[2]);
+  assert.ok(processor.bandFrequency[2] > processor.bandFrequency[0]);
+});
+
+test('band boundaries use hysteresis so a blob on the line does not flicker', () => {
+  const processor = new RegisteredProcessor();
+  assert.equal(processor.bandForBlob('a', .33), 2);
+  assert.equal(processor.bandForBlob('a', .35), 2);
+  assert.equal(processor.bandForBlob('a', .38), 1);
+  assert.equal(processor.bandForBlob('a', .66), 1);
+  assert.equal(processor.bandForBlob('a', .64), 1);
+  assert.equal(processor.bandForBlob('a', .70), 0);
+  assert.equal(processor.bandForBlob('a', .65), 0);
+});
+
+test('Tom base transposes all three bands by the same interval', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'sound', bandMode: true } });
+  const before = [...processor.bandFrequency];
+  processor.port.onmessage({ data: { type: 'sound', key: 5 } });
+  const after = [...processor.bandFrequency];
+  const expected = Math.pow(2, 5 / 12);
+  for (let index = 0; index < after.length; index++) {
+    assert.ok(Math.abs(after[index] / before[index] - expected) < 1e-9);
+  }
+});
+
+test('band mode sounds only while blobs move', () => {
+  const signal = speed => ({ data: { type: 'signals', signals: { energy: .5, density: .4, speed, coherence: .4, ambient: 1, zones: [1,1,1,1,1,1], blobs: [{ id: 1, x: .4, y: .5, size: 800, speed }] }, master: 1, sensitivity: 1, audioEnabled: true, muted: false } });
+  const options = { data: { type: 'sound', bandMode: true, rhythmEnabled: false, oscillation: 0, pitchRange: 0 } };
+  const peakOf = speed => {
+    const processor = new RegisteredProcessor();
+    processor.port.onmessage(options);
+    processor.port.onmessage(signal(speed));
+    let peak = 0;
+    for (let block = 0; block < 24; block++) {
+      for (const channel of processBlock(processor)) for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+    }
+    return peak;
+  };
+  assert.ok(peakOf(.8) > 0);
+  assert.equal(peakOf(0), 0);
+});
+
+test('audioTime from the captured frame aligns the schedule to the AudioContext clock', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .5, density: .3, speed: .5, ambient: 0, zones: [0,0,0,0,0,0], blobs: [] }, master: 1, muted: false, audioEnabled: true, audioTime: 2.5 } });
+  assert.equal(processor.signalAudioTime, 2.5);
+  assert.equal(processor.rhythmClock, 2.5);
+});

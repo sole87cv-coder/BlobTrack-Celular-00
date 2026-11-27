@@ -92,7 +92,7 @@ test('service worker install precaches the shell and activates immediately', asy
   const waits = [];
   listeners.get('install')({ waitUntil(promise) { waits.push(promise); } });
   await Promise.all(waits);
-  assert.ok(caches.stores.has('blobtrack-celular-00-v77'));
+  assert.ok(caches.stores.has('blobtrack-celular-00-v78'));
 });
 
 test('activation removes only previous BlobTrack caches', async () => {
@@ -121,13 +121,13 @@ test('successful same-origin network response is cached and its write is awaited
   const event = dispatchFetch(listeners.get('fetch'), request);
   assert.equal(await (await event.responsePromise).text(), 'asset');
   await Promise.all(event.waits);
-  const cached = await (await caches.open('blobtrack-celular-00-v77')).match(request);
+  const cached = await (await caches.open('blobtrack-celular-00-v78')).match(request);
   assert.equal(await cached.text(), 'asset');
 });
 
 test('offline navigation falls back to cached index', async () => {
   const { listeners, caches } = await loadWorker({ fetchImpl: async () => { throw new Error('offline'); } });
-  const cache = await caches.open('blobtrack-celular-00-v77');
+  const cache = await caches.open('blobtrack-celular-00-v78');
   await cache.put('./index.html', new Response('cached app shell'));
   const event = dispatchFetch(listeners.get('fetch'), { method: 'GET', mode: 'navigate', url: 'https://app.test/' });
   assert.equal(await (await event.responsePromise).text(), 'cached app shell');
