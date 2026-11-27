@@ -37,6 +37,7 @@ export function createRender({
   recordingContext,
   recordingCanvas,
   recordingSnapshot,
+  perfProbe = null,
   recordingCanvasSize,
   drawRecordingFrame,
   recordingWatermark = '',
@@ -786,8 +787,15 @@ export function createRender({
   }
 
   function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null) {
-    if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
-    paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+    if (!perfProbe) {
+      if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+      return;
+    }
+    perfProbe.stage('estipple', () => {
+      if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+    });
   }
 
   // ---------- overlay e gravação ----------

@@ -1,6 +1,7 @@
 import { BlobTracker } from './blob-tracker.js';
 import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
 import { updateQualityBudgets } from './core/qualityController.js';
+import { createPerfProbe } from './core/perfProbe.js';
 import { clamp, fmt, formatRecordingTime, recordingFileName, hasRecordingStorageHeadroom } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
@@ -118,7 +119,7 @@ const state = {
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: true, extremeMode: false, videoBlend: 0, invertBlend: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false, pauseChangedAt: -Infinity, pauseToastAt: -Infinity, effectsPausedShown: false },
+  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false, pauseChangedAt: -Infinity, pauseToastAt: -Infinity, effectsPausedShown: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
@@ -137,6 +138,34 @@ const recorder = createRecorder({
 });
 let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
 let pendingRecording = null;
+const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
+function perfProbeMeta() {
+  return {
+    perfil: deviceProfile.name,
+    pauseReason: state.performance.pauseReason,
+    pauseCount: state.performance.pauseCount,
+    effectsPaused: state.performance.effectsPaused,
+    recordingState: recordingSnapshot.state,
+    canvases: {
+      visual: [canvas.width, canvas.height],
+      overlay: [overlayCanvas.width, overlayCanvas.height],
+      analysis: [analysisCanvas.width, analysisCanvas.height],
+      frame: [frameCanvas.width, frameCanvas.height],
+      recording: [recordingCanvas.width, recordingCanvas.height],
+      camera: [video.videoWidth || 0, video.videoHeight || 0],
+      dpr: window.devicePixelRatio || 1,
+    },
+    swScript: navigator.serviceWorker?.controller?.scriptURL || null,
+  };
+}
+if (perfProbe.active) {
+  perfProbe.observe();
+  window.__blobtrackPerf = {
+    report: () => perfProbe.report(perfProbeMeta()),
+    json: () => JSON.stringify(perfProbe.report(perfProbeMeta()), null, 2),
+    reset: () => perfProbe.reset(),
+  };
+}
 let themeChoice = ['system','dark','light'].includes(saved.theme) ? saved.theme : 'system';
 let reduceMotion = saved.reduceMotion === true;
 let hapticsEnabled = saved.hapticsEnabled === true;
@@ -292,6 +321,7 @@ const render = createRender({
   recordingContext,
   recordingCanvas,
   recordingSnapshot,
+  perfProbe,
   recordingCanvasSize,
   drawRecordingFrame,
   recordingWatermark: RECORDING_WATERMARK,
@@ -529,9 +559,12 @@ function analyze(source = video) {
     analysisCanvas.width = width;
     analysisCanvas.height = height;
   }
-  ctx.drawImage(source, 0, 0, width, height);
-  const pixels = ctx.getImageData(0, 0, width, height).data;
-  const result = tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source));
+  const pixels = perfProbe.stage('readback', () => {
+    ctx.drawImage(source, 0, 0, width, height);
+    const pixels = ctx.getImageData(0, 0, width, height).data;
+    return pixels;
+  });
+  const result = perfProbe.stage('analise', () => tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source)));
   if (!result) return null;
   state.timing.tracking = performance.now() - t0;
   state.timing.analysis = state.timing.tracking;
@@ -600,6 +633,10 @@ function setReactiveEffectsPaused(paused, now) {
   perf.lowFpsFrames = 0;
   perf.recoveredFrames = 0;
   perf.renderSlowFrames = 0;
+  if (paused) {
+    perf.pauseCount++;
+    perf.pauseReason = perf.renderAverage > 1000 / deviceProfile.fps * 0.4 ? 'render-budget' : 'low-fps';
+  } else perf.pauseReason = '';
   if (paused && now - perf.pauseToastAt > EFFECT_PAUSE_TOAST_INTERVAL_MS) {
     perf.pauseToastAt = now;
     showToast('Efeitos reativos pausados para proteger o FPS');
@@ -672,7 +709,7 @@ function frame(now) {
     if (video.readyState >= 2 && now - state.lastFrame >= interval) {
       state.lastFrame = now;
       try {
-        const source = captureVideoFrame();
+        const source = perfProbe.stage('captura', captureVideoFrame);
         const result = analyze(source);
         if (result) {
           if (result.raw.lowLight && !state.lowLightNoticeShown) {
@@ -681,8 +718,15 @@ function frame(now) {
           } else if (!result.raw.lowLight) state.lowLightNoticeShown = false;
           if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo');
           const applied = updateSignals(result.raw, result.dt, result.blobs, now);
+          perfProbe.push('audio', state.timing.bus);
+          perfProbe.memory();
           const renderStarted = performance.now();
-          render.renderFrame(applied, source); render.drawMaskOverlay(result, source, applied); render.drawRecordingComposite();
+          perfProbe.stage('renderWebGL', () => render.renderFrame(applied, source));
+          render.drawMaskOverlay(result, source, applied);
+          perfProbe.push('overlay', state.timing.overlay);
+          perfProbe.push('composicao', state.timing.composition);
+          perfProbe.push('janelas', state.timing.windows);
+          perfProbe.stage('gravacao', () => render.drawRecordingComposite());
           state.timing.render = performance.now() - renderStarted;
           updateHud(result.raw, applied, result);
           const perf = state.performance;
@@ -785,6 +829,7 @@ async function savePendingRecording() {
   if (!pendingRecording || recordingSnapshot.state === 'saving') return;
   const result = pendingRecording;
   const filename = recordingFileName(result);
+  perfProbe.event('saveStart');
   updateRecordingControls({ ...recordingSnapshot, state: 'saving', result: null });
   try {
     const method = await exportRecording(result, {
@@ -803,6 +848,7 @@ async function savePendingRecording() {
     log(`Gravação: falha ao salvar (${error.message})`);
     showToast('Não foi possível salvar a gravação');
   } finally {
+    perfProbe.event('saveEnd');
     updateRecordingControls({ ...recordingSnapshot, state: 'idle', result: null });
   }
 }

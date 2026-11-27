@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v61`, publicado em `027f6c8`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v61` publicado em `027f6c8`; este código prepara o `v62`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -331,6 +331,26 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 **Publicado em 27/11/2026:** os dois sites (`blobtrak.vercel.app` e `blobtraking.vercel.app`) responderam `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
 Para conferir no celular: abra `https://blobtrak.vercel.app/`, vá em DevTools → Application → Cache Storage e confirme que só aparece `blobtrack-celular-00-v61`. Se aparecer `v60`, desinstale o service worker (Unregister) e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+
+#### Kit de medição — diagnóstico cirúrgico (cache v62)
+
+O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito, nem as chaves antigas de `__blobtrackMetrics`: publica um objeto separado, `__blobtrackPerf`.
+
+**Como usar no celular (Chrome):**
+
+1. Abra `https://blobtrak.vercel.app/?perf=1` no Realme C67. A URL com `?perf=1` liga o medidor; sem ela, o custo é zero.
+2. No computador, abra `chrome://inspect` → **Devices** → **Inspect** na aba do app.
+3. Rode o cenário que quer medir (ex.: todos os efeitos por 2 min) e, no console, digite:
+   ```js
+   copy(__blobtrackPerf.json())
+   ```
+   Cole o JSON recebido na conversa. Para zerar as amostras: `__blobtrackPerf.reset()`.
+
+O JSON traz p50 / p95 / máximo em milissegundos de cada etapa: `captura`, `readback` (`getImageData`), `analise` (rastreador), `estipple` (Pontilhado), `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio`, `gravacao`. Também traz `longTasks` e `gc` (`PerformanceObserver`), `memoria` (`performance.memory`), o tempo de salvamento (`salvamentoMs`), `pauseReason`, `pauseCount`, `effectsPaused`, o perfil do aparelho e as resoluções/DPR reais dos canvases. Cada etapa ainda vira uma marca visível no flame chart via `performance.mark`/`measure`.
+
+🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador. 🟡 A virada para `v62` é obrigatória porque `app.js`, `render.js`, `sw.js` e os testes mudaram; rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
+
+**Atenção:** o medidor ainda não tem número nenhum do Realme C67. Rodar o app com `?perf=1` é o que vai transformar "muito pesado" em milissegundos por etapa.
 
 #### Se algo deu errado
 

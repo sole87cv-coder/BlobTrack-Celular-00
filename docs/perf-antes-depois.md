@@ -51,3 +51,23 @@ node scripts/bench-blobtrack.js
 ```
 
 Execute três vezes na mesma máquina/runtime e compare o mesmo cenário com os três limites. Se qualquer limite estourar, reverta a mudança responsável antes de continuar. Os números de computador não substituem [`device-matrix.md`](device-matrix.md).
+
+## Kit de medição no celular (v62)
+
+`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera `__blobtrackMetrics`: publica `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback`, `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `pauseReason`, `pauseCount`, `effectsPaused`, perfil, resolução e DPR dos canvases. Nenhum número de aparelho foi coletado ainda.
+
+### Fase 2 — matriz de ablação para o V1su4rt
+
+Rode cada linha no Realme C67 com `?perf=1`, Espere ~30 s e cole `__blobtrackPerf.json()`. Anote FPS e p95 de cada etapa; use `__blobtrackPerf.reset()` entre cenários.
+
+| # | Cenário | O que mede | FPS | p95 da etapa-chave |
+|---|---|---|---|---|
+| 1 | Câmera + análise, todos os efeitos desligados | custo base | _não medido_ | `readback` + `analise` |
+| 2 | Um efeito por vez: Pontilhado, Inverter, P&B, Janela, Vídeo original, malha, rastro, Gear VR | custo individual | _não medido_ | `estipple` / `overlay` / `composicao` |
+| 3 | Todos os efeitos | custo combinado | _não medido_ | `composicao` |
+| 4 | Todos + áudio reativo ligado | custo do áudio | _não medido_ | `audio` |
+| 5 | Gravando sem efeitos | custo do gravador | _não medido_ | `gravacao` |
+| 6 | Gravando com todos (pior caso) | soma sob gravação | _não medido_ | `gravacao` + `composicao` |
+| 7 | Parar e salvar o MP4 | tempo de bloqueio da UI | _não medido_ | `salvamentoMs` |
+
+Orçamento de referência: `33,3 ms` por quadro a 30 FPS (`24–30 FPS` é a meta declarada). Preencher esta tabela é pré-requisito para os vereditos H1–H8 e para qualquer mudança de performance: sem esses números, não há causa raiz provada nem "depois" para comparar.
