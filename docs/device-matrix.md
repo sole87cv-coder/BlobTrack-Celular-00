@@ -29,6 +29,7 @@ A sessão é encerrada ao abrir uma **segunda aba** do app ("BlobTrack Celular-0
 
 | Plataforma / cenário | Verificação | Estado |
 |---|---|---|
+| Realme C67 (`RMX3890`), Android 15 + Realme UI, Chrome, 8 GB RAM, Snapdragon 685 octa-core | Relato do dono: app **muito pesado**, trava com todos os efeitos e trava ao gravar/salvar, sobretudo ao salvar | **Declarado, não medido por instrumento** — sem FPS, `tAnalysis`, `tRender`, RAM ou tempo de exportação registrados |
 | Android intermediário/baixo | FPS e tempo de análise/render durante 5 minutos | Não medido |
 | Android recente | FPS e estabilidade do palco durante 5 minutos | Não medido |
 | iPhone mais antigo | Compatibilidade da câmera, composição e exportação | Não medido |
@@ -39,5 +40,7 @@ A sessão é encerrada ao abrir uma **segunda aba** do app ("BlobTrack Celular-0
 | Navegadores móveis disponíveis | Gravação de 30 segundos por perfil, salvar/compartilhar e reproduzir o arquivo | Não medido |
 | Navegadores móveis disponíveis | Ocultar a página por mais de cinco segundos, retomar e tentar sair durante gravação | Não medido |
 | Android e iPhone | Composição de janela viva e efeitos; mensagem de pausa por desempenho | Não medido |
+
+Sobre o Realme C67: com 8 núcleos e 8 GB declarados, `src/core/deviceProfile.js:8-10` tende ao perfil `equilibrado` ou `alto` — `startWidth` `320–480`, `captureWidth` `960`, alvo de `24–30 fps`, bitrate `3–4,5 Mbps` e `pixelRatio` `1,5–2` (limitado a `1,5` em `src/app.js:476`). É **inferência de código**, não medição: `navigator.deviceMemory` pode reportar outro valor no Chrome Android. O contraste com o emulador (`perfil leve`, `20 fps`, `captureWidth` `640`, quadro `160×284`) explica por que os números do x86 não podem ser usados como baseline do aparelho do V1su4rt.
 
 Ao preencher esta matriz, registre aparelho, sistema, navegador e versão, perfil de qualidade, resolução, valor de FPS/`tAnalysis`/`tRender`, duração e comportamento observado. Preserve uma gravação curta de referência somente quando houver autorização e espaço disponível. Não misture tempo de exportação ao tempo de análise do rastreador.

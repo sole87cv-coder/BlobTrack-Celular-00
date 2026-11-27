@@ -201,3 +201,11 @@ Pedido do V1su4rt: aplicar o Pacote 3. Como não há aparelho físico neste ambi
 - Abrir uma segunda aba encerra a sessão com "BlobTrack Celular-00 já está aberto em outra aba"; é o controle de aba única, não um defeito, e não se confunde com o teste de segundo plano (mesma aba).
 - Soak de `300,4 s` (30 amostras a cada 10 s): FPS p50 `19,72` / p95 `20,00` / mín `17,76`; `tAnalysis` p50 `16,28 ms` / p95 `20,44 ms` / pico `21,63 ms`; `tRender` p50 `0,80 ms` / p95 `1,04 ms` / pico `1,12 ms`; blobs `0–2`, quadros `160×284` a `15–21 fps`, `consoleErrors []`. É teste de estabilidade do fluxo, não baseline de aparelho.
 - **Ainda não medido em aparelho físico:** bateria, calor/thermal throttling, GPU real, sensor de câmera, foco/luz, toque de dedo na ROI, aparência final dos pontos, gravação de 30 s com salvamento/compartilhamento/reprodução e iPhone/Safari. FPS e tempos do emulador x86 com câmera fake **não** representam um celular. Matriz completa em [`device-matrix.md`](device-matrix.md).
+
+## 14. Prompt mestre de performance — aparelho declarado e Etapa 0
+
+- Aparelho informado pelo V1su4rt: **Realme C67**, modelo `RMX3890`, Android 15 com Realme UI, Chrome, 8 GB de RAM, Snapdragon 685 octa-core. É dado **declarado**, não medido por instrumento neste ambiente.
+- Sintomas confirmados pelo dono (evidência primária): trava com todos os efeitos e trava ao gravar/salvar, sobretudo ao salvar. Não foram questionados.
+- Perfil provável (`src/core/deviceProfile.js:8-10`): `equilibrado` ou `alto`, com `captureWidth` `960`, alvo de `24–30 fps` e bitrate `3–4,5 Mbps`. Inferência de código, sujeita ao valor real de `navigator.deviceMemory`; o emulador usou o perfil `leve` (`20 fps`, `640`), por isso seus números não servem de baseline.
+- Etapa 0: `sw.js:16-22` **já apaga** caches antigos com o prefixo `blobtrack-celular-00-`, preserva o atual e chama `clients.claim()`; `tests/sw-behavior.test.js:98-104` prova que `another-app-v1` não é apagado. O V1su4rt escolheu **manter `blobtrack-celular-00-v60`**; nenhuma linha de cache foi alterada.
+- Diagnóstico A–F, plano priorizado e diffs mínimos foram entregues na conversa; **nenhum diff de runtime foi aplicado**. Quando qualquer um for aplicado, o cache sobe para `v61` e os testes de versão acompanham.
