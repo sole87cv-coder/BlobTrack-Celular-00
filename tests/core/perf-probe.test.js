@@ -36,6 +36,7 @@ test('probe ligada mede a etapa com mark/measure e limpa os marks', () => {
   const report = probe.report();
   assert.equal(report.instrumentado, true);
   assert.deepEqual(report.etapas.captura, { n: 1, p50: 12.5, p95: 12.5, max: 12.5 });
+  assert.deepEqual(probe.etapas().captura, report.etapas.captura);
   assert.ok(api.calls.some(call => call[0] === 'measure' && call[1] === 'blobtrack:captura:1'));
   assert.equal(api.calls.filter(call => call[0] === 'clearMarks').length, 2);
 });
@@ -84,5 +85,6 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   assert.ok(app.includes("new URLSearchParams(location.search).get('perf') === '1'"));
   assert.ok(app.includes('window.__blobtrackPerf = {'));
   for (const key of ['fps:', 'tAnalysis:', 'tRender:', 'effectsPaused:']) assert.ok(app.includes(key), key);
+  for (const key of ['pauseReason: state.performance.pauseReason', 'pauseCount: state.performance.pauseCount', 'tPorEfeito: perfProbe.active ? perfProbe.etapas() : null']) assert.ok(app.includes(key), key);
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
 });

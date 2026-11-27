@@ -52,9 +52,9 @@ node scripts/bench-blobtrack.js
 
 Execute três vezes na mesma máquina/runtime e compare o mesmo cenário com os três limites. Se qualquer limite estourar, reverta a mudança responsável antes de continuar. Os números de computador não substituem [`device-matrix.md`](device-matrix.md).
 
-## Kit de medição no celular (v62)
+## Kit de medição no celular (v63)
 
-`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera `__blobtrackMetrics`: publica `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback`, `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `pauseReason`, `pauseCount`, `effectsPaused`, perfil, resolução e DPR dos canvases. Nenhum número de aparelho foi coletado ainda.
+`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera as chaves antigas de `__blobtrackMetrics`: acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `?perf=1`) e publica o relatório completo em `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback`, `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `pauseReason`, `pauseCount`, `effectsPaused`, perfil, resolução e DPR dos canvases. Nenhum número de aparelho foi coletado ainda.
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 

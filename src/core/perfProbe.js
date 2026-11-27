@@ -101,15 +101,19 @@ export function createPerfProbe({
     }
   }
 
+  function etapas() {
+    const result = {};
+    for (const name of ETAPAS) result[name] = summarize(samples.get(name) || []);
+    return result;
+  }
+
   function report(meta = {}) {
-    const etapas = {};
-    for (const name of ETAPAS) etapas[name] = summarize(samples.get(name) || []);
     const saveStart = events.get('saveStart'), saveEnd = events.get('saveEnd');
     return {
       instrumentado: active,
       coletadoEm: new Date().toISOString(),
       ...meta,
-      etapas,
+      etapas: etapas(),
       longTasks: summarize(samples.get('longtask') || []),
       gc: summarize(samples.get('gc') || []),
       memoria: { usadoMB: summarize(heap), limiteMB },
@@ -126,5 +130,5 @@ export function createPerfProbe({
     seq = 0;
   }
 
-  return { active, stage, push, event, memory, observe, report, reset };
+  return { active, stage, push, event, memory, observe, etapas, report, reset };
 }

@@ -699,6 +699,9 @@ function publishBlobTrackMetrics(now, result) {
     idsNovosUltimos60s: idsNewLast60s,
     recordingState: recordingSnapshot.state,
     effectsPaused: state.performance.effectsPaused,
+    pauseReason: state.performance.pauseReason,
+    pauseCount: state.performance.pauseCount,
+    tPorEfeito: perfProbe.active ? perfProbe.etapas() : null,
   };
 }
 let frameErrors = 0;
