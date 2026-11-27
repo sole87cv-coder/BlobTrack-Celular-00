@@ -101,7 +101,9 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 | `readbackPixels` (`getImageData`) | 17,4 ms | 32,0 ms | 79,9 ms |
 | `glReadback` (sonda WebGL) | **33,1 ms** | **45,64 ms** | **105,2 ms** |
 
-`glReadback` custou quase o dobro do `readbackPixels` na mesma rodada. A hipótese "WebGL `readPixels` é barato" foi **refutada por número**; nenhum alvo WebGL foi implementado e o rastreador permanece intacto. A sonda também era executada a cada quadro e somava ~`33 ms` ao ciclo, contaminando `fps: 12,89` e `longTasks` p50 `70 ms` — esses números **não** representam o app sem a sonda. Desde a `v70`, `glReadback` só liga com `?perf=1&gl=1`; `?perf=1` sozinho mede o app limpo (`sondaGl: false` no JSON). `salvamentoMs: null` e `eventos: {}` também nesta amostra: salvar o MP4 segue sem medição.
+`glReadback` custou quase o dobro do `readbackPixels` na mesma rodada. A hipótese "WebGL `readPixels` é barato" foi **refutada por número**; nenhum alvo WebGL foi implementado e o rastreador permanece intacto. A sonda também era executada a cada quadro e somava ~`33 ms` ao ciclo, contaminando `fps: 12,89` e `longTasks` p50 `70 ms` — esses números **não** representam o app sem a sonda. Desde a `v70`, `glReadback` só liga com `?perf=1&gl=1`; `?perf=1` sozinho mede o app limpo (`sondaGl: false` no JSON). `salvamentoMs: null` e `eventos: {}` também nesta amostra.
+
+**Salvamento (v71):** a amostra seguinte (ainda com cache `v69`) trouxe `salvamentoMs: 11044,9 ms`, com `saveStart` `147992,2` e `saveEnd` `159037,1`. O intervalo inclui o seletor de arquivos do Android, então ele mede o fluxo completo — não só processamento. A `v71` passa a publicar `seletorMs` (diálogo), `escritaMs` (arquivo), `compartilhamentoMs` e `downloadMs` para separar espera do usuário de trabalho do app. `glReadback` p50 `24,3 ms` nessa amostra confirma novamente que o WebGL não é mais barato que o `readbackPixels` p50 `22,0 ms`.
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 

@@ -143,7 +143,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v70',
+    cacheVersion: 'blobtrack-celular-00-v71',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -848,6 +848,7 @@ async function savePendingRecording() {
     const method = await exportRecording(result, {
       filename,
       onError: (operation, error) => log(`Gravação: ${operation} falhou (${error.message}); tentando alternativa.`),
+      onPhase: name => perfProbe.event(name),
     });
     if (method === 'shared' || method === 'saved' || method === 'downloaded') {
       pendingRecording = null;

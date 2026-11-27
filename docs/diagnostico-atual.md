@@ -258,4 +258,13 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - Amostra da `v69` no Realme C67, gravando, todos os efeitos ativos: `glReadback` p50 `33,1 ms` / p95 `45,64 ms`; no mesmo ciclo, `readback` p50 `17,7 ms` com `readbackDraw` `0,1 ms` e `readbackPixels` `17,4 ms`. A sonda custou ~1,9× o caminho 2D atual. **Hipótese WebGL descartada por número**; nenhum alvo WebGL foi implementado, nenhuma linha do rastreador mudou.
 - Como a sonda rodava a cada quadro, acrescentava ~`33 ms` ao ciclo: `fps: 12,89` e `longTasks` p50 `70 ms` nessa amostra **não** medem o app sem ela. Não há base para dizer que a `v69` caiu de `15,92` para `12,89 FPS` por causa da remoção da pausa.
 - A `v70` coloca `glReadback` atrás de `?perf=1&gl=1` e publica `sondaGl` no JSON. Com `?perf=1` sozinho, a coleta fica limpa. Nenhum efeito, render, áudio ou gravação mudou; só o custo do kit de medição.
-- `salvamentoMs: null`, `eventos: {}` e nenhuma medição de 30 min continuam em aberto. Aprovação final depende de JSON limpo da `v70` com gravação + **Salvar** e do teste manual do dono (y/N).
+- Nessa amostra ainda não havia medição de salvamento; a próxima seção registra a primeira.
+
+## 22. Primeira medição de salvamento e separação de fases (v71)
+
+- Nova amostra (19:50) **ainda com cache `v69`**: `effectsPaused: false`, `pauseReason: ''`, `pauseCount: 0`, `deviceLimit: true`, `recordingState: idle`, canvas visual `635×1101`. `glReadback` segue presente porque era a `v69`; p50 `24,3 ms` contra `readbackPixels` p50 `22,0 ms` — mesma conclusão da seção 21, sem vantagem do WebGL.
+- Primeiro `salvamentoMs` do Realme C67: **11044,9 ms** (`eventos.saveStart` `147992,2` → `saveEnd` `159037,1`). É a primeira medição objetiva do "trava ao salvar" relatado pelo dono.
+- O contador `saveStart`→`saveEnd` inclui `window.showSaveFilePicker()` (`src/recording-export.js:81`), ou seja, o tempo em que o **diálogo do Android fica aberto esperando o usuário escolher o destino**. Sem separar, não é válido atribuir os `11,0 s` a travamento do app.
+- A `v71` acrescenta marcas `savePicker`, `saveWrite`, `saveShare` e `saveDownload` via `onPhase`, e publica `seletorMs`, `escritaMs`, `compartilhamentoMs` e `downloadMs`. Nenhuma linha do fluxo de salvar mudou — só instrumentação.
+- A amostra veio da `v69` porque o cache do service worker não avançou no aparelho (o servidor já servia `v70`). Próxima coleta precisa confirmar `cacheVersion: v71` e `sondaGl: false` no JSON limpo.
+- Aprovação final segue dependendo de: JSON limpo com gravação + **Salvar**, 2 min com todos os efeitos, rotação, segundo plano 5 s e 30 min sem travamento; o dono responde `y` ou `N` com o passo que falhou.

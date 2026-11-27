@@ -319,6 +319,7 @@ test('recording export prefers file sharing and respects user cancellation', asy
   }
   const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
   const filename = 'BlobTrack_2026-01-01_12-00-00.webm';
+  const sharePhases = [];
   const shared = await exportRecording(result, {
     filename,
     FileClass: FakeFile,
@@ -328,9 +329,11 @@ test('recording export prefers file sharing and respects user cancellation', asy
     },
     windowObject: {},
     documentObject: {},
+    onPhase: name => sharePhases.push(name),
   });
   assert.equal(shared, 'shared');
   assert.deepEqual(operations, [['share', filename]]);
+  assert.deepEqual(sharePhases, ['saveShare']);
 
   const cancelled = await exportRecording(result, {
     filename,
@@ -349,6 +352,7 @@ test('recording export uses the file picker and falls back to download', async (
   const result = { blob: new Blob(['video']), mimeType: supportedMime, extension: 'webm' };
   const filename = 'BlobTrack_2026-01-01_12-00-00.webm';
   const operations = [];
+  const phases = [];
   const pickerResult = await exportRecording(result, {
     filename,
     navigatorObject: {},
@@ -362,11 +366,14 @@ test('recording export uses the file picker and falls back to download', async (
       },
     },
     documentObject: {},
+    onPhase: name => phases.push(name),
   });
   assert.equal(pickerResult, 'saved');
   assert.deepEqual(operations.map(([action]) => action), ['picker', 'write', 'close']);
+  assert.deepEqual(phases, ['savePicker', 'saveWrite']);
 
   const downloadEvents = [];
+  const downloadPhases = [];
   const downloadResult = await exportRecording(result, {
     filename,
     navigatorObject: {},
@@ -383,9 +390,11 @@ test('recording export uses the file picker and falls back to download', async (
         click: () => downloadEvents.push(['click']),
       }),
     },
+    onPhase: name => downloadPhases.push(name),
   });
   assert.equal(downloadResult, 'downloaded');
   assert.deepEqual(downloadEvents.map(([action]) => action), ['create', 'href', 'filename', 'click', 'timer', 'revoke']);
+  assert.deepEqual(downloadPhases, ['saveDownload']);
 });
 
 test('recording export reports a file-picker failure before downloading', async () => {

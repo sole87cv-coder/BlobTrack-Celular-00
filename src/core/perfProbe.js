@@ -108,6 +108,8 @@ export function createPerfProbe({
   }
 
   function report(meta = {}) {
+    const between = (start, end) => Number.isFinite(start) && Number.isFinite(end) && end >= start
+      ? Number((end - start).toFixed(1)) : null;
     const saveStart = events.get('saveStart'), saveEnd = events.get('saveEnd');
     return {
       instrumentado: active,
@@ -118,8 +120,11 @@ export function createPerfProbe({
       gc: summarize(samples.get('gc') || []),
       memoria: { usadoMB: summarize(heap), limiteMB },
       eventos: Object.fromEntries(events),
-      salvamentoMs: Number.isFinite(saveStart) && Number.isFinite(saveEnd) && saveEnd >= saveStart
-        ? Number((saveEnd - saveStart).toFixed(1)) : null,
+      salvamentoMs: between(saveStart, saveEnd),
+      seletorMs: between(saveStart, events.get('savePicker')),
+      escritaMs: between(events.get('savePicker'), events.get('saveWrite')),
+      compartilhamentoMs: between(saveStart, events.get('saveShare')),
+      downloadMs: between(saveStart, events.get('saveDownload')),
     };
   }
 

@@ -71,6 +71,31 @@ test('eventos de salvamento, memória e reset', () => {
   assert.equal(probe.report().salvamentoMs, null);
 });
 
+test('salvamento separa seletor do sistema e escrita do arquivo', () => {
+  const { probe } = probeWith([0, 9000, 10500]);
+  probe.event('saveStart');
+  probe.event('savePicker');
+  probe.event('saveWrite');
+  const report = probe.report();
+  assert.equal(report.salvamentoMs, null, 'sem saveEnd não há total');
+  assert.equal(report.seletorMs, 9000);
+  assert.equal(report.escritaMs, 1500);
+  assert.equal(report.compartilhamentoMs, null);
+  assert.equal(report.downloadMs, null);
+});
+
+test('salvamento por compartilhamento e download also report phases', () => {
+  const shared = probeWith([0, 400]);
+  shared.probe.event('saveStart');
+  shared.probe.event('saveShare');
+  assert.equal(shared.probe.report().compartilhamentoMs, 400);
+
+  const downloaded = probeWith([0, 250]);
+  downloaded.probe.event('saveStart');
+  downloaded.probe.event('saveDownload');
+  assert.equal(downloaded.probe.report().downloadMs, 250);
+});
+
 test('observer usa apenas longtask quando gc não é suportado', () => {
   const seen = [];
   class FakeObserver {
@@ -98,6 +123,7 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   for (const key of ["perfProbe.stage('readbackDraw'", "perfProbe.stage('readbackPixels'", 'fps: Number((state.performance.fpsAverage || 0).toFixed(2))', 'trackingWidth: state.trackingWidth']) assert.ok(app.includes(key), key);
   assert.ok(app.includes("const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1'"));
   assert.ok(app.includes("if (glReadbackEnabled) perfProbe.stage('glReadback', () => render.probeGlReadback())"));
+  assert.ok(app.includes('onPhase: name => perfProbe.event(name)'));
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
 });
 

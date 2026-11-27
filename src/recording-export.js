@@ -63,6 +63,7 @@ export async function exportRecording(result, {
   FileClass = globalThis.File,
   setTimeoutFn = globalThis.setTimeout,
   onError = () => {},
+  onPhase = () => {},
 } = {}) {
   const mimeType = result.mimeType.split(';', 1)[0];
   const ext = result.extension || 'webm';
@@ -89,10 +90,12 @@ export async function exportRecording(result, {
           },
         }],
       });
+      onPhase('savePicker');
       const writable = await handle.createWritable();
       try {
         await writable.write(result.blob);
         await writable.close();
+        onPhase('saveWrite');
       } catch (error) {
         if (typeof writable.abort === 'function') {
           try { await writable.abort(); }
@@ -112,6 +115,7 @@ export async function exportRecording(result, {
     try {
       if (navigatorObject.canShare({ files: [file] })) {
         await navigatorObject.share({ files: [file], title: 'BlobTrack Celular' });
+        onPhase('saveShare');
         return 'shared';
       }
     } catch (error) {
@@ -129,6 +133,7 @@ export async function exportRecording(result, {
     link.href = url;
     link.download = filename;
     link.click();
+    onPhase('saveDownload');
   } catch (error) {
     if (createdUrl) URLClass.revokeObjectURL(url);
     throw error;
