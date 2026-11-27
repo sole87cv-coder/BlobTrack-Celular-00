@@ -141,7 +141,7 @@ let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v66',
+    cacheVersion: 'blobtrack-celular-00-v67',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -590,9 +590,8 @@ function analyze(source = video) {
     analysisCanvas.height = height;
   }
   const pixels = perfProbe.stage('readback', () => {
-    // v66: a leitura sai do frameCanvas (textura usada pelo WebGL) e vem direto
-    // do vídeo, já no tamanho da análise. O render segue usando `source`.
-    perfProbe.stage('readbackDraw', () => ctx.drawImage(video, 0, 0, width, height));
+    // FASE 2: separar a cópia GPU→CPU do getImageData para provar onde está o custo.
+    perfProbe.stage('readbackDraw', () => ctx.drawImage(source, 0, 0, width, height));
     return perfProbe.stage('readbackPixels', () => {
       const pixels = ctx.getImageData(0, 0, width, height).data;
       return pixels;

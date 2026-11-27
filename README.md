@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v66`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v67`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -330,16 +330,16 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** os dois sites (`blobtrak.vercel.app` e `blobtraking.vercel.app`) responderam `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v66`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v67`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
-#### Kit de medição — diagnóstico cirúrgico (cache v66)
+#### Kit de medição — diagnóstico cirúrgico (cache v67)
 
 O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e não altera as chaves antigas de `__blobtrackMetrics`: só acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (este último, `null` sem `?perf=1`). O relatório completo fica em `__blobtrackPerf`.
 
 **Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
 
 1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v66"`.
+2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v67"`.
 3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
 4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
 
@@ -347,11 +347,11 @@ O painel também funciona pelo computador, se você preferir: com o celular liga
 
 O JSON traz p50 / p95 / máximo em milissegundos de cada etapa: `captura`, `readback` (total), `readbackDraw` (cópia do quadro para o canvas de análise) e `readbackPixels` (`getImageData`), `analise` (rastreador), `estipple` (Pontilhado), `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio`, `gravacao`. Também traz `fps`, `trackingWidth`, `longTasks` e `gc` (`PerformanceObserver`), `memoria` (`performance.memory`), `salvamentoMs`, `pauseReason`, `pauseCount`, `effectsPaused`, `cacheVersion`, perfil e resoluções/DPR reais dos canvases. Cada etapa ainda vira uma marca no flame chart via `performance.mark`/`measure`.
 
-🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador, e escondido por trás de `?perf=1`. 🟡 A virada para `v66` é obrigatória porque `app.js`, `sw.js` e os testes mudaram; rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
+🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador, e escondido por trás de `?perf=1`. 🟡 A virada para `v67` é obrigatória porque `app.js`, `sw.js` e os testes mudaram; rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
 
-**O que mudou na `v66` (um experimento só):** o rastreador passou a ler os pixels direto do vídeo, no tamanho da análise, em vez de ler o `frameCanvas` que o WebGL usa como textura. O render continua usando o mesmo quadro capturado; efeitos, IDs, áudio e gravação não foram tocados. Se o celular piorar, basta `git revert` deste commit.
+**Experimento `v66` revertido:** ler do vídeo direto apenas mudou o custo de lugar — `getImageData` caiu para `1,2 ms`, mas o `drawImage` subiu para `41,7 ms`. O total ficou em `43 ms` contra `40,3 ms` da `v65`; não houve ganho de FPS. A `v67` restaura a leitura pelo `frameCanvas` e avança o cache. As três amostras do Realme C67 estão em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
 
-**Atenção:** o aviso "Efeitos reativos pausados" ainda aparece porque a política antiga continua ligada — a correção de desempenho veio primeiro. As duas amostras do Realme C67 estão em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md): na `v65`, `readbackDraw` foi `0,1 ms` e `readbackPixels` `40 ms` — o custo é o `getImageData`, não os efeitos. Compare esses dois números no JSON da `v66`.
+**Atenção:** o aviso "Efeitos reativos pausados" ainda aparece porque a política antiga continua ligada — o medidor só observa. O `pauseReason` printed no JSON é **inferido** de `renderAverage` no momento da pausa, não gravado no gatilho: na `v66` ele diz `render-budget` durante uma gravação, mas o quadro estava em `16,22 FPS`, abaixo do limiar de `16,5` que dispara `low-fps`. Corrigir essa etiqueta e remover a pausa são os próximos passos.
 
 #### Se algo deu errado
 

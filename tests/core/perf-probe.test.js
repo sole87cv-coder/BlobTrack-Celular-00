@@ -96,7 +96,5 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   for (const key of ['fps:', 'tAnalysis:', 'tRender:', 'effectsPaused:']) assert.ok(app.includes(key), key);
   for (const key of ['pauseReason: state.performance.pauseReason', 'pauseCount: state.performance.pauseCount', 'tPorEfeito: perfProbe.active ? perfProbe.etapas() : null']) assert.ok(app.includes(key), key);
   for (const key of ["perfProbe.stage('readbackDraw'", "perfProbe.stage('readbackPixels'", 'fps: Number((state.performance.fpsAverage || 0).toFixed(2))', 'trackingWidth: state.trackingWidth']) assert.ok(app.includes(key), key);
-  assert.ok(app.includes('ctx.drawImage(video, 0, 0, width, height)'), 'leitura vem do vídeo, não da textura do WebGL');
-  assert.ok(app.includes('render.renderFrame(applied, source)'), 'render continua com o snapshot capturado');
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
 });

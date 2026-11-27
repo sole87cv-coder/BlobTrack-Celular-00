@@ -228,13 +228,13 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - O V1su4rt enviou o JSON do Realme C67: perfil `alto`, cache `v64`, `recordingState: idle`, `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`. Canvas visual/overlay `635×1316` com DPR `2,55` limitado a `1,5`; câmera `540×960`; análise já no piso de `160×284`.
 - Orçamento excedido: soma dos p50 das etapas `39,8 ms` contra `33,3 ms` de 30 FPS. `readback` p50 `31,7 ms` / p95 `53,2 ms` / máx `133,3 ms`; `analise` p50 `2,9 ms`; todos os efeitos visuais juntos `3,6 ms`; áudio e gravação `0,2 ms`. `longTasks` em 429 de 1200 quadros, p50 `56 ms` / p95 `77,6 ms`.
 - **Causa provada:** o gargalo é o caminho síncrono de leitura de pixels, não os efeitos, não o áudio, não os shaders e não a gravação (que estava inativa). O badge veio do gatilho de FPS baixo, não do orçamento de render: render p95 `0,7 ms` está longe do limiar de `13,33 ms`.
-- **Ainda não provado:** se os `31,7 ms` estão no `drawImage` para o canvas de análise ou no `getImageData`. A `v65` separa as duas etapas e acrescenta `fps`/`trackingWidth` ao JSON. Nenhuma mudança de comportamento foi aplicada: somente instrumentação.
+- A `v65` separou as duas etapas e acrescentou `fps`/`trackingWidth` ao JSON, sem mudar comportamento.
 - Detalhes e tabela completa em [`perf-antes-depois.md`](perf-antes-depois.md).
 
-## 18. Segunda medição e primeiro experimento (v65 → v66, 27/11/2026)
+## 18. Segunda e terceira medições; experimento revertido (v65 → v66 → v67)
 
-- Segundo JSON do Realme C67: `fps: 15,4`, `trackingWidth: 240`, análise `240×427`, `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`, gravação inativa.
-- `readbackDraw` p50 `0,1 ms` contra `readbackPixels` p50 `40 ms`: a hipótese do `drawImage` caro está **descartada**. O custo está inteiro no `getImageData`. Soma dos p50 `55,5 ms`; `longTasks` em 1200 de 1200 quadros, p50 `59 ms`.
-- A largura subiu de `160` para `240` entre as duas amostras e o `readback` piorou de `31,7` para `40,3 ms`: o controlador de qualidade está ajustando a variável errada. Isso será tratado depois do experimento da leitura, uma mudança por vez.
-- **v66 (experimento único, sem tocar em reatividade):** `analyze()` passou a desenhar do vídeo no canvas de análise (`ctx.drawImage(video, 0, 0, width, height)`) em vez de desenhar do `frameCanvas`, que é a textura do WebGL. Render, efeitos, rastreador, IDs, áudio e gravação permanecem iguais. Resultado em aparelho ainda **não medido**; se piorar, `git revert`.
-- **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável) e só será resolvido depois que a matriz de ablação da FASE 2 trouxer números de gravação/salvamento do celular.
+- `v65`: `readbackDraw` p50 `0,1 ms`, `readbackPixels` p50 `40,0 ms`, `fps` `15,4`. O custo inteiro estava no `getImageData`.
+- `v66` (gravando, canvas `301×624`): `analyze()` desenhou do vídeo em vez do `frameCanvas`. O custo migrou: `readbackDraw` p50 `41,7 ms`, `readbackPixels` p50 `1,2 ms`, `readback` p50 `43,0 ms`, `fps` `16,22`. Sem ganho; **revertido** em `v67` com o cache avançando. Veredito: a espera é a sincronização GPU→CPU, não a função 2D escolhida.
+- `pauseReason: render-budget` na `v66` é **rótulo inferido**, não gatilho: `fps` `16,22` estava abaixo do limiar `16,5` de `low-fps`, e os estágios de render somam `~3,3 ms` contra o limite de `13,33 ms`. A etiqueta será corrigida junto com a remoção da pausa.
+- `salvamentoMs: null`, `eventos: {}` também na `v66`: o cenário de gravação foi coletado, o de **salvar o MP4** segue sem medição.
+- **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável). Números de gravação já existem; falta o de salvamento antes de mexer na política.
