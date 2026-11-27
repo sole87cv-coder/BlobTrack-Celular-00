@@ -152,6 +152,19 @@ button:focus-visible,input:focus-visible { outline:2px solid var(--mint);outline
 }
 .stage-bottom span { white-space:nowrap }
 
+/* Piano do Tom Base: aparece na tela cheia, acima da barra de ações. */
+.stage-keyboard {
+  position:absolute;z-index:5;
+  left:50%;bottom:calc(56px + var(--safe-bottom));transform:translateX(-50%);
+  width:min(100%,520px);padding:6px 8px;
+  border:1px solid #ffffff2b;border-radius:14px;
+  background:#0d1219e6;box-shadow:0 8px 26px #0009;
+  display:none
+}
+.stage-keyboard-label { display:block;margin-bottom:4px;color:#b9c4cf;font:700 10px 'DM Mono',monospace;letter-spacing:.1em;text-align:center;text-transform:uppercase }
+.stage-keyboard .audio-keyboard { gap:3px;padding:0 }
+.stage-keyboard .audio-key { flex:1 0 32px;min-width:32px;min-height:40px }
+
 .stage-message {
   position:absolute;inset:0;z-index:2;
   display:flex;align-items:center;justify-content:center;flex-direction:column;
@@ -389,6 +402,8 @@ body.focus-mode .primary-nav { opacity:0;pointer-events:none }
 body.focus-mode .dock { visibility:hidden }
 body.focus-mode .stage-shade { opacity:0 }
 body.focus-mode .stage-pill { opacity:0 }
+body.focus-mode .stage-keyboard,
+html:fullscreen body:not(.gear-vr) .stage-keyboard { display:block }
 .focus-hint {
   position:absolute;z-index:5;
   left:50%;bottom:14px;
@@ -703,7 +718,7 @@ body.dock-open .stage-action-bar { bottom:calc(min(52dvh, 420px) + 12px + var(--
 @media (prefers-color-scheme:light) { :root:not([data-theme="dark"]):not([data-theme="light"]) { color-scheme:light;--bg:#f6f8fa;--panel:#fff;--line:#cbd4dc;--text:#18212b;--muted:#43515f;--mint:#00694d } }
 @media (prefers-contrast:more), (forced-colors:active) { .page-button,.primary-nav button,.quick-filter-row button,.pill,.tab-button,.audio-key { border:2px solid currentColor!important;box-shadow:none!important } .primary-nav,.quick-sheet,.page-card,.session-card { backdrop-filter:none;background:Canvas;color:CanvasText } :focus-visible { outline:3px solid Highlight!important;outline-offset:3px } }
 @media (max-width:380px) { .settings-shortcuts { grid-template-columns:1fr } .stage-action-bar .page-button { min-width:104px;padding:8px;font-size:13px } }
-@media (orientation:landscape) and (max-height:520px) { .primary-nav { min-height:calc(56px + var(--safe-bottom)) } .workspace.app-page { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar { bottom:calc(4px + var(--safe-bottom)) } .stage-message { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar .page-button { min-height:44px } }
+@media (orientation:landscape) and (max-height:520px) { .primary-nav { min-height:calc(56px + var(--safe-bottom)) } .workspace.app-page { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar { bottom:calc(4px + var(--safe-bottom)) } .stage-keyboard { bottom:calc(52px + var(--safe-bottom)) } .stage-message { bottom:calc(56px + var(--safe-bottom)) } .stage-action-bar .page-button { min-height:44px } }
 @media (max-width:359px) { .brand::after { content:"@V1su4rt";font-size:11px;font-weight:700 } }
 .connection-label { display:inline-flex;align-items:center;padding:4px 9px;border:1px solid #ffc66e88;border-radius:9px;color:#ffe0a4;font-size:12px;font-weight:700 }
 .secondary-page,.quick-sheet { user-select:text;-webkit-user-select:text }

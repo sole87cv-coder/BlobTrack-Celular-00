@@ -23,6 +23,15 @@ test('getStrings seleciona o idioma e usa pt-BR como fallback', () => {
   assert.equal(getStrings('invalid'), ptBR);
 });
 
+test('piano do Tom Base usa as mesmas notas traduzidas nos quatro idiomas', () => {
+  assert.equal(translateText('Tom base', 'en'), 'Base note');
+  assert.equal(translateText('Tom base', 'es'), 'Nota base');
+  assert.equal(translateText('Tom base', 'fr'), 'Note de base');
+  assert.equal(translateText('Dó (C)', 'en'), 'C');
+  assert.equal(translateText('Si♭ (B♭)', 'es'), 'Si♭ (B♭)');
+  assert.equal(translateText('Sol (G)', 'fr'), 'Sol (G)');
+});
+
 test('texto da interface traduz entre idiomas sem alterar a marca pública', () => {
   assert.equal(translateText('Palco', 'en'), 'Stage');
   assert.equal(translateText('Distâncias', 'fr'), 'Distances');

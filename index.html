@@ -76,6 +76,20 @@
         <dialog class="camera-issue" id="permissionDialog" aria-labelledby="cameraIssueTitle" aria-describedby="cameraIssueText"><h2 id="cameraIssueTitle"></h2><p id="cameraIssueText"></p><button class="page-button primary" id="cameraIssueRetry" type="button">Tentar novamente</button><button class="page-button" type="button" data-go-page="help">Ajuda</button><button class="page-button" type="button" id="closePermissionDialog">Fechar</button></dialog>
         <div class="stage-action-bar"><button class="page-button" id="quickSettingsButton" type="button">Ajustes rápidos</button><button class="page-button" id="stageMuteButton" type="button" aria-pressed="false">Mudo</button></div>
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
+        <!-- Piano do Tom Base na base da tela cheia: troca de nota sem abrir os ajustes. -->
+        <div class="stage-keyboard" id="stageKeyboard" role="group" aria-label="Tom base">
+          <span class="stage-keyboard-label" aria-hidden="true">Tom base</span>
+          <div class="audio-keyboard">
+            <button type="button" class="audio-key" data-audio-key="0" aria-pressed="true" aria-label="Dó (C)">C</button>
+            <button type="button" class="audio-key" data-audio-key="2" aria-pressed="false" aria-label="Ré (D)">D</button>
+            <button type="button" class="audio-key" data-audio-key="4" aria-pressed="false" aria-label="Mi (E)">E</button>
+            <button type="button" class="audio-key" data-audio-key="5" aria-pressed="false" aria-label="Fá (F)">F</button>
+            <button type="button" class="audio-key" data-audio-key="7" aria-pressed="false" aria-label="Sol (G)">G</button>
+            <button type="button" class="audio-key" data-audio-key="9" aria-pressed="false" aria-label="Lá (A)">A</button>
+            <button type="button" class="audio-key audio-key-black" data-audio-key="10" aria-pressed="false" aria-label="Si♭ (B♭)">B♭</button>
+            <button type="button" class="audio-key" data-audio-key="11" aria-pressed="false" aria-label="Si (B)">B</button>
+          </div>
+        </div>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -184,14 +198,14 @@
                 <option value="10">Si♭ (B♭)</option><option value="11">Si (B)</option>
               </select>
               <div class="audio-keyboard" role="group" aria-label="Tom base">
-                <button type="button" class="audio-key" data-audio-key="0" aria-pressed="true" aria-label="Dó">C</button>
-                <button type="button" class="audio-key" data-audio-key="2" aria-pressed="false" aria-label="Ré">D</button>
-                <button type="button" class="audio-key" data-audio-key="4" aria-pressed="false" aria-label="Mi">E</button>
-                <button type="button" class="audio-key" data-audio-key="5" aria-pressed="false" aria-label="Fá">F</button>
-                <button type="button" class="audio-key" data-audio-key="7" aria-pressed="false" aria-label="Sol">G</button>
-                <button type="button" class="audio-key" data-audio-key="9" aria-pressed="false" aria-label="Lá">A</button>
-                <button type="button" class="audio-key audio-key-black" data-audio-key="10" aria-pressed="false" aria-label="Si bemol">B♭</button>
-                <button type="button" class="audio-key" data-audio-key="11" aria-pressed="false" aria-label="Si">B</button>
+                <button type="button" class="audio-key" data-audio-key="0" aria-pressed="true" aria-label="Dó (C)">C</button>
+                <button type="button" class="audio-key" data-audio-key="2" aria-pressed="false" aria-label="Ré (D)">D</button>
+                <button type="button" class="audio-key" data-audio-key="4" aria-pressed="false" aria-label="Mi (E)">E</button>
+                <button type="button" class="audio-key" data-audio-key="5" aria-pressed="false" aria-label="Fá (F)">F</button>
+                <button type="button" class="audio-key" data-audio-key="7" aria-pressed="false" aria-label="Sol (G)">G</button>
+                <button type="button" class="audio-key" data-audio-key="9" aria-pressed="false" aria-label="Lá (A)">A</button>
+                <button type="button" class="audio-key audio-key-black" data-audio-key="10" aria-pressed="false" aria-label="Si♭ (B♭)">B♭</button>
+                <button type="button" class="audio-key" data-audio-key="11" aria-pressed="false" aria-label="Si (B)">B</button>
               </div>
             </div>
           </div>
