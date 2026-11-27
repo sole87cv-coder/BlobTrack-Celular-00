@@ -105,6 +105,8 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 
 **Salvamento (v71):** a amostra seguinte (ainda com cache `v69`) trouxe `salvamentoMs: 11044,9 ms`, com `saveStart` `147992,2` e `saveEnd` `159037,1`. O intervalo inclui o seletor de arquivos do Android, então ele mede o fluxo completo — não só processamento. A `v71` passa a publicar `seletorMs` (diálogo), `escritaMs` (arquivo), `compartilhamentoMs` e `downloadMs` para separar espera do usuário de trabalho do app. `glReadback` p50 `24,3 ms` nessa amostra confirma novamente que o WebGL não é mais barato que o `readbackPixels` p50 `22,0 ms`.
 
+**Primeira amostra limpa (v70, `sondaGl: false`, `glReadback.n: 0`):** `fps` **23,35**, `readback` p50 `44,4 ms` / p95 `60,325 ms`, `readbackPixels` p50 `44,1 ms`, `analise` p50 `7,1 ms`, `longTasks` p50 `62 ms` / p95 `84,3 ms`, `salvamentoMs` `4462,2 ms`, `deviceLimit: false`. É a referência válida de FPS sem a sonda; as de `12,89`/`14,13` não são. O mesmo `readbackPixels` já mediu `17,4`, `22,0` e `44,1 ms` de p50 em amostras diferentes — variabilidade alta, sem base para uma conclusão de causa com uma única amostra.
+
 ### Fase 2 — matriz de ablação para o V1su4rt
 
 Rode cada linha no Realme C67 com `?perf=1` (sem `&gl=1`: a sonda WebGL foi descartada e só serve para medir a si mesma). Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.
