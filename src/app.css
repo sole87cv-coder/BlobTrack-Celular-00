@@ -485,6 +485,7 @@ body.recording-active .focus-hint { display:none }
     padding-bottom:0
   }
   .float-bar,.record-indicator { right:calc(min(320px,26vw) + 22px) }
+  .stage-record-footer { right:calc(min(320px,26vw) + 22px) }
   .dock.closed { transform:translateY(0)!important;opacity:.4 }
   .dock-body { max-height:none }
   .stage-pill { top:calc(70px + var(--safe-top)) }
@@ -604,6 +605,24 @@ body.recording-active .focus-hint { display:none }
 .record-dock-button.paused::before { background:var(--amber);box-shadow:0 0 12px #ffc66eaa }
 .record-dock-button:disabled { opacity:.62 }
 .record-save-dock-button { border-color:#6ee7bc55;color:var(--mint);background:linear-gradient(125deg,#15322d9c,#131923d9) }
+/* Um botão só no canto inferior da tela cheia: fora do piano e da barra de ações. */
+.stage-record-footer {
+  display:none;position:absolute;z-index:6;
+  right:10px;bottom:calc(8px + var(--safe-bottom));
+  align-items:center;gap:5px;min-height:32px;padding:0 10px;
+  border:1px solid #ffffff26;border-radius:999px;
+  background:#0d1219c9;color:#dfe8ef;font:600 11px system-ui,sans-serif;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  box-shadow:0 4px 14px #0007;opacity:.55;
+  transition:opacity .2s var(--ease-out)
+}
+body.fullscreen-active .stage-record-footer:not([hidden]),
+html:fullscreen body:not(.gear-vr) .stage-record-footer:not([hidden]) { display:flex }
+.stage-record-footer:hover,.stage-record-footer:focus-visible,body.recording-active .stage-record-footer { opacity:1 }
+body.gear-vr .stage-record-footer { display:none!important }
+.record-footer-icon { color:var(--mint);font-size:13px;line-height:1 }
+body.recording-active .record-footer-icon { color:#ff7b7b;animation:record-pulse 1.2s ease-in-out infinite }
+.record-footer-time { font:10px 'DM Mono',monospace;font-variant-numeric:tabular-nums }
 .record-indicator {
   position:absolute;z-index:7;top:max(12px,var(--safe-top));right:12px;
   display:flex;align-items:center;gap:7px;min-height:36px;padding:0 11px;

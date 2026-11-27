@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v81`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v84`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -266,6 +266,37 @@ São três pares de vozes: `0/1 = Low`, `2/3 = Mid`, `4/5 = Hi`. Dentro de cada 
 Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é analisada, em vez de esperar um `requestAnimationFrame` extra, e carrega `capturedAt` e `audioTime` (relógio do `AudioContext`). O worklet usa esse relógio para alinhar o agendamento e expõe a idade do sinal como `lag` no medidor. Os controles de sliders e do Tom base mantêm o debounce de `80 ms` — só o canal de sinal é liberado na hora.
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
+
+#### Paisagem liberada na tela cheia (cache v84)
+
+Antes, ao entrar em tela cheia, o app mandava o celular ficar em retrato — era como prender a dobradiça da câmera. Agora a tela cheia **acompanha o giro do aparelho**: vire o celular de lado e o palco, o piano, o dock e o botão de gravação se reorganizam sozinhos. O layout de paisagem já estava preparado (barra compacta, piano mais alto, dock lateral em telas largas); só faltava soltar o travamento.
+
+O Gear VR continua diferente: ele entra em paisagem travada porque a imagem é lado a lado. Ao sair dele ou da tela cheia, a orientação volta a ser controlada pelo celular.
+
+🟢 Pode mexer: `src/app.js` (travamento) e `src/app.css` (posição do botão na dock lateral). 🟡 Meça e teste: `npm test` **266/266**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o giro no Realme C67 ainda **não foi medido** — entre em tela cheia e vire o aparelho com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o modo foco, o piano, o MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Gravar e salvar na base da tela cheia (cache v83)
+
+Pense num controle remoto pequeno encostado no canto da televisão: ele está na tela cheia, mas não tampa o piano nem os menus. Em vez de dois botões, existe **um único botão discreto** no canto inferior direito que muda de função conforme o momento:
+
+- **Gravar** (círculo vazio) — inicia a gravação;
+- **Parar** (ponto vermelho com cronômetro) — encerra a gravação;
+- **Salvar** (seta para baixo) — guarda ou compartilha o MP4 já pronto.
+
+Ele aparece só na tela cheia, fica com opacidade baixa e ganha brilho quando você encosta ou quando está gravando. O piano continua na faixa de `56 px` e a barra de ações em `12 px`; o botão novo fica em `8 px` no canto, fora dos dois. No Gear VR ele é desligado.
+
+🟢 Pode mexer: `index.html` (botão), `src/app.css` (posição e discretude) e `src/app.js` (texto e ação do botão). 🟡 Meça e teste: `npm test` **265/265**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o encaixe visual no Realme C67 ainda **não foi medido** — confira em tela cheia com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o piano, a barra de ações, os botões antigos do painel e da barra flutuante, o MP4 (que não desenha botões HTML) e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Inverter e Preto e branco com fundo próprio (cache v82)
+
+Antes os dois efeitos valiam para o quadro inteiro. Agora cada um tem um fundo e um interior:
+
+- **Inverter:** o fundo fora dos blobs fica **preto** (como no Pontilhado) e só a união dos blobs recebe o vídeo invertido. É como recortar o negativo com uma tesoura e colar só esse pedaço sobre uma folha preta.
+- **Preto e branco:** o fundo mostra o **vídeo em cinza** (sem o contraste exagerado) e, dentro dos blobs, o cinza fica bem mais contrastado (`contrast(6)` em vez de `4`). A pessoa continua aparecendo, mas com contorno mais firme.
+
+O recorte é a mesma união de retângulos dos blobs usada pelo Pontilhado, e o MP4 grava exatamente o que aparece: base + overlay. O botão **Inverter vídeo** continua valendo como negativo extra dentro da janela; nos dois efeitos ele troca a polaridade do que está dentro dos blobs.
+
+🟢 Pode mexer: `src/render/render.js` (fundo, filtro e passada recortada) e `src/app.js` (shader de fundo). 🟡 Meça e teste: `npm test` **264/264**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o resultado visual no Realme C67 ainda **não foi medido** — compare os três efeitos no aparelho. 🔴 Contrato congelado: o Pontilhado segue com fundo preto e pontos pretos (ou o negativo com Inverter), o rastreador, a reatividade e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Ritmo BlobTrack virou gota d’água (cache v81)
 

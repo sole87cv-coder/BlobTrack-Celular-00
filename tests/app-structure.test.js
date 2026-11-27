@@ -27,8 +27,9 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(!app.includes('bayer8'));
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
+  assert.ok(app.includes('if(uEffect==0){rgb=vec3(0.0);}'));
+  assert.ok(app.includes('else if(uEffect==1){rgb=vec3(dot(rgb,vec3(.299,.587,.114)));}'));
   assert.ok(app.includes('else if(uEffect==2){rgb=vec3(0.0);}'));
-  assert.ok(app.includes('float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
   assert.ok(render.includes('const STIPPLE_LEVELS = 12;'));
@@ -50,7 +51,17 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes("state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect === 'dither' ? 2 : 3"));
   assert.ok(!render.includes("state.effect === 'dither') return;"));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
-  assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));
+  assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied, filter)'));
+});
+
+test('Inverter e Preto e branco pintam só os blobs sobre o fundo próprio', async () => {
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  assert.ok(render.includes("if (state.effect === 'dither' || state.effect === 'invert')"));
+  assert.ok(render.includes("fallbackContext.filter = state.effect === 'threshold' ? 'grayscale(1)' : 'none';"));
+  assert.ok(render.includes("const styled = (state.effect === 'invert' || state.effect === 'threshold') && result.blobs?.length > 0;"));
+  assert.ok(render.includes("const filter = state.effect === 'invert' ? 'invert(1)' : 'grayscale(1) contrast(6)';"));
+  assert.ok(render.includes('forcedFilter = null'));
+  assert.ok(render.includes('const forced = forcedFilter ? `${forcedFilter}${invertPart}` : null;'));
 });
 
 test('Pacote 2 compartilha o readback e atualiza textura e máscara sem realocar', async () => {
@@ -81,7 +92,7 @@ test('Vídeo original ligado aplica efeito na janela; Pontilhado não usa janela
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const enableEffect = state.originalVideoWindows || state.videoBlend > 0;'));
   assert.ok(render.includes("const filter = (effectPart + invertPart).trim() || 'none';"));
-  assert.ok(render.includes('if (state.videoWindows && !dotted) {'));
+  assert.ok(render.includes('if (state.videoWindows && !dotted && !styled) {'));
   assert.ok(render.includes('// Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.'));
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('Ligado: aplica o efeito na janela; desligado: vídeo cru dentro do blob'));
@@ -132,7 +143,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v81'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v84'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -251,4 +262,38 @@ test('Tom base keyboard mirrors the eight selectable keys without bypassing audi
   assert.ok(app.includes("dispatchEvent(new Event('change',{bubbles:true}))"));
   const changeHandler = app.indexOf("$('audioKey').addEventListener('change'");
   assert.ok(app.slice(changeHandler, changeHandler + 200).includes('syncAudioKey()'));
+});
+
+test('Tela cheia tem um botão discreto de gravar/parar/salvar fora do piano', async () => {
+  const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+  const css = await readFile(new URL('../src/app.css', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.ok(html.includes('class="stage-record-footer" id="recordFooterButton"'));
+  assert.ok(html.includes('id="recordFooterIcon"'));
+  assert.ok(html.includes('id="recordFooterLabel"'));
+  assert.ok(html.includes('id="recordFooterTime"'));
+  assert.ok(css.includes('.stage-record-footer {'));
+  assert.ok(css.includes('right:10px;bottom:calc(8px + var(--safe-bottom));'));
+  assert.ok(css.includes('body.fullscreen-active .stage-record-footer:not([hidden]),'));
+  assert.ok(css.includes('html:fullscreen body:not(.gear-vr) .stage-record-footer:not([hidden])'));
+  assert.ok(css.includes('body.gear-vr .stage-record-footer { display:none!important }'));
+  assert.ok(app.includes('const readyToSave = !recording && Boolean(pendingRecording);'));
+  assert.ok(app.includes("$('recordFooterLabel').textContent = readyToSave ? 'Salvar' : recording ? 'Parar' : 'Gravar';"));
+  assert.ok(app.includes('function toggleFooterRecording()'));
+  assert.ok(app.includes("$('recordFooterButton').addEventListener('click', toggleFooterRecording);"));
+});
+
+test('Tela cheia comum segue o giro do celular; só Gear VR trava em paisagem', async () => {
+  const css = await readFile(new URL('../src/app.css', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
+  assert.ok(app.includes('async function exitFullscreen(){'));
+  assert.ok(app.includes('try{ screen.orientation?.unlock?.(); }catch{}'));
+  assert.ok(app.includes("async function enterFullscreen(orientation=null){"));
+  assert.ok(app.includes('if(orientation && screen.orientation?.lock) screen.orientation.lock(orientation).catch(()=>{});'));
+  assert.ok(app.includes("if(persist)enterFullscreen('landscape');"));
+  assert.ok(!app.includes("enterFullscreen('portrait')"));
+  assert.ok(!app.includes("function enterFullscreen(orientation='portrait')"));
+  assert.ok(css.includes('@media (orientation:landscape) {'));
+  assert.ok(css.includes('@media (orientation:landscape) and (max-height:520px) {'));
+  assert.ok(css.includes('  .stage-record-footer { right:calc(min(320px,26vw) + 22px) }'));
 });

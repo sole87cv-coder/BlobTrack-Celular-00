@@ -405,7 +405,7 @@ export function createRender({
     return drawn;
   }
 
-  function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}) {
+  function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}, forcedFilter = null) {
     if (!source?.videoWidth || !blobs.length) return;
     c.save();
     const effectFilter =
@@ -418,6 +418,9 @@ export function createRender({
     const enableEffect = state.originalVideoWindows || state.videoBlend > 0;
     const effectPart = enableEffect ? effectFilter : '';
     const filter = (effectPart + invertPart).trim() || 'none';
+    // Os estilos Inverter e Preto e branco pintam o vídeo dentro dos blobs mesmo
+    // com "Janela viva" desligada; aí o filtro vem da composição, não da janela.
+    const forced = forcedFilter ? `${forcedFilter}${invertPart}` : null;
     c.beginPath();
     let clipLeft = Infinity, clipTop = Infinity, clipRight = -Infinity, clipBottom = -Infinity;
     let visibleRects = 0;
@@ -497,6 +500,14 @@ export function createRender({
         c.restore();
       }
     };
+    if (forced) {
+      c.save();
+      c.filter = forced;
+      drawSource();
+      c.restore();
+      c.restore();
+      return;
+    }
     c.save();
     // Com videoBlend === 0 e filtro ativo, a segunda passada já desenha o quadro final.
     if (!(filter !== 'none' && state.videoBlend === 0)) drawSource();
@@ -551,8 +562,8 @@ export function createRender({
     const useFallback = !gl || !glProgram || ((typeof forceFallback === 'function' && forceFallback()) && fallbackContext);
     if (useFallback) {
       if (fallbackContext) {
-        if (state.effect === 'dither') {
-          // Fundo preto: o vídeo não entra; os pontos (e o papel do blob) vivem no overlay.
+        if (state.effect === 'dither' || state.effect === 'invert') {
+          // Fundo preto: Pontilhado e Inverter só pintam dentro dos blobs, no overlay.
           fallbackContext.save();
           fallbackContext.filter = 'none';
           fallbackContext.fillStyle = '#000';
@@ -562,10 +573,8 @@ export function createRender({
           const frameWidth = source.videoWidth || source.width;
           const frameHeight = source.videoHeight || source.height;
           fallbackContext.save();
-          // Paridade com o shader: Inverter e Preto e branco agora valem no quadro todo.
-          fallbackContext.filter = state.effect === 'invert' ? 'invert(1)'
-            : state.effect === 'threshold' ? 'grayscale(1) contrast(4)'
-              : 'none';
+          // Preto e branco: o fundo é o vídeo em cinza; o contraste alto vive no overlay.
+          fallbackContext.filter = state.effect === 'threshold' ? 'grayscale(1)' : 'none';
           const eyes = state.gearVr ? 2 : 1;
           const eyeWidth = canvas.width / eyes;
           for (let eye = 0; eye < eyes; eye++) {
@@ -861,7 +870,8 @@ export function createRender({
     // Nada a pintar: só limpa se o quadro anterior deixou algo no overlay.
     const reactive = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
     const dotted = state.effect === 'dither';
-    const needsDrawing = dotted || state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
+    const styled = (state.effect === 'invert' || state.effect === 'threshold') && result.blobs?.length > 0;
+    const needsDrawing = dotted || styled || state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
     if (!needsDrawing) {
       if (overlayDirty) {
         c.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -936,8 +946,13 @@ export function createRender({
           drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
         }
       }
+      // Inverter e Preto e branco pintam o vídeo só dentro dos blobs, por cima do fundo.
+      if (styled) {
+        const filter = state.effect === 'invert' ? 'invert(1)' : 'grayscale(1) contrast(6)';
+        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied, filter);
+      }
       // Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.
-      if (state.videoWindows && !dotted) {
+      if (state.videoWindows && !dotted && !styled) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;

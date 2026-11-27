@@ -143,7 +143,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v81',
+    cacheVersion: 'blobtrack-celular-00-v84',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -413,7 +413,7 @@ void main(){ vUv=(aPosition+1.0)*0.5; gl_Position=vec4(aPosition,0.0,1.0); }`;
 const fragmentSource = `#version 300 es
 precision highp float; uniform sampler2D uTexture; uniform int uEffect; uniform float uThreshold; uniform float uBias; uniform float uExposure; uniform float uGrowth; uniform float uSpeed; uniform float uTime; uniform float uImageAspect; uniform float uViewportAspect; uniform bool uFlip; uniform bool uMirror; uniform bool uFit; in vec2 vUv; out vec4 outColor;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror!=uFlip)uv.x=1.0-uv.x;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=1.0-rgb;}else if(uEffect==1){float t=clamp(uThreshold+uBias*.14,0.0,1.0);float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));}else if(uEffect==2){rgb=vec3(0.0);}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
+void main(){vec2 uv=vUv;if(uFit){if(uImageAspect>uViewportAspect){float contentHeight=uViewportAspect/uImageAspect;if(abs(vUv.y-.5)>contentHeight*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.y=(vUv.y-.5)/contentHeight+.5;}else{float contentWidth=uImageAspect/uViewportAspect;if(abs(vUv.x-.5)>contentWidth*.5){outColor=vec4(0.0,0.0,0.0,1.0);return;}uv.x=(vUv.x-.5)/contentWidth+.5;}}else if(uImageAspect>uViewportAspect)uv.x=(uv.x-.5)*(uViewportAspect/uImageAspect)+.5;else uv.y=(uv.y-.5)*(uImageAspect/uViewportAspect)+.5;if(uMirror!=uFlip)uv.x=1.0-uv.x;vec4 c=texture(uTexture,uv);float l=dot(c.rgb,vec3(.299,.587,.114));float w=clamp(uExposure*.22+uGrowth*.16,0.0,.45);vec3 rgb=clamp(c.rgb*(1.0+w),0.0,1.0);if(uEffect==0){rgb=vec3(0.0);}else if(uEffect==1){rgb=vec3(dot(rgb,vec3(.299,.587,.114)));}else if(uEffect==2){rgb=vec3(0.0);}float pulse=1.0+0.012*sin(uTime*min(8.0,1.0+uSpeed*.02));outColor=vec4(clamp(rgb*pulse,0.0,1.0),1.0);}`;
 function shader(type, source) { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
 function initRenderer() {
   if (!gl) { $('renderInfo').textContent = fallbackContext ? 'Canvas 2D · modo leve' : 'Renderização indisponível'; return Boolean(fallbackContext); }
@@ -813,6 +813,19 @@ function updateRecordingControls(snapshot) {
   $('recordButtonTime').hidden = !recording;
   $('recordButtonPanel').textContent = recording ? label : 'Gravar vídeo';
 
+  // Botão único da base em tela cheia: um controle para as três ações.
+  const footer = $('recordFooterButton');
+  const readyToSave = !recording && Boolean(pendingRecording);
+  footer.hidden = !supported;
+  footer.disabled = disabled;
+  footer.title = readyToSave ? 'Salvar ou compartilhar gravação' : title;
+  footer.setAttribute('aria-label', readyToSave ? 'Salvar ou compartilhar gravação' : label);
+  footer.setAttribute('aria-pressed', String(recording));
+  $('recordFooterIcon').textContent = readyToSave ? '↓' : recording ? '●' : '○';
+  $('recordFooterLabel').textContent = readyToSave ? 'Salvar' : recording ? 'Parar' : 'Gravar';
+  $('recordFooterTime').textContent = time;
+  $('recordFooterTime').hidden = !recording;
+
   const indicator = $('recordIndicator');
   indicator.hidden = !recording;
   indicator.classList.toggle('paused', snapshot.state === 'paused');
@@ -935,6 +948,12 @@ $('sessionSaveButton').addEventListener('click',()=>$('recordSaveButtonPanel').c
 function toggleRecordingPause(){const changed=recordingSnapshot.state==='recording'?recorder.pause():recordingSnapshot.state==='paused'?recorder.resume():false;if(!changed)showToast('Pausa indisponível neste estado.');}
 $('sessionPauseButton').addEventListener('click',toggleRecordingPause);$('quickPauseButton').addEventListener('click',toggleRecordingPause);
 ['recordSaveButton', 'recordSaveButtonPanel'].forEach(id => $(id).addEventListener('click', savePendingRecording));
+function toggleFooterRecording(){
+  if (recordingSnapshot.state === 'saving' || recordingSnapshot.state === 'stopping') return;
+  if (pendingRecording && !['recording', 'paused'].includes(recordingSnapshot.state)) { void savePendingRecording(); return; }
+  void toggleRecording();
+}
+$('recordFooterButton').addEventListener('click', toggleFooterRecording);
 $('instagramShareButton').addEventListener('click', async () => {
   if (!pendingRecording || recordingSnapshot.state === 'saving') return;
   const result = pendingRecording;
@@ -1152,14 +1171,17 @@ $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{con
 function isFullscreen(){return Boolean(document.fullscreenElement||document.webkitFullscreenElement);}
 async function exitFullscreen(){
   try{ if(document.exitFullscreen) await document.exitFullscreen(); else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch{}
+  // O Gear VR travou em paisagem; ao sair, devolve a orientação ao aparelho.
+  try{ screen.orientation?.unlock?.(); }catch{}
 }
-async function enterFullscreen(orientation='portrait'){
+async function enterFullscreen(orientation=null){
   try{
     const el=document.documentElement;
     if(el.requestFullscreen) await el.requestFullscreen({navigationUI:'hide'});
     else if(el.webkitRequestFullscreen) await el.webkitRequestFullscreen();
     else { showToast(isAppleMobile && !isStandaloneApp ? 'No Safari do iPhone, use Compartilhar → Adicionar à Tela de Início para abrir em tela cheia.' : 'Tela cheia não suportada neste navegador'); return; }
-    if(screen.orientation?.lock) screen.orientation.lock(orientation).catch(()=>{});
+    // Só trava quando o chamador pede (Gear VR). Tela cheia comum segue o giro do celular.
+    if(orientation && screen.orientation?.lock) screen.orientation.lock(orientation).catch(()=>{});
   }catch{ showToast(isAppleMobile && !isStandaloneApp ? 'No iPhone, adicione o BlobTrack à Tela de Início para abrir sem as barras do Safari.' : 'Tela cheia não suportada aqui'); }
 }
 async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : await enterFullscreen(); }

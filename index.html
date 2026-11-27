@@ -90,6 +90,11 @@
             <button type="button" class="audio-key" data-audio-key="11" aria-pressed="false" aria-label="Si (B)">B</button>
           </div>
         </div>
+        <!-- Controle discreto na base da tela cheia: Gravar -> Parar -> Salvar. -->
+        <button class="stage-record-footer" id="recordFooterButton" type="button"
+          aria-label="Iniciar gravação" aria-pressed="false" title="Gravar o palco">
+          <span class="record-footer-icon" id="recordFooterIcon" aria-hidden="true">○</span><span id="recordFooterLabel">Gravar</span><span class="record-footer-time" id="recordFooterTime" hidden>00:00</span>
+        </button>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
 

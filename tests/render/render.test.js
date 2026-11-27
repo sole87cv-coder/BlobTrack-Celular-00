@@ -666,13 +666,15 @@ test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
   }
 });
 
-test('Fallback 2D aplica Inverter e Preto e branco no quadro todo', () => {
+test('Fallback 2D mantém fundo preto no Inverter e vídeo cinza no Preto e branco', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
-  for (const [effect, expected] of [['invert', 'invert(1)'], ['threshold', 'grayscale(1) contrast(4)']]) {
-    const filters = [];
+  const run = effect => {
+    const filters = [], fills = [];
+    let images = 0;
     const c = {
       filter: '', fillStyle: '',
-      save() {}, restore() {}, fillRect() {}, drawImage() {},
+      save() {}, restore() {}, drawImage() { images++; },
+      fillRect(...args) { fills.push([...args, c.fillStyle]); },
       beginPath() {}, rect() {}, clip() {}, translate() {}, scale() {},
     };
     Object.defineProperty(c, 'filter', { get() { return ''; }, set(value) { filters.push(value); } });
@@ -685,8 +687,54 @@ test('Fallback 2D aplica Inverter e Preto e branco no quadro todo', () => {
       gridPoint: new Float32Array(2),
     });
     render.renderFrame({}, video);
-    assert.ok(filters.includes(expected), effect);
-  }
+    return { filters, fills, images };
+  };
+  const invert = run('invert');
+  assert.ok(invert.fills.some(([, , width, height, color]) => width === 320 && height === 240 && color === '#000'));
+  assert.ok(!invert.filters.includes('invert(1)'));
+  assert.equal(invert.images, 0, 'o vídeo entra só no overlay, dentro dos blobs');
+  const threshold = run('threshold');
+  assert.ok(threshold.filters.includes('grayscale(1)'));
+  assert.ok(!threshold.filters.includes('grayscale(1) contrast(4)'));
+  assert.ok(threshold.images > 0, 'o fundo mostra o vídeo em cinza');
+});
+
+test('Inverter e Preto e branco pintam o vídeo recortado aos blobs no overlay', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  const blobs = [{ left: .2, top: .2, right: .5, bottom: .5 }];
+  const run = (effect, invertBlend = false) => {
+    const filters = [];
+    let images = 0, clips = 0;
+    const c = {
+      globalAlpha: 1, lineWidth: 1, strokeStyle: '', fillStyle: '', font: '',
+      clearRect() {}, save() {}, restore() {}, scale() {},
+      beginPath() {}, rect() {}, clip() { clips++; },
+      translate() {}, drawImage() { images++; },
+      strokeRect() {}, fillText() {},
+    };
+    Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { filters.push(value); } });
+    const state = makeState({ effect, videoWindows: false, invertBlend, lastSignal: null, timing: {} });
+    const render = createRender({
+      state, video, overlayContext: c,
+      overlayCanvas: { width: 320, height: 240 },
+      stageViewport: { width: 320, height: 240 },
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+      gridPoint: new Float32Array(2),
+    });
+    render.drawMaskOverlay({ blobs, width: 180, height: 180 }, video, {});
+    return { filters, images, clips };
+  };
+  const inverted = run('invert');
+  assert.equal(inverted.images, 1);
+  assert.deepEqual(inverted.filters, ['invert(1)']);
+  assert.ok(inverted.clips > 0, 'o recorte dos blobs foi aplicado');
+  const mono = run('threshold');
+  assert.equal(mono.images, 1);
+  assert.deepEqual(mono.filters, ['grayscale(1) contrast(6)']);
+  const negated = run('threshold', true);
+  assert.deepEqual(negated.filters, ['grayscale(1) contrast(6) invert(1)']);
 });
 
 test('malha desenha todas as linhas com um único stroke', () => {
