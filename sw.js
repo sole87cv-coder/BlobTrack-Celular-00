@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'blobtrack-celular-00-';
-const CACHE = 'blobtrack-celular-00-v71';
+const CACHE = 'blobtrack-celular-00-v72';
 const SHELL = [
   './index.html', './manifest.webmanifest', './src/app.css', './src/app.js',
   './src/blob-tracker.js', './src/domain/blobTrackerCore.js', './src/video-crop.js', './src/audio-processor.js', './src/recorder.js',

@@ -543,7 +543,10 @@ export function createRender({
           const frameWidth = source.videoWidth || source.width;
           const frameHeight = source.videoHeight || source.height;
           fallbackContext.save();
-          fallbackContext.filter = 'none'; // invert/threshold vivem nas janelas.
+          // Paridade com o shader: Inverter e Preto e branco agora valem no quadro todo.
+          fallbackContext.filter = state.effect === 'invert' ? 'invert(1)'
+            : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+              : 'none';
           const eyes = state.gearVr ? 2 : 1;
           const eyeWidth = canvas.width / eyes;
           for (let eye = 0; eye < eyes; eye++) {
@@ -606,7 +609,10 @@ export function createRender({
     }
     state.timing.camera = performance.now() - t0;
     gl.uniform1i(uniforms.uTexture, 0);
-    gl.uniform1i(uniforms.uEffect, state.effect === 'dither' ? 2 : 3);
+    gl.uniform1i(
+      uniforms.uEffect,
+      state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect === 'dither' ? 2 : 3
+    );
 
     gl.uniform1f(uniforms.uThreshold, .5 + applied.threshold);
     gl.uniform1f(uniforms.uBias, state.bias);

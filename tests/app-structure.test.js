@@ -40,7 +40,7 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(!render.includes('DOT_RADIUS_SQ'));
   assert.ok(!render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
   assert.ok(!render.includes('getHalftoneFrame'));
-  assert.ok(render.includes("uniforms.uEffect, state.effect === 'dither' ? 2 : 3"));
+  assert.ok(render.includes("state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect === 'dither' ? 2 : 3"));
   assert.ok(!render.includes("state.effect === 'dither') return;"));
   assert.ok(app.includes('drawMaskOverlay(result, source, applied)'));
   assert.ok(render.includes('drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied)'));

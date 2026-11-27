@@ -558,6 +558,58 @@ test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
   assert.ok(calls.some(([name, , , , , , , source]) => name === 'texSubImage2D' && source === video));
 });
 
+test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
+  const uniforms = Object.fromEntries([
+    'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
+    'uImageAspect', 'uViewportAspect', 'uMirror', 'uFlip', 'uFit',
+  ].map(name => [name, name]));
+  const program = {}, texture = {};
+  const video = { videoWidth: 640, videoHeight: 360 };
+  for (const [effect, expected] of [['invert', 0], ['threshold', 1], ['dither', 2], ['plain', 3]]) {
+    const calls = [];
+    const gl = {
+      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TRIANGLE_STRIP: 4,
+      useProgram() {}, bindTexture() {}, texImage2D() {}, texSubImage2D() {},
+      uniform1i(name, value) { calls.push([name, value]); },
+      uniform1f() {}, viewport() {}, drawArrays() {},
+    };
+    const render = createRender({
+      state: makeState({ effect, timing: {} }), video, gl,
+      glState: { program, texture, uniforms },
+      canvas: { width: 320, height: 240 },
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+      gridPoint: new Float32Array(2),
+    });
+    render.renderFrame({}, video);
+    assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === expected), effect);
+  }
+});
+
+test('Fallback 2D aplica Inverter e Preto e branco no quadro todo', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  for (const [effect, expected] of [['invert', 'invert(1)'], ['threshold', 'grayscale(1) contrast(8)']]) {
+    const filters = [];
+    const c = {
+      filter: '', fillStyle: '',
+      save() {}, restore() {}, fillRect() {}, drawImage() {},
+      beginPath() {}, rect() {}, clip() {}, translate() {}, scale() {},
+    };
+    Object.defineProperty(c, 'filter', { get() { return ''; }, set(value) { filters.push(value); } });
+    const render = createRender({
+      state: makeState({ effect, timing: {} }), video, fallbackContext: c,
+      canvas: { width: 320, height: 240 },
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+      gridPoint: new Float32Array(2),
+    });
+    render.renderFrame({}, video);
+    assert.ok(filters.includes(expected), effect);
+  }
+});
+
 test('malha desenha todas as linhas com um único stroke', () => {
   const state = makeState({ meshEffect: true, timing: {} });
   const blobViewPoints = new Float32Array(24);
