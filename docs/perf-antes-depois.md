@@ -79,6 +79,36 @@ Enviada pelo V1su4rt; cenário não declarado e `recordingState: idle`. Realme C
 
 **Leitura:** o orçamento de 30 FPS é `33,3 ms`; o p50 medido já é `39,8 ms`. Os efeitos reativos juntos somam `3,6 ms` de p50 (`estipple 0,7 + renderWebGL 0,2 + overlay 0,6 + composicao 1,8 + janelas 0,3`), e áudio/gravação `0,2 ms` — descartados como causa principal. O `readback` responde sozinho por ~57% do p50 dos long tasks e ~69% do p95. A largura de análise já estava no mínimo `160` e mesmo assim o readback continuou em `31,7 ms`: reduzir mais a resolução da análise não é a alavanca. O gatilho foi `low-fps`, não `render-budget` (render p95 `0,7 ms` muito abaixo de `13,33 ms`). Causa **provada**: gargalo no caminho síncrono de leitura de pixels. Causa **ainda não provada**: se o custo está no `drawImage` (cópia GPU→CPU) ou no `getImageData` — é o que `readbackDraw`/`readbackPixels` vão separar na `v65`.
 
+### Segunda amostra em aparelho físico (v65, 27/11/2026)
+
+Também enviada pelo V1su4rt, `recordingState: idle`, perfil `alto`. `fps: 15,4`, `trackingWidth: 240`, análise `240×427`, câmera/frame `540×960`, `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`.
+
+| Etapa | p50 (ms) | p95 (ms) | máx (ms) |
+|---|---:|---:|---:|
+| captura | 1,3 | 2,3 | 12,4 |
+| readback | 40,3 | 55,81 | 116,1 |
+| **readbackDraw** | **0,1** | **0,3** | **2,2** |
+| **readbackPixels** | **40,0** | **55,705** | **116,0** |
+| analise | 10,1 | 14,32 | 52,2 |
+| estipple | 0,8 | 1,2 | 3,7 |
+| renderWebGL | 0,2 | 0,4 | 3,1 |
+| overlay | 0 | 0 | 0,2 |
+| composicao | 2,3 | 3,405 | 6,8 |
+| janelas | 0,3 | 0,7 | 2,2 |
+| audio | 0,1 | 0,2 | 1,4 |
+| gravacao | 0,1 | 0,2 | 2,1 |
+| **soma dos p50** | **55,5** | — | — |
+
+`longTasks`: 1200 em 1200 quadros, p50 `59 ms`, p95 `77 ms`, máx `162 ms`. `gc`: nenhum. Memória: `9,537 MB` constante.
+
+**Veredito:** a cópia para o canvas de análise custa `0,1 ms`; todo o custo está no `getImageData` (`40 ms` = 99% do `readback`). A soma dos p50 (`54,7 ms`) explica os `15,4 FPS` e o gatilho `low-fps`. Efeitos juntos são `3,6 ms`; áudio e gravação, `0,2 ms`. A hipótese anterior de que o `drawImage` era o gargalo está **descartada por medição**. O que ainda não está provado é se os `40 ms` vêm da sincronização GPU→CPU do `frameCanvas` — que também é textura do WebGL — ou do `getImageData` em si.
+
+### Experimento da v66 — uma mudança, reversível
+
+O `ctx.drawImage(source, ...)` de `analyze()` passou a ser `ctx.drawImage(video, ...)`: o tracker lê direto do vídeo no tamanho da análise, sem passar pelo `frameCanvas` que o WebGL atualiza por `texSubImage2D`. O render continua com `source` (`render.renderFrame(applied, source)`), então a imagem e os efeitos seguem o mesmo quadro capturado. Nenhum efeito, ID, áudio, gravação ou limite de resolução foi alterado.
+
+Para aceitar: `readbackPixels` cair de forma clara e `fps` subir sem que `captura` ou `renderWebGL` subam o suficiente para compensar. Para rejeitar: `git revert` do commit `v66` e seguir para a hipótese de leitura em WebGL (`gl.readPixels` em alvo pequeno) — ainda não implementada. **A v66 não tem medição em aparelho até o V1su4rt enviar um novo JSON.**
+
 ### Fase 2 — matriz de ablação para o V1su4rt
 
 Rode cada linha no Realme C67 com `?perf=1`. Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.

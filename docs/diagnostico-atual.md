@@ -231,4 +231,10 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Ainda não provado:** se os `31,7 ms` estão no `drawImage` para o canvas de análise ou no `getImageData`. A `v65` separa as duas etapas e acrescenta `fps`/`trackingWidth` ao JSON. Nenhuma mudança de comportamento foi aplicada: somente instrumentação.
 - Detalhes e tabela completa em [`perf-antes-depois.md`](perf-antes-depois.md).
 
-- **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável) e só será resolvido depois que a matriz de ablação da FASE 2 trouxer números do celular. Nenhum número de aparelho foi coletado até aqui.
+## 18. Segunda medição e primeiro experimento (v65 → v66, 27/11/2026)
+
+- Segundo JSON do Realme C67: `fps: 15,4`, `trackingWidth: 240`, análise `240×427`, `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`, gravação inativa.
+- `readbackDraw` p50 `0,1 ms` contra `readbackPixels` p50 `40 ms`: a hipótese do `drawImage` caro está **descartada**. O custo está inteiro no `getImageData`. Soma dos p50 `55,5 ms`; `longTasks` em 1200 de 1200 quadros, p50 `59 ms`.
+- A largura subiu de `160` para `240` entre as duas amostras e o `readback` piorou de `31,7` para `40,3 ms`: o controlador de qualidade está ajustando a variável errada. Isso será tratado depois do experimento da leitura, uma mudança por vez.
+- **v66 (experimento único, sem tocar em reatividade):** `analyze()` passou a desenhar do vídeo no canvas de análise (`ctx.drawImage(video, 0, 0, width, height)`) em vez de desenhar do `frameCanvas`, que é a textura do WebGL. Render, efeitos, rastreador, IDs, áudio e gravação permanecem iguais. Resultado em aparelho ainda **não medido**; se piorar, `git revert`.
+- **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável) e só será resolvido depois que a matriz de ablação da FASE 2 trouxer números de gravação/salvamento do celular.
