@@ -292,3 +292,10 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **FPS: 21,65** (contra `23,6` sem Pontilhado e `23,35` na v70). Continua abaixo da meta de 24–30 FPS. **Não há base para culpar o Pontilhado pela queda**: `estipple` p50 `0,8 ms` / p95 `1,5 ms`. O gargalo segue no pixel: `readback` p50 `45,8 ms` / p95 `65,78 ms`, `readbackPixels` p50 `45,4 ms`, `analise` p50 `9,3 ms`, `longTasks` p50 `66 ms` / p95 `90,6 ms`. Série de p50 do `readbackPixels`: `17,4 / 22,0 / 44,1 / 50,2 / 45,4 ms` — variação alta, causa não provada.
 - **Segunda separação do salvamento:** `salvamentoMs: 4889,8`, `seletorMs: 3057` (~62%), `escritaMs: 1832,1` (~38%), `saveEnd` `0,7 ms` depois de `saveWrite`. Confirma o padrão da coleta anterior: o diálogo do Android domina o total e a escrita do arquivo vem depois.
 - A coleta tem 949 quadros — ainda não é teste de 2 min nem de 30 min. Faltam rotação, segundo plano 5 s e volta, 30 min sem travamento, aviso discreto nunca aparecer, `effectsPaused` sempre `false`, e o `y`/`N` final do dono dizendo qual passo falhou.
+
+## 26. Encerramento da validação e nova frente
+
+- Em 27/11/2026 o V1su4rt respondeu **"está bom pode fechar"**, equivalente ao `y` combinado. A frente de fluidez/reatividade está encerrada por decisão dele.
+- **Não foi informado** quais dos passos longos (2 min contínuos, rotação, segundo plano 5 s, 30 min) foram executados de fato. Registrar apenas o aceite para fechar; não afirmar medição ou teste manual que não foi relatado.
+- Os números válidos que ficam como linha de base são os das três coletas limpas: `fps` `23,35` / `23,6` / `21,65`, `readback` p50 `44,4` / `50,6` / `45,8 ms`, `estipple` p50 `0,8 ms` na coleta com Pontilhado, e salvamento `4384,4` / `4889,8 ms` com `seletorMs` dominando (~61–62%).
+- Próxima frente, prioridade do dono: aprimorar **Pontilhado**, **Preto e branco** e **Inverter** sem comprometer desempenho. Diagnóstico separado em `docs/perf-antes-depois.md`; nenhuma mudança de runtime foi feita nesta seção.
