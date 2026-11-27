@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v84`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v89`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -136,7 +136,9 @@ O passo a passo completo, com os resultados medidos no emulador e o que ainda de
 
 ### Manual de manutenção para quem está começando
 
-Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à vontade, outros mudam o sabor inteiro e alguns são a própria panela — se você mexer neles, a receita para de funcionar. Este guia é o seu semáforo. A regra de ouro é **mudar uma coisa pequena por vez e rodar os testes antes de seguir em frente**.
+Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à vontade, outros mudam o sabor inteiro e alguns são a própria panela — se você mexer neles, a receita para de funcionar. Este guia é o seu semáforo.
+
+**Regra de ouro:** *mude uma coisa pequena por vez, prove antes de seguir e anote honestamente o que mediu.* Em linguagem de todo dia: não mexa em cinco temperos de uma vez, porque se o prato ficar ruim você não sabe qual culpado. Troque um, rode os testes, olhe o resultado, só então troque o próximo. Se não tem o celular na mão, escreva **não medido** — nunca invente um número de FPS.
 
 #### 🟢 Pode mexer — é seguro e os testes avisam se algo escapou
 
@@ -170,17 +172,55 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 | Estratégia de cache do `sw.js`, `manifest.webmanifest` e ícones | Mexer neles pode impedir a instalação ou o funcionamento offline. Só o número da versão do cache é permitido. |
 | `android/` | É um projeto separado de WebView. Só mexa depois de ler `android/README.md` e saber gerar o APK. |
 
+#### Como manter o app rápido — regra de ouro na prática
+
+O desempenho é como o espaço de uma cozinha pequena: se você deixar tudo espalhado em cima da bancada, cozinhar fica devagar mesmo com um fogão bom. O app repete a mesma operação dezenas de vezes por segundo, então **trabalho repetido dentro do quadro é o inimigo**.
+
+Siga esta ordem sempre que mexer em código que roda no aparelho:
+
+1. **Escolha uma coisa só.** Anote o valor antigo em algum lugar. Exemplo: mudar `STIPPLE_SPACING` de `2` para `3`.
+2. **Consulte o semáforo.** 🟢 pode mexer; 🟡 meça e teste; 🔴 pare e peça ajuda. As tabelas acima dizem onde cada arquivo entra.
+3. **Troque a etiqueta da garrafa.** Se você mexeu em algo que o celular executa, suba o número do cache em `sw.js` e o `cacheVersion` em `src/app.js`. Sem isso, o aparelho continua pegando a garrafa velha do armário — parece que sua mudança “não funcionou”, mas só não foi servida.
+4. **Rode a prova do forno.** Copie e cole na raiz do projeto:
+
+```powershell
+npm test
+node --check src/app.js
+node --check src/render/render.js
+node --check sw.js
+git diff --check
+node scripts/bench-blobtrack.js
+node scripts/bench-blobtrack.js
+node scripts/bench-blobtrack.js
+```
+
+Regra simples: **`npm test` tem que passar inteiro**, `node --check` e `git diff --check` não podem reclamar, e o p95 das três rodadas do bench tem que ficar em ou abaixo de `1,347 ms`. Se uma rodada passar do teto, repita antes de falar em regressão — a máquina tem ruído. O bench mede só o núcleo em Node; não é FPS de celular.
+
+5. **Olhe com os olhos.** Abra `http://localhost:8000`, clique em **Iniciar câmera** e teste exatamente o controle que você mexeu. No Pontilhado, confirme `estipple.n > 0`; com Guias + Distâncias juntos, confira se os números não se encostam; no Recorte, confira se o véu não aparece no MP4.
+6. **Escreva a verdade.** Com câmera real, use `?perf=1` (nunca `&gl=1`) e confira `sondaGl: false` e `glReadback.n: 0`. Sem o aparelho, registre **não medido**. FPS, latência, toque e som só viram afirmação depois de medidos no Realme C67.
+
+**Hábitos que mantêm o quadro leve:**
+
+- Não crie array, gradiente, texto ou leitura de imagem **dentro** do laço de cada quadro. Reutilize o que já existe — o render já guarda gradientes e tabelas para isso.
+- Uma leitura da imagem por quadro, nunca duas. O `analyze()` já compartilha o `getImageData` com o rastreador desde o Pacote 2.
+- A resolução do rastreio (`trackingWidth`) é o principal botão de desempenho. Prefira baixá-la a desligar efeitos para “maquiar” FPS.
+- Os efeitos reativos só são podados no orçamento de gravação com **Todos os efeitos** ligados. Fora dali, desligar efeito para esconder lentidão muda a obra — não é manutenção.
+- Se uma mudança deixou o bench pior, desfaça aquela única mudança (`git restore -- <arquivo>`) e tente outro caminho. Não acumule “só mais um ajuste” em cima de uma regressão.
+- Um commit conta **uma** ideia. Mensagem boa: `fix: Guias e distâncias se acomodam sem sobrepor rótulos (v89)`.
+
 #### Exemplo prático: ajustar o Pointillism
 
 O Pontilhado transforma a **imagem** em pontos: fundo claro fica vazio, e a pessoa ou o prédio aparecem como pontos de tamanhos diferentes. Desde a `v77` o vídeo não entra na composição: fora dos blobs fica **fundo preto**, e dentro deles o papel (branco, ou preto no negativo) recebe os pontos. Isso é o que o MP4 grava. Tudo vive em `src/render/render.js`, na função `drawStipple`:
 
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
-const STIPPLE_SPACING = 3;
+const STIPPLE_SPACING = 2;
 const STIPPLE_LEVELS = 12;
+const STIPPLE_RADIUS_GAMMA = .68;
+const STIPPLE_GRAIN_RATIO = .2;
 ```
 
-O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **12 níveis de tom**. `STIPPLE_SPACING` define a distância entre os pontos; `STIPPLE_LEVELS` define quantos degraus existem entre o pó e o ponto cheio. Desde a `v79` o **tamanho é proporcional à raiz do tom** (área, não raio), então cada degrau escurece o mesmo tanto, e a referência de contraste mistura a média da cena com a média dos 5 vizinhos para a silhueta não sumir num fundo claro. Para pontos maiores, aumente o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **12 níveis de tom**. `STIPPLE_SPACING` é a distância entre os pontos: **menor = mais detalhe**. `STIPPLE_LEVELS` define quantos degraus existem entre o pó e o ponto cheio. Desde a `v85` o raio vem de uma tabela com potência `.68` (mais volume entre grão e massa), cada célula ganha um grão fino e a referência de contraste mistura `65%` da média da cena com `35%` da média dos 5 vizinhos — a silhueta não some num fundo claro. Para pontos menores, diminua o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
 #### Manual dos três efeitos — explicado para um jovem de 16 anos
 
@@ -213,11 +253,13 @@ state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect 
 
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
-const STIPPLE_SPACING = 3;
+const STIPPLE_SPACING = 2;
 const STIPPLE_LEVELS = 12;
+const STIPPLE_RADIUS_GAMMA = .68;
+const STIPPLE_GRAIN_RATIO = .2;
 ```
 
-Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais distância = pontos maiores), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; `blobsClipRect` recorta a união dos blobs e `paintStipple` pinta o papel lá dentro e desenha os pontos no overlay. **Inverter vídeo** virou a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
+Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (**menos distância = mais detalhe e ponto menor**), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v85`, o ponto grande vem da potência `.68` e o grão fino aparece até nos claros — é o volume da imagem. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; `blobsClipRect` recorta a união dos blobs e `paintStipple` pinta o papel lá dentro e desenha os pontos no overlay. **Inverter vídeo** virou a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
 
 **Regras do jogo, para os três efeitos:**
 
@@ -267,6 +309,56 @@ Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é an
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
 
+#### Guias e Distâncias em cantos opostos (cache v89)
+
+Quando você liga **Guias** e **Distâncias** ao mesmo tempo, os números pequenos deixam de competir pelo mesmo lugar. Pense em dois adesivos numa janela: o `123px` continua colado à linha entre dois blobs, e os `01 87%` das seis zonas vão para o canto oposto (inferior direito de cada caixa). O `B12` de cada blob também procura um canto livre. Se ainda assim dois textos se encostarem, o app mede a caixinha de cada um e tenta até quatro posições antes de desistir — é a acomodação automática. Com um efeito só, o desenho continua exatamente como antes.
+
+Isso muda só a pintura no canvas de overlay. O rastreio, o som, o Pontilhado e o Recorte não são tocados. Os números **continuam entrando no MP4** (só o véu do recorte fica fora), e no Gear VR a regra vale para cada olho da imagem lado a lado.
+
+🟢 Pode mexer: `src/render/render.js` e as travas em `tests/`; `index.html`, `src/app.css`, o áudio e o rastreador ficam intactos. 🟡 Meça e teste: `npm test` **279/279**, `node --check`, `git diff --check` e bench 3× com p95 `1,214 / 1,148 / 0,929 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue Guias e Distâncias juntos, veja se os textos não se encostam, repita no Gear VR e salve um MP4 — use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o comportamento com um efeito só, a composição do MP4, o rastreador, a reatividade, o Ritmo, os efeitos de áudio e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Recorte com véu, cantos arrastáveis e número no painel (cache v88)
+
+Pense numa moldura de papelão sobre a mesa: a área dentro do retângulo continua visível, e o resto do palco fica encoberto por um véu escuro. Isso ajuda a enxergar **onde** o rastreio está olhando — o retângulo sempre esteve ativo, mas antes era sutil demais para perceber. O véu é um desenho à parte, colocado sobre o palco como um adesivo: ele **não entra** no PNG nem no MP4, que continuam gravando só a imagem processada e o overlay. O botão **Ver recorte** liga/desliga esse adesivo e a escolha fica salva nas preferências.
+
+Agora dá para ajustar a moldura com o dedo: arraste um dos quatro cantos para enlargar ou encolher a área. A caixa nunca vira linha nem sai da tela. O botão **Limpar retângulos** apaga todos de uma vez e desliga o modo de desenho. No painel de medições, a linha **Recorte · rastreio** mostra o quanto da imagem está dentro da área e quantos blobs caíram nela (por exemplo `32% · 4/7 blobs`); o primeiro número é a cobertura do recorte e o segundo é a contagem de blobs reconhecidos dentro dele.
+
+🟢 Pode mexer: `index.html`, `src/app.css`, `src/core/roiMask.js`, `src/render/render.js`, `src/app.js`, os quatro idiomas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **275/275**, `node --check`, `git diff --check` e bench 3× com p95 `1,144 / 1,170 / 1,167 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue o véu, arraste os quatro cantos, limpe os retângulos, confira o número no painel, salve um MP4 e confirme que o véu não aparece no arquivo — use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: `manualRects` continuam sem persistência (só o botão do véu é salvo), o rastreador, a reatividade, o Pontilhado, o Ritmo, os efeitos de áudio, a composição do MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Eco, Espaço e Chorus com sala, largura e troca limpa (cache v87)
+
+Pense em três controles de som. O **Eco** é a voz voltando depois de um instante — continua igual, com a mesma distância de `240 ms`. O **Espaço** agora é o tamanho da sala: em vez de três toques grudados em `29/41/53 ms`, chegam três reflexos espaçados em `72/113/167 ms`, cada vez mais fracos, e o nível da sala sobe e desce com o movimento do blob. Com a gota do Ritmo ligada, antes quase não dava para ouvir a sala; agora o som fica audível por bem mais tempo. O **Chorus** virou estéreo: o lado direito lê o som com um atraso diferente do esquerdo e o vaivém ficou mais lento e largo (`0,6 Hz`), como duas vozes cantando juntas em vez de uma cópia.
+
+A troca dos botões também ficou suave: cada efeito sobe em cerca de `40 ms` e desce em `80 ms` (sem estalo) e o volume é normalizado quando os três ligam juntos, para não estourar. O Espaço não realimenta mais o buffer do Eco — é um quarto, não um segundo eco. Com os três desligados, o worklet nem lê nem escreve os buffers: é trabalho morto cortado.
+
+🟢 Pode mexer: `src/audio-processor.js` (mistura dos efeitos), as travas em `tests/` e a documentação. 🟡 Meça e teste: `npm test` **272/272**, `node --check`, `git diff --check` e bench 3× com p95 `1,086 / 1,287 / 1,142 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com a gota, o Espaço passou de `56,6%` para `86,7%` de áudio audível; no tom contínuo, o pico subiu de `0,290` para `0,316`. O Chorus passou de diferença `0` entre os canais para `0,02857`; o fade aparece já no primeiro bloco (`0 → 0,0645`) e os buffers ficam parados com os efeitos desligados. **Medido no aparelho: nada.** A conferência no Realme C67 continua pendente: ligue um efeito por vez e depois os três juntos, com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o Ritmo e a gota, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Ritmo BlobTrack separado do tom contínuo (cache v86)
+
+Pense numa torneira pingando do lado de um rádio ligado. Antes, ao abrir a torneira (Ritmo ligado), o rádio (tom contínuo das faixas) continuava tocando junto — o ouvido ouvia as duas coisas e parecia que o ritmo estava misturado. Agora são dois estados bem distintos:
+
+- **Ritmo ligado:** só a gota d’água, gerada pelo movimento do blob. As seis vozes contínuas ficam mudas, então entre uma gota e outra há silêncio de verdade.
+- **Ritmo desligado:** a gota é cortada e fica só o tom contínuo das faixas, seguindo os blobs.
+
+A troca também ficou limpa: ao apertar o botão, o rastro do modo anterior é apagado (delay, chorus e o nível das vozes). Sem isso, o tom demorava cerca de `110 ms` a sumir e o efeito de eco devolvia o som por mais `320 ms`, colando a rádio na torneira. As dicas dos quatro idiomas agora dizem isso no próprio botão.
+
+O relógio do ritmo não mudou: a gota continua nascendo do movimento do blob, sem pausa sorteada, na mesma faixa (Hi/Mid/Low) e com o mesmo ataque de gota d’água.
+
+🟢 Pode mexer: `src/audio-processor.js` (gate das faixas e limpeza na troca), as dicas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **268/268**, `node --check`, `git diff --check` e bench 3× com p95 `1,181 / 0,979 / 1,085 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com blob em movimento, o Ritmo ligado teve pico `0,358` e som audível em `55,8%` do tempo; desligado, pico `0,290` e `99,6%` — ou seja, gota com silêncio entre elas contra tom contínuo. **Medido no aparelho: nada.** A conferência no Realme C67 ainda pendente: alterne o botão **Ritmo BlobTrack** e escute a troca com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o modo legado fora das faixas, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Pontilhado com mais detalhe e volume (cache v85)
+
+Os pontos pareciam bolinhas grandes porque a malha era de `3 px` na amostra: num vídeo 16:9 em tela de celular retrato, o `cover` amplia a imagem cerca de 7 vezes, então cada ponto virava algo em torno de `10 px` no aparelho, com muito espaço entre um e outro. Agora é como trocar uma caneta grossa por uma de ponta fina, sem gastar mais tempo:
+
+- **A — malha fina e poda:** `STIPPLE_SPACING` caiu de `3` para `2`. Cabem mais colunas no quadro, o ponto encolhe e o desenho ganha detalhe. Os pontos fora da tela e fora do recorte dos blobs são descartados antes de entrar no caminho do Canvas, e `Math.min(scaleX,scaleY)` saiu de dentro do laço. Resultado: mais pontos visíveis com **menos** arcos desenhados.
+- **B — volume por tamanho:** o raio deixou a raiz quadrada e passou a potência `.68`, com os 12 valores guardados numa tabela (sem `Math.pow` por ponto). Quem é grande fica bem maior que o pó; o jitter também diminui quando o ponto é grande, como se a mão firme segurasse a caneta na massa e soltasse no detalhe.
+- **C — grão e massa:** toda célula ganha um grão minúsculo (20% do raio máximo), e o ponto de massa entra só quando há tom escuro. É a textura do papel somada à forma — pointillism de verdade, não só um ponto por célula.
+- **D — contraste local:** a referência passou de `75%/25%` para `65%/35%` (cena/vizinhos) e o estiramento de `2,6` para `3`. Claro e escuro se separam melhor, e os tamanhos acompanham essa separação.
+
+Os pontos continuam **pretos formando a imagem** dentro dos blobs, com fundo preto fora eles; o Inverter segue sendo o negativo, e o MP4 continua gravando o overlay. Nenhum novo efeito, nenhuma leitura extra de imagem e nenhuma textura nova.
+
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **267/267**, `node --check`, `git diff --check` e bench 3× com p95 `1,270 / 1,210 / 1,178 ms` (teto `1,347 ms`; rodada anterior `0,981 / 1,193 / 0,990 ms`); o tamanho dos pontos e a sensação de volume no Realme C67 ainda **não foram medidos** — escolha Pontilhado, confira o MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o pointillism não pode virar pontos só na máscara, o rastreador, a reatividade, a gravação e a estratégia do `sw.js` (só o número muda) continuam iguais.
+
 #### Paisagem liberada na tela cheia (cache v84)
 
 Antes, ao entrar em tela cheia, o app mandava o celular ficar em retrato — era como prender a dobradiça da câmera. Agora a tela cheia **acompanha o giro do aparelho**: vire o celular de lado e o palco, o piano, o dock e o botão de gravação se reorganizam sozinhos. O layout de paisagem já estava preparado (barra compacta, piano mais alto, dock lateral em telas largas); só faltava soltar o travamento.
@@ -302,9 +394,9 @@ O recorte é a mesma união de retângulos dos blobs usada pelo Pontilhado, e o 
 
 Pense numa torneira pingando: cada vez que o blob se mexe, cai uma gota. No modo das três faixas, o **movimento do blob abre o pulso**: um blob parado não pinga, e quanto mais ele se mexe, mais rápido vai o pingo (de `58` a `132` gotas por minuto). A nota da gota sai da **mesma faixa** do blob que mais se moveu — topo = Hi, meio = Mid, baixo = Low — e o lado esquerdo/direito escolhe uma das duas notas da dupla. Não há sorteado de nota, de pausa nem de espaçamento: a gota some só quando o blob para.
 
-O som foi trocado de “toque de tambor” por **gota d’água**: começa com um ataque de `3,5 ms` (sem estalo), a altura despenca de cerca de `1,75x` para `0,7x` da nota da faixa em `22 ms` (é o `plop`) e o rastro apaga em `30 ms`. Como a gota é mais curta, o volume dela subiu para ser ouvida por cima do tom contínuo.
+O som foi trocado de “toque de tambor” por **gota d’água**: começa com um ataque de `3,5 ms` (sem estalo), a altura despenca de cerca de `1,75x` para `0,7x` da nota da faixa em `22 ms` (é o `plop`) e o rastro apaga em `30 ms`. Como a gota é mais curta, o volume dela subiu para ser ouvida mesmo com o silêncio entre pingos. Desde a `v86`, ela é o **único** som quando o Ritmo está ligado.
 
-Ao desligar **Ritmo BlobTrack**, a gota é cortada na hora (inclusive a que ainda estava caindo) e sobram apenas as frequências contínuas das faixas, que continuam seguindo os blobs.
+Ao desligar **Ritmo BlobTrack**, a gota é cortada na hora (inclusive a que ainda estava caindo) e sobram apenas as frequências contínuas das faixas, que continuam seguindo os blobs. **Histórico:** até a `v85` as duas coisas tocavam juntas; a `v86` separou os dois estados — veja a seção da `v86`.
 
 🟢 Pode mexer: `src/audio-processor.js` (detecção de movimento, relógio do pulso, ataque/queda da gota e ganho) e as dicas de texto em `src/ui/i18n/`. 🟡 Meça e teste: `npm test` **262/262**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o jeito que a gota soa no Realme C67 ainda **não foi medido** — a conferência no aparelho decide. 🔴 Contrato congelado: o modo legado fora das faixas (com seu beat antigo), `baseFrequency`, o rastreador, a reatividade e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
@@ -316,7 +408,7 @@ Pense numa folha de jornal vista de longe: a foto escura tem pontos grandes e ju
 - `STIPPLE_LEVELS` subiu de `8` para `12`, então a passagem entre claro e escuro tem mais degraus (a "dissolução" fica mais macia, sem aquele salto de tamanho);
 - a referência de contraste mistura `75%` da média da cena com `25%` da média dos 5 vizinhos — é como olhar a foto inteira e, ao mesmo tempo, a esquina que está sendo desenhada. A silhueta fica mais nítida sem pintar o fundo claro de pontos.
 
-Nada disso cria um novo efeito nem mexe na máscara: os pontos continuam formando a **imagem inteira** dentro da união dos blobs, com fundo preto fora dela, e o MP4 grava exatamente esse overlay (com Inverter virando o negativo). A difusão de erro Floyd–Steinberg e o jitter menor na borda continuam iguais.
+Nada disso cria um novo efeito nem mexe na máscara: os pontos continuam formando a **imagem inteira** dentro da união dos blobs, com fundo preto fora dela, e o MP4 grava exatamente esse overlay (com Inverter virando o negativo). A difusão de erro Floyd–Steinberg e o jitter menor na borda continuam iguais. **Histórico:** a `v85` refinou estas regras — o raio passou para potência `.68` e a referência para `65%/35%`; veja a seção da `v85` mais abaixo.
 
 🟢 Pode mexer: só `src/render/render.js` (e as travas de teste). 🟡 Meça e teste: `npm test` **257/257**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms` antes de publicar; o ganho visual no Realme C67 ainda **não foi medido** — a conferência no aparelho é quem decide. 🔴 Contrato congelado: não troque os pontos por máscara, não mude a estratégia de cache do `sw.js` (só o número) e não mexa no rastreador nem na reatividade.
 
@@ -390,11 +482,12 @@ Copie e rode nesta ordem, na raiz do projeto:
 npm test
 node --check src/app.js
 node --check src/render/render.js
+node --check sw.js
 git diff --check
 git status --short
 ```
 
-- `npm test`: são 231 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 279 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
@@ -413,7 +506,7 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v77`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v89`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
 #### Kit de medição — diagnóstico cirúrgico (cache v77)
 
@@ -485,12 +578,13 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções: p95 `1,502`, `1,310` e `1,333 ms`; duas ficaram abaixo do teto e uma acima, sem mudança no núcleo — trate como ruído da máquina e repita antes de falar em regressão. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 222 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções (lote v89): p95 `1,214`, `1,148` e `0,929 ms`, todas abaixo do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 279 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 
 ## Documentação
 
+- [Diagnóstico atual (v85–v89)](docs/diagnostico-atual.md)
 - [Diagnóstico cirúrgico e prioridades](docs/diagnostico-cirurgico.md)
 - [Benchmark e baseline](docs/blobtrack-benchmark.md)
 - [Medições antes/depois e decisões rejeitadas](docs/perf-antes-depois.md)

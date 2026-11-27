@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { createRoiMask } from '../src/core/roiMask.js';
+import { createRoiMask, roiHandleAt, resizeRoiRect } from '../src/core/roiMask.js';
 import { BlobTrackerCore } from '../src/domain/blobTrackerCore.js';
 
 test('sem retângulos, ROI é nula e mantém o quadro inteiro', () => {
@@ -61,6 +61,24 @@ test('ROI exclui blob fora e detecta blob dentro da região', () => {
   assert.ok(result.blobs[0].x > 0.5);
   assert.equal(result.mask[10 * width + 3], 0);
   assert.equal(result.mask[10 * width + 27], 1);
+});
+
+test('canto do retângulo é encontrado só perto da alça', () => {
+  const rect = { x: .2, y: .3, w: .4, h: .25 };
+  assert.equal(roiHandleAt(.2, .3, [rect], .03, .05)?.corner, 'nw');
+  assert.equal(roiHandleAt(.6, .55, [rect], .03, .05)?.corner, 'se');
+  assert.equal(roiHandleAt(.4, .4, [rect], .03, .05), null, 'o meio não é alça');
+});
+
+test('arrastar o canto redimensiona sem virar linha nem sair do palco', () => {
+  const rect = { x: .2, y: .3, w: .4, h: .25 };
+  resizeRoiRect(rect, 'nw', .05, .1);
+  assert.ok(Math.abs(rect.x - .05) < 1e-9 && Math.abs(rect.y - .1) < 1e-9);
+  assert.ok(Math.abs(rect.w - .55) < 1e-9 && Math.abs(rect.h - .45) < 1e-9);
+  resizeRoiRect(rect, 'se', 2, 2);
+  assert.ok(Math.abs(rect.w - .95) < 1e-9 && Math.abs(rect.h - .9) < 1e-9);
+  resizeRoiRect(rect, 'nw', .9, .9);
+  assert.ok(rect.w >= .015 && rect.h >= .015, 'a caixa nunca colapsa');
 });
 
 test('ROI inválida retorna null sem quebrar o tracker', () => {

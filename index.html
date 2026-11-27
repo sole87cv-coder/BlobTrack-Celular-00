@@ -27,6 +27,7 @@
         <video id="camera" playsinline webkit-playsinline muted autoplay aria-hidden="true"></video>
         <canvas id="visual" role="img" aria-label="Imagem processada ao vivo" aria-describedby="visualDescription"></canvas>
         <canvas id="overlay" aria-hidden="true"></canvas>
+        <canvas id="roiVeil" aria-hidden="true"></canvas>
         <p class="stage-credit" aria-hidden="true">@V1su4rt</p>
         <button class="gear-vr-exit" id="gearVrExit" type="button" hidden>Sair do Gear VR</button>
         <canvas id="analysis" aria-hidden="true"></canvas>
@@ -277,11 +278,14 @@
               <button class="pill small" id="backgroundButton" type="button">Reaprender fundo</button>
               <button class="pill small" id="reseedButton" type="button">Reiniciar rastreio</button>
               <button class="pill small" id="rectangleButton" type="button" aria-describedby="rectangleKeyboardHelp">Retângulo</button>
+              <button class="pill small" id="clearRectanglesButton" type="button">Limpar retângulos</button>
+              <button class="pill small active" id="roiVeilButton" type="button" aria-pressed="true">Ver recorte</button>
               <button class="pill small" id="exposureButton" type="button" disabled>Exposição</button>
               <button class="pill small" id="trackDown" type="button">Resolução −</button>
               <button class="pill small" id="trackUp" type="button">Resolução +</button>
             </div>
-            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela.</p>
+            <p id="rectangleKeyboardHelp" class="sr-only">Para criar uma região sem arrastar: ative Retângulo, use as setas para posicionar o ponto, pressione Enter para marcar o primeiro canto, mova o ponto e pressione Enter outra vez. Shift acelera o movimento; Escape cancela. Depois, arraste um canto para ajustar.</p>
+            <small class="hint" id="roiHint">Arraste os cantos para ajustar. Fora do retângulo é ignorado pelo rastreio.</small>
             <small class="hint" id="exposureHint">Exposição manual quando a câmera suportar.</small>
           </div>
 
@@ -309,6 +313,7 @@
             <div class="readout-list">
               <div><span>Ciclo · rastreio</span><b id="timeReadout">— ms · — ms</b></div>
               <div><span>Composição · janela viva</span><b id="windowCostReadout">—</b></div>
+              <div><span>Recorte · rastreio</span><b id="roiReadout">—</b></div>
               <div><span>Áudio · vozes · pico</span><b id="audioReadout">—</b></div>
             </div>
             <div class="log-line" id="logLine" aria-live="polite">Avisos aparecem aqui.</div>

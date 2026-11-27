@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
-import { createRender } from '../src/render/render.js';
+import { createRender, placeOverlayLabel } from '../src/render/render.js';
 
 function context() {
-  const calls = { lines: [], labels: 0, rectangles: 0 };
+  const calls = { lines: [], labels: 0, rectangles: 0, labelPositions: [] };
   let point = null;
   return {
     calls,
@@ -13,7 +13,7 @@ function context() {
     lineTo(x, y) { calls.lines.push([point, [x, y]]); },
     measureText(text) { return { width: text.length * 6 }; },
     fillRect() { calls.rectangles++; },
-    fillText() { calls.labels++; },
+    fillText(text, x, y) { calls.labels++; calls.labelPositions.push([text, x, y]); },
   };
 }
 
@@ -66,6 +66,28 @@ test('telemetria não desenha quando desligada', () => {
   const c = context();
   assert.equal(renderer({ distanceTelemetry: false }).drawDistanceTelemetry(c, [{ x: .4, y: .5 }, { x: .5, y: .5 }], 320, 240), 0);
   assert.equal(c.calls.lines.length, 0);
+});
+
+test('acomoda rótulos no primeiro canto livre e registra a caixa usada', () => {
+  const c = context();
+  const occupied = [{ left: 90, top: 90, right: 110, bottom: 110 }];
+  const placed = placeOverlayLabel(c, '12px', [[100, 100], [200, 100]], occupied);
+  assert.equal(placed.x, 200, 'o primeiro canto estava tomado');
+  assert.equal(occupied.length, 2);
+  assert.ok(placed.box.left >= 184 && placed.box.right <= 216);
+});
+
+test('etiqueta de distância muda de lado quando o canto já está ocupado', () => {
+  const blobs = [{ x: .35, y: .5 }, { x: .45, y: .5 }];
+  const clean = context();
+  renderer().drawDistanceTelemetry(clean, blobs, 320, 240, 0, undefined, []);
+  assert.equal(clean.calls.labelPositions[0][2], 128);
+
+  const busy = context();
+  const occupied = [{ left: 120, top: 120, right: 136, bottom: 136 }];
+  renderer().drawDistanceTelemetry(busy, blobs, 320, 240, 0, undefined, occupied);
+  assert.notEqual(busy.calls.labelPositions[0][2], 128, 'a etiqueta foi para o outro lado da linha');
+  assert.equal(occupied.length, 2, 'a lista compartilhada ganhou a caixa da etiqueta');
 });
 
 test('drawMaskOverlay não contém mais a mira central do teclado', async () => {

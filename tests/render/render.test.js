@@ -236,6 +236,44 @@ test('Pontilhado desenha só nos blobs, sem segundo getImageData e sem vídeo na
   }
 });
 
+test('Pontilhado tem grão nos claros, massa nos escuros e poda fora da tela', () => {
+  const state = makeState({ effect: 'dither', timing: {} });
+  const render = createRender({
+    state, cropRect: new Float32Array(4),
+    mapPointA: new Float32Array(2), mapPointB: new Float32Array(2),
+  });
+  const width = 60, height = 36;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < width; col++) {
+      const value = col < width / 2 ? 0 : 255;
+      const i = (row * width + col) * 4;
+      data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+    }
+  }
+  const sample = { data, width, height };
+  const run = clip => {
+    const radii = [];
+    let arcs = 0;
+    const c = {
+      fillStyle: '', save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+      translate() {}, scale() {}, drawImage() {}, fillRect() {}, moveTo() {},
+      arc(_x, _y, r) { arcs++; radii.push(r); }, fill() {},
+    };
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, sample, clip, { paper: '#fff', dot: '#000' });
+    return { arcs, radii };
+  };
+  const bright = run([160, 0, 320, 240]);
+  const dark = run([0, 0, 160, 240]);
+  assert.ok(bright.arcs > 100, 'o grão aparece mesmo na metade clara');
+  assert.ok(dark.arcs > bright.arcs * 1.5, 'a massa entra na metade escura');
+  const sizes = [...new Set(dark.radii.map(r => Math.round(r * 100) / 100))];
+  assert.ok(sizes.length >= 2, 'há grão e ponto grande');
+  assert.ok(Math.max(...sizes) / Math.min(...sizes) > 3, 'o volume separa o pó da massa');
+  const tiny = run([140, 100, 180, 140]);
+  assert.ok(tiny.arcs < dark.arcs * .3, 'os pontos fora do recorte não entram no caminho');
+});
+
 test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   const video = { videoWidth: 640, videoHeight: 360 };
@@ -376,7 +414,8 @@ test('Pointillism difunde erro e desenha pontos pretos de tamanhos diferentes', 
     assert.equal(sampleCanvas.width, 60);
     assert.equal(fills, 2);
     assert.ok(arcs.length > 20, `pontos gerados: ${arcs.length}`);
-    assert.ok(arcs.filter(([x]) => x > 150).length > arcs.length * 0.7);
+    const bigger = list => Math.max(...list.map(([, , radius]) => radius));
+    assert.ok(bigger(arcs.filter(([x]) => x > 150)) > bigger(arcs.filter(([x]) => x <= 150)), 'o lado escuro tem a massa maior');
     assert.ok(new Set(arcs.map(([, , radius]) => radius.toFixed(2))).size >= 3);
     assert.ok(arcs.every(([, , radius]) => radius > 0 && radius < 11));
   } finally {
@@ -510,7 +549,8 @@ test('Pointillism reaproveita os pixels do tracker sem segundo getImageData', ()
 
     assert.equal(created, 0);
     assert.ok(arcs.length > 20, `pontos gerados: ${arcs.length}`);
-    assert.ok(arcs.filter(([x]) => x > 150).length > arcs.length * 0.7);
+    const bigger = list => Math.max(...list.map(([, , radius]) => radius));
+    assert.ok(bigger(arcs.filter(([x]) => x > 150)) > bigger(arcs.filter(([x]) => x <= 150)), 'o lado escuro tem a massa maior');
   } finally {
     globalThis.document = previousDocument;
   }
@@ -542,10 +582,15 @@ test('Pointillism reduz o jitter na borda sem leitura nova', () => {
     };
     render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height });
 
-    // cover de 60×36 em 320×240 corta 6 colunas: centro da célula x = 20x - 30.
-    const deviation = x => Math.abs(x - (20 * Math.round((x + 30) / 20) - 30));
-    const flat = arcs.filter(([x]) => x > 60 && x < 130).map(([x]) => deviation(x));
-    const edge = arcs.filter(([x]) => x > 140 && x < 180).map(([x]) => deviation(x));
+    // O grão tem jitter cheio de propósito; a medição de borda vale só para a massa.
+    const massLimit = Math.max(...arcs.map(([, , radius]) => radius)) * .5;
+    const mass = arcs.filter(([, , radius]) => radius > massLimit);
+    // cover de 60×36 em 320×240 corta 6 colunas; célula de 2 px vira 13,33 px na tela.
+    const step = (320 / 48) * (60 / 30);
+    const origin = -6 * (320 / 48) + step / 2;
+    const deviation = x => Math.abs(x - (step * Math.round((x - origin) / step) + origin));
+    const flat = mass.filter(([x]) => x > 60 && x < 130).map(([x]) => deviation(x));
+    const edge = mass.filter(([x]) => x > 145 && x < 175).map(([x]) => deviation(x));
     assert.ok(flat.length > 4, `pontos em área plana: ${flat.length}`);
     assert.ok(edge.length > 4, `pontos na borda: ${edge.length}`);
     const max = list => Math.max(...list);
@@ -735,6 +780,51 @@ test('Inverter e Preto e branco pintam o vídeo recortado aos blobs no overlay',
   assert.deepEqual(mono.filters, ['grayscale(1) contrast(6)']);
   const negated = run('threshold', true);
   assert.deepEqual(negated.filters, ['grayscale(1) contrast(6) invert(1)']);
+});
+
+test('Guias e Distâncias juntos acomodam os rótulos sem sobreposição', () => {
+  const labels = [];
+  const c = {
+    globalAlpha: 1, strokeStyle: '', fillStyle: '', font: '', lineWidth: 1, filter: 'none',
+    clearRect() {}, save() {}, restore() {}, scale() {}, translate() {},
+    beginPath() {}, rect() {}, clip() {}, drawImage() {}, moveTo() {}, lineTo() {}, stroke() {},
+    strokeRect() {}, fillRect() {},
+    measureText(text) { return { width: String(text).length * 6 }; },
+    fillText(text, x, y) { labels.push({ text, x, y, width: String(text).length * 6 + 8 }); },
+  };
+  const blobs = [
+    { id: 1, x: .35, y: .5, left: .35, top: .49, right: .45, bottom: .52 },
+    { id: 2, x: .5, y: .5, left: .5, top: .49, right: .6, bottom: .52 },
+  ];
+  const state = makeState({
+    distanceTelemetry: true, maxConnectionDistance: .22,
+    lastSignal: { zones: [.1, .2, .3, .4, .5, .6] }, timing: {},
+  });
+  const video = { videoWidth: 640, videoHeight: 480 };
+  const render = createRender({
+    state, video, overlayContext: c,
+    overlayCanvas: { width: 320, height: 240 },
+    stageViewport: { width: 320, height: 240 },
+    cropRect: new Float32Array(4), mapPointA: new Float32Array(2), mapPointB: new Float32Array(2),
+    gridPoint: new Float32Array(2), blobViewPoints: new Float32Array(24), TRAIL_SLOTS: 12,
+  });
+  render.drawMaskOverlay({ blobs, width: 180, height: 180 }, video, {});
+
+  const zones = labels.filter(label => /^\d\d /.test(label.text));
+  const distances = labels.filter(label => /px$/.test(label.text));
+  const ids = labels.filter(label => /^B\d/.test(label.text));
+  assert.equal(zones.length, 6);
+  assert.ok(distances.length >= 1, 'a linha de distância ainda aparece');
+  assert.equal(ids.length, 2);
+  assert.ok(zones.every(label => label.x > 53), 'as guias foram para o canto oposto');
+  for (let i = 0; i < labels.length; i++) {
+    for (let j = i + 1; j < labels.length; j++) {
+      const a = labels[i], b = labels[j];
+      const overlapX = Math.abs(a.x - b.x) < (a.width + b.width) / 2;
+      const overlapY = Math.abs(a.y - b.y) < 14;
+      assert.ok(!(overlapX && overlapY), `${a.text} e ${b.text} se sobrepuseram`);
+    }
+  }
 });
 
 test('malha desenha todas as linhas com um único stroke', () => {

@@ -48,3 +48,30 @@ export function createRoiMask({
   }
   return mask;
 }
+
+// Canto mais próximo do dedo/cursor, em coordenadas normalizadas do palco.
+export function roiHandleAt(x, y, rects, toleranceX = .03, toleranceY = .05) {
+  for (let i = rects.length - 1; i >= 0; i--) {
+    const rect = rects[i];
+    const left = rect.x, right = rect.x + rect.w, top = rect.y, bottom = rect.y + rect.h;
+    const corners = [['nw', left, top], ['ne', right, top], ['sw', left, bottom], ['se', right, bottom]];
+    for (const [corner, cx, cy] of corners) {
+      if (Math.abs(x - cx) <= toleranceX && Math.abs(y - cy) <= toleranceY) return { rect, corner, index: i };
+    }
+  }
+  return null;
+}
+
+// Redimensiona pelo canto escolhido sem deixar a caixa virar linha nem sair do palco.
+export function resizeRoiRect(rect, corner, x, y, minSize = .015) {
+  let left = rect.x, right = rect.x + rect.w, top = rect.y, bottom = rect.y + rect.h;
+  if (corner.includes('w')) left = Math.min(x, right - minSize);
+  if (corner.includes('e')) right = Math.max(x, left + minSize);
+  if (corner.includes('n')) top = Math.min(y, bottom - minSize);
+  if (corner.includes('s')) bottom = Math.max(y, top + minSize);
+  left = Math.max(0, left); top = Math.max(0, top);
+  right = Math.min(1, Math.max(left + minSize, right));
+  bottom = Math.min(1, Math.max(top + minSize, bottom));
+  rect.x = left; rect.y = top; rect.w = right - left; rect.h = bottom - top;
+  return rect;
+}

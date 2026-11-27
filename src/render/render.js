@@ -2,9 +2,33 @@ import { clamp } from '../core/utils.js';
 
 // Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
-const STIPPLE_SPACING = 3;
+const STIPPLE_SPACING = 2;
 const STIPPLE_LEVELS = 12;
+const STIPPLE_RADIUS_GAMMA = .68;
+const STIPPLE_GRAIN_RATIO = .2;
 const STIPPLE_TAU = Math.PI * 2;
+
+// Acomoda rótulos pequenos: tenta cada canto e escolhe o primeiro que não pisa
+// numa caixa já ocupada. Guias e Distância compartilham a mesma lista.
+export function placeOverlayLabel(context, text, candidates, occupied, padding = 3) {
+  if (!candidates?.length) return null;
+  const width = context.measureText(text).width + 8;
+  const height = 14;
+  const boxFor = ([x, y]) => ({ left: x - width / 2, top: y - height / 2, right: x + width / 2, bottom: y + height / 2 });
+  for (const candidate of candidates) {
+    const box = boxFor(candidate);
+    const free = !occupied.some(other =>
+      box.left < other.right + padding && box.right + padding > other.left &&
+      box.top < other.bottom + padding && box.bottom + padding > other.top);
+    if (free) {
+      occupied.push(box);
+      return { x: candidate[0], y: candidate[1], width, height, box };
+    }
+  }
+  const box = boxFor(candidates[0]);
+  occupied.push(box);
+  return { x: candidates[0][0], y: candidates[0][1], width, height, box };
+}
 
 export function createRender({
   state,
@@ -15,6 +39,8 @@ export function createRender({
   glState = null,
   fallbackContext,
   overlayContext,
+  roiVeilCanvas = null,
+  roiVeilContext = null,
   video,
   maskCanvas,
   maskContext,
@@ -328,7 +354,7 @@ export function createRender({
     c.restore();
   }
 
-  function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0, preparedCount) {
+  function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0, preparedCount, occupied = null) {
     if (!state.distanceTelemetry) return 0;
     const count = preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight);
     if (count < 2) return 0;
@@ -392,13 +418,31 @@ export function createRender({
       c.lineTo(offsetX + x2, y2);
       c.stroke();
       const label = `${Math.round(distance)}px`;
-      const labelX = offsetX + (x1 + x2) * .5 - dy / distance * 8;
-      const labelY = (y1 + y2) * .5 + dx / distance * 8;
-      const labelWidth = c.measureText(label).width + 8;
-      c.fillRect(labelX - labelWidth * .5, labelY - 7, labelWidth, 14);
-      c.fillStyle = '#f4fff0';
-      c.fillText(label, labelX, labelY);
-      c.fillStyle = 'rgba(0,0,0,.55)';
+      if (occupied) {
+        const midX = offsetX + (x1 + x2) * .5;
+        const midY = (y1 + y2) * .5;
+        const nx = -dy / distance * 8;
+        const ny = dx / distance * 8;
+        const candidates = [
+          [midX + nx, midY + ny],
+          [midX - nx, midY - ny],
+          [offsetX + x1 + (x2 - x1) * .3 + nx * 2, y1 + (y2 - y1) * .3 + ny * 2],
+          [offsetX + x1 + (x2 - x1) * .7 - nx * 2, y1 + (y2 - y1) * .7 - ny * 2],
+        ].map(([x, y]) => [clamp(x, offsetX + 4, offsetX + viewWidth - 4), clamp(y, 8, viewHeight - 8)]);
+        const placed = placeOverlayLabel(c, label, candidates, occupied);
+        c.fillRect(placed.box.left, placed.box.top, placed.width, placed.height);
+        c.fillStyle = '#f4fff0';
+        c.fillText(label, placed.x, placed.y);
+        c.fillStyle = 'rgba(0,0,0,.55)';
+      } else {
+        const labelX = offsetX + (x1 + x2) * .5 - dy / distance * 8;
+        const labelY = (y1 + y2) * .5 + dx / distance * 8;
+        const labelWidth = c.measureText(label).width + 8;
+        c.fillRect(labelX - labelWidth * .5, labelY - 7, labelWidth, 14);
+        c.fillStyle = '#f4fff0';
+        c.fillText(label, labelX, labelY);
+        c.fillStyle = 'rgba(0,0,0,.55)';
+      }
       drawn++;
     }
     c.restore();
@@ -678,7 +722,9 @@ export function createRender({
       width: cols, height: rows, count: 0,
       luma: new Float32Array(n), error: new Float32Array(n),
       jitterX: new Float32Array(n), jitterY: new Float32Array(n),
-      dotX: new Float32Array(n), dotY: new Float32Array(n), dotR: new Float32Array(n),
+      // Um grão por célula e, quando há tom, um ponto de massa: 2n lugares.
+      dotX: new Float32Array(n * 2), dotY: new Float32Array(n * 2), dotR: new Float32Array(n * 2),
+      radii: new Float32Array(STIPPLE_LEVELS + 1),
     };
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
@@ -735,6 +781,11 @@ export function createRender({
       const grid = ensureStippleGrid(cols, rows);
       const cellW = width / cols, cellH = height / rows;
       const maxR = Math.min(cellW, cellH) * .48;
+      // Tabela de 12 raios: evita Math.pow por ponto e abre o volume entre grão e massa.
+      for (let level = 1; level <= STIPPLE_LEVELS; level++) {
+        grid.radii[level] = maxR * Math.pow(level / STIPPLE_LEVELS, STIPPLE_RADIUS_GAMMA);
+      }
+      const grainR = maxR * STIPPLE_GRAIN_RATIO;
       let mean = 0;
       for (let y = 0; y < rows; y++) {
         const sy = Math.min(height - 1, Math.floor((y + .5) * cellH));
@@ -759,11 +810,12 @@ export function createRender({
           // Contraste local: a média da cena sozinha achata a silhueta quando o fundo
           // fica claro ou escuro. Misturar com a média dos 5 vizinhos mantém a forma.
           const localMean = (l + left + right + above + belowLuma) * .2;
-          const reference = mean * .75 + localMean * .25;
-          const stretched = clamp(.5 + (l - reference) * 2.6, 0, 1);
+          const reference = mean * .65 + localMean * .35;
+          const stretched = clamp(.5 + (l - reference) * 3, 0, 1);
           const value = 1 - stretched + grid.error[i];
           const tone = Math.pow(clamp((value - cut) / (1 - cut), 0, 1), .75);
-          const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS;
+          const level = Math.round(tone * STIPPLE_LEVELS);
+          const quantized = level / STIPPLE_LEVELS;
           const diffusion = (value - quantized) * .85;
           if (x + 1 < cols) grid.error[i + 1] += diffusion * 7 / 16;
           if (y + 1 < rows) {
@@ -772,19 +824,24 @@ export function createRender({
             grid.error[below] += diffusion * 5 / 16;
             if (x + 1 < cols) grid.error[below + 1] += diffusion / 16;
           }
+          // C: um grão fino vive em toda célula, mesmo nos claros — é a textura do papel.
+          grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW;
+          grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH;
+          grid.dotR[count] = grainR;
+          count++;
           if (quantized <= 0) continue;
-          // Onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula.
-          // Usa só a luma da grade: não há leitura nova nem array novo por quadro.
+          // B: onde o tom muda depressa o ponto chega ao centro; pontos grandes
+          // ficam ainda mais presos, e os pequenos vagueiam como pó.
           const edge = clamp(
             (Math.abs(l - left) + Math.abs(l - right) + Math.abs(l - above) + Math.abs(l - belowLuma)) / .15,
             0, 1
           );
-          const jitter = 1 - .75 * edge;
+          const jitter = (1 - .75 * edge) * (1 - .3 * quantized);
           grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW * jitter;
           grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH * jitter;
-          // Dissolução por área: raio proporcional à raiz do tom. O olho lê tinta,
-          // não raio — assim cada degrau escurece o mesmo tanto, do pó ao ponto cheio.
-          grid.dotR[count] = maxR * Math.sqrt(quantized);
+          // Volume: raio por potência .68. Raio pequeno encolhe e o grande cresce
+          // em relação à raiz, sem custo extra (os 12 valores vêm da tabela).
+          grid.dotR[count] = grid.radii[level];
           count++;
         }
       }
@@ -831,16 +888,16 @@ export function createRender({
     c.scale(mirrorX ? -1 : 1, 1);
     c.fillStyle = dot;
     c.beginPath();
+    const dotScale = Math.min(scaleX, scaleY);
     for (let i = 0; i < stippleGrid.count; i++) {
       const x = baseX + stippleGrid.dotX[i] * scaleX;
       const y = baseY + stippleGrid.dotY[i] * scaleY;
-      const r = Math.max(.35, stippleGrid.dotR[i] * Math.min(scaleX, scaleY));
-      // Só os pontos que cruzam os blobs entram no caminho.
-      if (clipRect) {
-        const screenX = offsetX + (mirrorX ? viewWidth - x : x);
-        if (screenX + r < clipRect[0] || screenX - r > clipRect[2]
-          || y + r < clipRect[1] || y - r > clipRect[3]) continue;
-      }
+      const r = Math.max(.35, stippleGrid.dotR[i] * dotScale);
+      const screenX = offsetX + (mirrorX ? viewWidth - x : x);
+      // Poda o que está fora da tela e, quando há recorte, o que está fora do blob.
+      if (screenX + r < 0 || screenX - r > viewWidth || y + r < 0 || y - r > viewHeight) continue;
+      if (clipRect && (screenX + r < clipRect[0] || screenX - r > clipRect[2]
+        || y + r < clipRect[1] || y - r > clipRect[3])) continue;
       c.moveTo(x + r, y);
       c.arc(x, y, r, 0, STIPPLE_TAU);
     }
@@ -863,7 +920,41 @@ export function createRender({
 
   // ---------- overlay e gravação ----------
 
+  // Véu do recorte vive num canvas separado: ajuda a ver a ROI, mas não entra
+  // na captura PNG nem no MP4 (que leem só visual + overlay).
+  function drawRoiVeil() {
+    if (!roiVeilContext || !roiVeilCanvas) return;
+    const c = roiVeilContext, width = roiVeilCanvas.width, height = roiVeilCanvas.height;
+    c.clearRect(0, 0, width, height);
+    if (!state.showRoiVeil || !state.manualRects?.length || !width || !height) return;
+    const eyes = state.gearVr ? 2 : 1, viewWidth = width / eyes;
+    c.save();
+    c.fillStyle = 'rgba(4,6,10,.58)';
+    c.fillRect(0, 0, width, height);
+    c.globalCompositeOperation = 'destination-out';
+    for (let eye = 0; eye < eyes; eye++) {
+      const offsetX = eye * viewWidth;
+      for (const rect of state.manualRects) {
+        c.fillRect(offsetX + rect.x * viewWidth, rect.y * height, rect.w * viewWidth, rect.h * height);
+      }
+    }
+    c.globalCompositeOperation = 'source-over';
+    c.fillStyle = '#e9dcff';
+    for (let eye = 0; eye < eyes; eye++) {
+      const offsetX = eye * viewWidth;
+      for (const rect of state.manualRects) {
+        const left = offsetX + rect.x * viewWidth, top = rect.y * height;
+        const right = left + rect.w * viewWidth, bottom = top + rect.h * height;
+        for (const [x, y] of [[left, top], [right, top], [left, bottom], [right, bottom]]) {
+          c.fillRect(x - 4, y - 4, 8, 8);
+        }
+      }
+    }
+    c.restore();
+  }
+
   function drawMaskOverlay(result, source = video, applied = {}) {
+    drawRoiVeil();
     const started = performance.now();
     const c = overlayContext;
     if (!c) return;
@@ -976,16 +1067,20 @@ export function createRender({
       }
       const wantsViewPoints = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
       const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
+      // Quando os dois efeitos ligam juntos, Guias e Distância dividem esta lista
+      // para nenhum rótulo pisar no outro. Com um efeito só, o desenho é o de sempre.
+      const labelOccupied = state.overlay && state.distanceTelemetry ? [] : null;
       const overlayStarted = performance.now();
       if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
       if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
       if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
       if (state.networkEffect) drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
-      if (state.distanceTelemetry) drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
+      if (state.distanceTelemetry) drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount, labelOccupied);
       overlayCost += performance.now() - overlayStarted;
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;
         const cellH = viewHeight / 2;
+        if (labelOccupied) { c.save(); c.textAlign = 'center'; c.textBaseline = 'middle'; }
         c.globalAlpha = .72;
         c.lineWidth = 1;
         c.strokeStyle = '#6ee7bc';
@@ -995,7 +1090,20 @@ export function createRender({
           const x = offsetX + (i % 3) * cellW;
           const y = Math.floor(i / 3) * cellH;
           c.strokeRect(x + 4, y + 4, cellW - 8, cellH - 8);
-          c.fillText(`${String(i + 1).padStart(2, '0')} ${Math.round(state.lastSignal.zones[i] * 100)}%`, x + 10, y + 18);
+          const label = `${String(i + 1).padStart(2, '0')} ${Math.round(state.lastSignal.zones[i] * 100)}%`;
+          if (!labelOccupied) {
+            c.fillText(label, x + 10, y + 18);
+            continue;
+          }
+          // Com Distância ligada, as guias ficam no canto oposto (inferior direito).
+          const left = x + 4, top = y + 4, right = x + cellW - 4, bottom = y + cellH - 4;
+          const half = (c.measureText(label).width + 8) / 2;
+          const candidates = [
+            [right - half, bottom - 9], [left + half, top + 9],
+            [left + half, bottom - 9], [right - half, top + 9],
+          ].map(([cx, cy]) => [clamp(cx, offsetX + half + 2, offsetX + viewWidth - half - 2), clamp(cy, 9, viewHeight - 9)]);
+          const placed = placeOverlayLabel(c, label, candidates, labelOccupied);
+          c.fillText(label, placed.x, placed.y);
         }
         c.globalAlpha = .95;
         c.lineWidth = 2;
@@ -1010,8 +1118,24 @@ export function createRender({
           const right = Math.max(mapPointA[0], mapPointB[0]);
           const bottom = Math.max(mapPointA[1], mapPointB[1]);
           c.strokeRect(offsetX + left * viewWidth, top * viewHeight, (right - left) * viewWidth, (bottom - top) * viewHeight);
-          c.fillText(`B${blob.id}`, offsetX + left * viewWidth + 4, Math.max(12, top * viewHeight - 4));
+          const label = `B${blob.id}`;
+          if (!labelOccupied) {
+            c.fillText(label, offsetX + left * viewWidth + 4, Math.max(12, top * viewHeight - 4));
+            continue;
+          }
+          const boxLeft = offsetX + left * viewWidth, boxTop = top * viewHeight;
+          const boxRight = offsetX + right * viewWidth, boxBottom = bottom * viewHeight;
+          const half = (c.measureText(label).width + 8) / 2;
+          const candidates = [
+            [boxLeft + half, Math.max(9, boxTop - 9)],
+            [boxRight - half, Math.max(9, boxTop - 9)],
+            [boxLeft + half, Math.min(viewHeight - 9, boxBottom + 9)],
+            [boxRight - half, Math.min(viewHeight - 9, boxBottom + 9)],
+          ].map(([cx, cy]) => [clamp(cx, offsetX + half + 2, offsetX + viewWidth - half - 2), clamp(cy, 9, viewHeight - 9)]);
+          const placed = placeOverlayLabel(c, label, candidates, labelOccupied);
+          c.fillText(label, placed.x, placed.y);
         }
+        if (labelOccupied) c.restore();
       }
       if (state.overlay) {
         c.globalAlpha = .95;
@@ -1070,6 +1194,7 @@ export function createRender({
     drawStipple,
     renderFrame,
     drawMaskOverlay,
+    drawRoiVeil,
     drawRecordingComposite,
     probeGlReadback,
     render: renderFrame,

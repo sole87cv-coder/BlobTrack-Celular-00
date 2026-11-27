@@ -1,6 +1,10 @@
 import { PRESETS, SpawnPolicy } from './audio/audio.js';
 import { applyScaleMessage, degreesForZones } from './audio/scales.js';
 const unitAudioSignal = value => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
+// Efeitos: subida/descida suave (40/80 ms) para ligar sem estalo e sem salto de volume.
+const FX_FADE_UP = 1 - Math.exp(-1 / (sampleRate * .04));
+const FX_FADE_DOWN = 1 - Math.exp(-1 / (sampleRate * .08));
+const FX_CHORUS_RATE = .6;
 function timbreWave(phase, timbre) {
   const fundamental = Math.sin(phase);
   if (timbre === 1) return fundamental * .56 + Math.sin(phase * 2) * .26 + Math.sin(phase * 3) * .13 + Math.sin(phase * 4) * .05;
@@ -55,12 +59,15 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.delayBuffer = new Float32Array(Math.ceil(sampleRate * .32));
     this.delayIndex = 0;
     this.echoDelay = Math.floor(sampleRate * .24);
-    this.spaceDelayA = Math.floor(sampleRate * .029);
-    this.spaceDelayB = Math.floor(sampleRate * .041);
-    this.spaceDelayC = Math.floor(sampleRate * .053);
+    // Sala: três chegadas espaçadas e decrescentes, em vez de três toques grudados.
+    this.spaceDelayA = Math.floor(sampleRate * .072);
+    this.spaceDelayB = Math.floor(sampleRate * .113);
+    this.spaceDelayC = Math.floor(sampleRate * .167);
     this.chorusBuffer = new Float32Array(Math.ceil(sampleRate * .04));
     this.chorusIndex = 0;
     this.chorusPhase = 0;
+    this.effectMix = { echo: 0, space: 0, chorus: 0 };
+    this.spaceLevel = 0;
     this.gain = 0;
     this.peak = 0;
     this.meterFrames = 0;
@@ -372,32 +379,58 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
         outL += sample * voice.left;
         outR += sample * voice.right;
       }
-      let mono = (outL + outR) * .5;
-      let echoIndex = this.delayIndex - this.echoDelay; if (echoIndex < 0) echoIndex += this.delayBuffer.length;
-      let spaceA = this.delayIndex - this.spaceDelayA; if (spaceA < 0) spaceA += this.delayBuffer.length;
-      let spaceB = this.delayIndex - this.spaceDelayB; if (spaceB < 0) spaceB += this.delayBuffer.length;
-      let spaceC = this.delayIndex - this.spaceDelayC; if (spaceC < 0) spaceC += this.delayBuffer.length;
-      const echo = this.delayBuffer[echoIndex];
-      const space = this.delayBuffer[spaceA] + this.delayBuffer[spaceB] + this.delayBuffer[spaceC];
-      let chorus = 0;
-      if (this.effects.chorus) {
-        const length = this.chorusBuffer.length;
-        let read = this.chorusIndex - sampleRate * (.018 + .006 * Math.sin(this.chorusPhase)); if (read < 0) read += length;
-        const first = Math.floor(read), fraction = read - first, second = first + 1 < length ? first + 1 : 0;
-        chorus = this.chorusBuffer[first] * (1 - fraction) + this.chorusBuffer[second] * fraction;
-        this.chorusPhase += 2 * Math.PI * .24 / sampleRate;
+      const mix = this.effectMix;
+      mix.echo += ((this.effects.echo ? 1 : 0) - mix.echo) * (this.effects.echo ? FX_FADE_UP : FX_FADE_DOWN);
+      mix.space += ((this.effects.space ? 1 : 0) - mix.space) * (this.effects.space ? FX_FADE_UP : FX_FADE_DOWN);
+      mix.chorus += ((this.effects.chorus ? 1 : 0) - mix.chorus) * (this.effects.chorus ? FX_FADE_UP : FX_FADE_DOWN);
+      const mixNorm = 1 / Math.max(1, (mix.echo + mix.space + mix.chorus) * .5);
+      const spaceTarget = this.effects.space ? .55 + .45 * unitAudioSignal(this.signals.speed) : 0;
+      this.spaceLevel += (spaceTarget - this.spaceLevel) * (spaceTarget > this.spaceLevel ? FX_FADE_UP : FX_FADE_DOWN);
+      let echo = 0, earlyA = 0, earlyB = 0, earlyC = 0;
+      if (mix.echo > .0001 || mix.space > .0001) {
+        let echoIndex = this.delayIndex - this.echoDelay; if (echoIndex < 0) echoIndex += this.delayBuffer.length;
+        let spaceA = this.delayIndex - this.spaceDelayA; if (spaceA < 0) spaceA += this.delayBuffer.length;
+        let spaceB = this.delayIndex - this.spaceDelayB; if (spaceB < 0) spaceB += this.delayBuffer.length;
+        let spaceC = this.delayIndex - this.spaceDelayC; if (spaceC < 0) spaceC += this.delayBuffer.length;
+        echo = this.delayBuffer[echoIndex];
+        earlyA = this.delayBuffer[spaceA]; earlyB = this.delayBuffer[spaceB]; earlyC = this.delayBuffer[spaceC];
       }
-      if (this.effects.echo) mono += echo * .3;
-      if (this.effects.space) mono += space * .075;
-      if (this.effects.chorus) mono += chorus * .18;
+      let chorusL = 0, chorusR = 0;
+      if (mix.chorus > .0001) {
+        const length = this.chorusBuffer.length;
+        const sweep = .005 * Math.sin(this.chorusPhase);
+        let readL = this.chorusIndex - sampleRate * (.018 + sweep); if (readL < 0) readL += length;
+        let readR = this.chorusIndex - sampleRate * (.024 - sweep); if (readR < 0) readR += length;
+        const firstL = Math.floor(readL), fracL = readL - firstL, nextL = firstL + 1 < length ? firstL + 1 : 0;
+        const firstR = Math.floor(readR), fracR = readR - firstR, nextR = firstR + 1 < length ? firstR + 1 : 0;
+        chorusL = this.chorusBuffer[firstL] * (1 - fracL) + this.chorusBuffer[nextL] * fracL;
+        chorusR = this.chorusBuffer[firstR] * (1 - fracR) + this.chorusBuffer[nextR] * fracR;
+        this.chorusPhase += 2 * Math.PI * FX_CHORUS_RATE / sampleRate;
+      }
+      let effectL = 0, effectR = 0;
+      if (mix.echo > .0001) {
+        const level = echo * .3 * mix.echo * mixNorm;
+        effectL += level; effectR += level;
+      }
+      if (mix.space > .0001) {
+        const room = (earlyA * .13 + earlyB * .09 + earlyC * .06) * this.spaceLevel * mix.space * mixNorm;
+        effectL += room; effectR += room;
+      }
+      if (mix.chorus > .0001) {
+        effectL += chorusL * .18 * mix.chorus * mixNorm;
+        effectR += chorusR * .18 * mix.chorus * mixNorm;
+      }
       const silent = this.muted || !this.audioEnabled;
-      this.delayBuffer[this.delayIndex] = silent ? 0 : (outL + outR) * .5;
-      this.delayIndex = (this.delayIndex + 1) % this.delayBuffer.length;
-      this.chorusBuffer[this.chorusIndex] = silent ? 0 : (outL + outR) * .5;
-      this.chorusIndex = (this.chorusIndex + 1) % this.chorusBuffer.length;
-      const effectDelta = mono - (outL + outR) * .5;
-      outL = Math.tanh((outL + effectDelta) * 1.45);
-      outR = Math.tanh((outR + effectDelta) * 1.45);
+      if (mix.echo > .0001 || mix.space > .0001) {
+        this.delayBuffer[this.delayIndex] = silent ? 0 : (outL + outR) * .5 + echo * .24 * mix.echo;
+        this.delayIndex = (this.delayIndex + 1) % this.delayBuffer.length;
+      }
+      if (mix.chorus > .0001) {
+        this.chorusBuffer[this.chorusIndex] = silent ? 0 : (outL + outR) * .5;
+        this.chorusIndex = (this.chorusIndex + 1) % this.chorusBuffer.length;
+      }
+      outL = Math.tanh((outL + effectL) * 1.45);
+      outR = Math.tanh((outR + effectR) * 1.45);
       left[i] = outL;
       if (right) right[i] = outR;
       peak = Math.max(peak, Math.abs(outL), Math.abs(outR));
@@ -418,14 +451,18 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       this.blobBands.clear();
       this.updateBandFrequencies();
     }
-    if (typeof options.rhythmEnabled === 'boolean') {
+    if (typeof options.rhythmEnabled === 'boolean' && options.rhythmEnabled !== this.rhythmEnabled) {
       this.rhythmEnabled = options.rhythmEnabled;
-      if (!this.rhythmEnabled) {
-        this.rhythmEnvelope = 0;
-        this.rhythmDropAge = 0;
-        this.rhythmActive = false;
-        this.blobMotionSeen = false;
-      }
+      // Troca de regime: nada do som anterior pode ecoar junto com o novo.
+      // Sem isso, o tom contínuo demorava ~110 ms a desaparecer e o delay
+      // devolvia o rastro por mais 320 ms, misturando os dois estados.
+      this.delayBuffer.fill(0);
+      this.chorusBuffer.fill(0);
+      this.voiceLevel.fill(0);
+      this.rhythmEnvelope = 0;
+      this.rhythmDropAge = 0;
+      this.rhythmActive = false;
+      this.blobMotionSeen = false;
     }
     if (Number.isFinite(options.oscillation)) this.oscillation = Math.min(1, Math.max(0, options.oscillation));
     if (Number.isFinite(options.pitchRange)) this.pitchRange = Math.min(7, Math.max(0, options.pitchRange));
@@ -434,9 +471,17 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       if (timbre !== this.timbre) { this.previousTimbre = this.timbre; this.timbre = timbre; this.timbreFade = 0; }
     }
     if (options.soundEffects) {
-      this.effects.echo = options.soundEffects.echo === true;
-      this.effects.space = options.soundEffects.space === true;
-      this.effects.chorus = options.soundEffects.chorus === true;
+      const echo = options.soundEffects.echo === true;
+      const space = options.soundEffects.space === true;
+      const chorus = options.soundEffects.chorus === true;
+      if (echo !== this.effects.echo || space !== this.effects.space || chorus !== this.effects.chorus) {
+        // Nenhum efeito pode "acordar" com o rastro do estado anterior.
+        this.delayBuffer.fill(0);
+        this.chorusBuffer.fill(0);
+      }
+      this.effects.echo = echo;
+      this.effects.space = space;
+      this.effects.chorus = chorus;
     }
     if (Number.isFinite(options.key)) {
       const key = Math.min(11, Math.max(0, Math.round(options.key)));
@@ -497,10 +542,12 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       weights[band][1] += level * x;
     }
     for (const id of this.blobBands.keys()) if (!seen.has(id)) this.blobBands.delete(id);
-    const gain = (.3 + .7 * this.sensitivity) * .5;
+    // Ritmo ligado = só a gota. As seis vozes contínuas ficam mudas para não
+    // misturar o tom de quando o Ritmo está desligado com o pulso d'água.
+    const bandGain = this.rhythmEnabled ? 0 : (.3 + .7 * this.sensitivity) * .5;
     for (let band = 0; band < 3; band++) {
       for (let voice = 0; voice < 2; voice++) {
-        this.bandTargets[band * 2 + voice] = Math.min(.42, weights[band][voice] * gain);
+        this.bandTargets[band * 2 + voice] = Math.min(.42, weights[band][voice] * bandGain);
       }
     }
   }
@@ -591,37 +638,65 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       this.phase[7] += 2 * Math.PI * (180 + 620 * speed + 180 * density) / sampleRate;
       if (this.phase[7] >= Math.PI * 2) this.phase[7] -= Math.PI * 2;
       const dry = sample * this.gain / Math.sqrt(Math.max(1, voices));
+      const mix = this.effectMix;
+      mix.echo += ((this.effects.echo ? 1 : 0) - mix.echo) * (this.effects.echo ? FX_FADE_UP : FX_FADE_DOWN);
+      mix.space += ((this.effects.space ? 1 : 0) - mix.space) * (this.effects.space ? FX_FADE_UP : FX_FADE_DOWN);
+      mix.chorus += ((this.effects.chorus ? 1 : 0) - mix.chorus) * (this.effects.chorus ? FX_FADE_UP : FX_FADE_DOWN);
+      const mixNorm = 1 / Math.max(1, (mix.echo + mix.space + mix.chorus) * .5);
+      const spaceTarget = this.effects.space ? .55 + .45 * unitAudioSignal(this.signals.speed) : 0;
+      this.spaceLevel += (spaceTarget - this.spaceLevel) * (spaceTarget > this.spaceLevel ? FX_FADE_UP : FX_FADE_DOWN);
       const delayLength = this.delayBuffer.length;
-      let echoIndex = this.delayIndex - this.echoDelay; if (echoIndex < 0) echoIndex += delayLength;
-      let spaceIndexA = this.delayIndex - this.spaceDelayA; if (spaceIndexA < 0) spaceIndexA += delayLength;
-      let spaceIndexB = this.delayIndex - this.spaceDelayB; if (spaceIndexB < 0) spaceIndexB += delayLength;
-      let spaceIndexC = this.delayIndex - this.spaceDelayC; if (spaceIndexC < 0) spaceIndexC += delayLength;
-      const echo = this.delayBuffer[echoIndex];
-      const earlyA = this.delayBuffer[spaceIndexA], earlyB = this.delayBuffer[spaceIndexB], earlyC = this.delayBuffer[spaceIndexC];
-      let chorus = 0;
-      if (this.effects.chorus) {
+      let echo = 0, earlyA = 0, earlyB = 0, earlyC = 0;
+      if (mix.echo > .0001 || mix.space > .0001) {
+        let echoIndex = this.delayIndex - this.echoDelay; if (echoIndex < 0) echoIndex += delayLength;
+        let spaceA = this.delayIndex - this.spaceDelayA; if (spaceA < 0) spaceA += delayLength;
+        let spaceB = this.delayIndex - this.spaceDelayB; if (spaceB < 0) spaceB += delayLength;
+        let spaceC = this.delayIndex - this.spaceDelayC; if (spaceC < 0) spaceC += delayLength;
+        echo = this.delayBuffer[echoIndex];
+        earlyA = this.delayBuffer[spaceA]; earlyB = this.delayBuffer[spaceB]; earlyC = this.delayBuffer[spaceC];
+      }
+      let chorusL = 0, chorusR = 0;
+      if (mix.chorus > .0001) {
         const length = this.chorusBuffer.length;
-        let read = this.chorusIndex - sampleRate * (.018 + .006 * Math.sin(this.chorusPhase));
-        if (read < 0) read += length;
-        const first = Math.floor(read), fraction = read - first, second = first + 1 < length ? first + 1 : 0;
-        chorus = this.chorusBuffer[first] * (1 - fraction) + this.chorusBuffer[second] * fraction;
-        this.chorusPhase += 2 * Math.PI * .24 / sampleRate;
+        const sweep = .005 * Math.sin(this.chorusPhase);
+        let readL = this.chorusIndex - sampleRate * (.018 + sweep); if (readL < 0) readL += length;
+        let readR = this.chorusIndex - sampleRate * (.024 - sweep); if (readR < 0) readR += length;
+        const firstL = Math.floor(readL), fracL = readL - firstL, nextL = firstL + 1 < length ? firstL + 1 : 0;
+        const firstR = Math.floor(readR), fracR = readR - firstR, nextR = firstR + 1 < length ? firstR + 1 : 0;
+        chorusL = this.chorusBuffer[firstL] * (1 - fracL) + this.chorusBuffer[nextL] * fracL;
+        chorusR = this.chorusBuffer[firstR] * (1 - fracR) + this.chorusBuffer[nextR] * fracR;
+        this.chorusPhase += 2 * Math.PI * FX_CHORUS_RATE / sampleRate;
         if (this.chorusPhase >= Math.PI * 2) this.chorusPhase -= Math.PI * 2;
       }
-      let wet = dry;
-      if (this.effects.echo) wet += echo * .3;
-      if (this.effects.space) wet += (earlyA + earlyB + earlyC) * .075;
-      if (this.effects.chorus) wet += chorus * .18;
+      let wetL = dry, wetR = dry;
+      if (mix.echo > .0001) {
+        const level = echo * .3 * mix.echo * mixNorm;
+        wetL += level; wetR += level;
+      }
+      if (mix.space > .0001) {
+        const room = (earlyA * .13 + earlyB * .09 + earlyC * .06) * this.spaceLevel * mix.space * mixNorm;
+        wetL += room; wetR += room;
+      }
+      if (mix.chorus > .0001) {
+        wetL += chorusL * .18 * mix.chorus * mixNorm;
+        wetR += chorusR * .18 * mix.chorus * mixNorm;
+      }
       const silenced = this.muted || !this.audioEnabled;
-      this.delayBuffer[this.delayIndex] = silenced ? 0 : dry + (this.effects.echo ? echo * .24 : 0) + (this.effects.space ? (earlyA + earlyB + earlyC) * .073 : 0);
-      this.delayIndex++; if (this.delayIndex >= delayLength) this.delayIndex = 0;
-      this.chorusBuffer[this.chorusIndex] = silenced ? 0 : dry;
-      this.chorusIndex++; if (this.chorusIndex >= this.chorusBuffer.length) this.chorusIndex = 0;
-      if (!Number.isFinite(wet)) wet = 0;
-      const value = Math.tanh(wet * 1.45);
-      output[i] = value;
-      if (right) right[i] = value;
-      peak = Math.max(peak, Math.abs(value));
+      if (mix.echo > .0001 || mix.space > .0001) {
+        // Só o Eco realimenta: o Espaço é um quarto, não um segundo eco.
+        this.delayBuffer[this.delayIndex] = silenced ? 0 : dry + echo * .24 * mix.echo;
+        this.delayIndex++; if (this.delayIndex >= delayLength) this.delayIndex = 0;
+      }
+      if (mix.chorus > .0001) {
+        this.chorusBuffer[this.chorusIndex] = silenced ? 0 : dry;
+        this.chorusIndex++; if (this.chorusIndex >= this.chorusBuffer.length) this.chorusIndex = 0;
+      }
+      if (!Number.isFinite(wetL)) wetL = 0;
+      if (!Number.isFinite(wetR)) wetR = 0;
+      const valueL = Math.tanh(wetL * 1.45), valueR = right ? Math.tanh(wetR * 1.45) : valueL;
+      output[i] = valueL;
+      if (right) right[i] = valueR;
+      peak = Math.max(peak, Math.abs(valueL), Math.abs(valueR));
     }
     this.peak = Math.max(this.peak * .96, peak);
     this.rhythmClock += output.length / sampleRate;

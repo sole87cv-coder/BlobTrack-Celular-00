@@ -286,6 +286,82 @@ test('band beat is a water drop: pitch falls fast and the tail is short', () => 
   assert.ok(processor.rhythmDropAge > .04 && processor.rhythmDropAge < .06);
 });
 
+test('Ritmo ligado toca só a gota; desligado fica só o tom contínuo das faixas', () => {
+  const processor = new RegisteredProcessor();
+  const options = enabled => ({ data: { type: 'sound', bandMode: true, rhythmEnabled: enabled, oscillation: 0, pitchRange: 0 } });
+  const packet = { data: { type: 'signals', signals: { energy: .6, density: .5, speed: .8, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 4, x: .4, y: .5, size: 800, speed: .8 }] }, master: 1, muted: false, audioEnabled: true } };
+  processor.port.onmessage(options(false));
+  processor.port.onmessage(packet);
+  processBlock(processor);
+  assert.ok([...processor.bandTargets].some(level => level > 0), 'desligado: faixas contínuas continuam tocando');
+
+  processor.delayBuffer.fill(.2);
+  processor.chorusBuffer.fill(.2);
+  processor.port.onmessage(options(true));
+  assert.ok([...processor.delayBuffer].every(value => value === 0), 'o eco do modo anterior é limpo');
+  assert.ok([...processor.chorusBuffer].every(value => value === 0), 'o chorus do modo anterior é limpo');
+  assert.ok([...processor.voiceLevel].every(level => level === 0), 'as vozes antigas caem na hora');
+
+  processor.port.onmessage(packet);
+  let peak = 0;
+  for (let block = 0; block < 12; block++) {
+    for (const channel of processBlock(processor)) for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+  }
+  assert.ok([...processor.bandTargets].every(level => level === 0), 'ligado: nenhuma voz contínua toca junto');
+  assert.ok([...processor.voiceLevel].every(level => level === 0));
+  assert.ok(processor.rhythmEnvelope > 0, 'a gota continua disparando');
+  assert.equal(processor.rhythmFrequency, processor.bandFrequency[2], 'a gota ainda vem da faixa do blob');
+  assert.ok(peak > 0, 'a gota é o único som ouvido');
+});
+
+test('Espaço é uma sala audível, não três toques grudados', () => {
+  const run = space => {
+    const processor = new RegisteredProcessor();
+    processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: false, oscillation: 0, pitchRange: 0, soundEffects: { echo: false, space, chorus: false } } });
+    let energy = 0;
+    for (let blockIndex = 0; blockIndex < 128; blockIndex++) {
+      const x = .4 + (blockIndex % 2) * .02;
+      processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .5, speed: .8, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 4, x, y: .5, size: 800, speed: .8 }] }, master: 1, muted: false, audioEnabled: true } });
+      for (const channel of processBlock(processor)) for (const sample of channel) energy += sample * sample;
+    }
+    return { processor, energy };
+  };
+  const dry = run(false), room = run(true);
+  assert.ok(room.energy > dry.energy * 1.03, 'a sala aumenta o nível');
+  assert.ok(room.processor.spaceDelayC > room.processor.spaceDelayA * 2, 'os toques ficam espaçados');
+  assert.ok(room.processor.spaceLevel > .5, 'a sala respira com o movimento');
+});
+
+test('Chorus tem largura estéreo e entra sem estalo', () => {
+  const difference = chorus => {
+    const processor = new RegisteredProcessor();
+    processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: false, oscillation: 0, pitchRange: 0, soundEffects: { echo: false, space: false, chorus } } });
+    assert.equal(processor.effectMix.chorus, 0, 'o efeito começa mudo e sobe');
+    let total = 0;
+    for (let blockIndex = 0; blockIndex < 96; blockIndex++) {
+      const x = .4 + (blockIndex % 2) * .02;
+      processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .5, speed: .8, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 4, x, y: .5, size: 800, speed: .8 }] }, master: 1, muted: false, audioEnabled: true } });
+      const channels = processBlock(processor, 2);
+      for (let i = 0; i < channels[0].length; i++) total += Math.abs(channels[0][i] - channels[1][i]);
+    }
+    return total;
+  };
+  assert.equal(difference(false), 0);
+  assert.ok(difference(true) > 0, 'os canais divergem quando o Chorus liga');
+});
+
+test('Efeitos desligados não leem nem escrevem os buffers', () => {
+  const processor = new RegisteredProcessor();
+  const delayIndex = processor.delayIndex, chorusIndex = processor.chorusIndex;
+  for (let block = 0; block < 16; block++) processBlock(processor);
+  assert.equal(processor.delayIndex, delayIndex, 'o buffer do Eco/Espaço fica parado');
+  assert.equal(processor.chorusIndex, chorusIndex, 'o buffer do Chorus fica parado');
+  processor.port.onmessage({ data: { type: 'sound', soundEffects: { echo: true, space: false, chorus: false } } });
+  processBlock(processor);
+  assert.notEqual(processor.delayIndex, delayIndex, 'o Eco volta a escrever');
+  assert.equal(processor.chorusIndex, chorusIndex, 'o Chorus continua parado');
+});
+
 test('audioTime from the captured frame aligns the schedule to the AudioContext clock', () => {
   const processor = new RegisteredProcessor();
   processor.port.onmessage({ data: { type: 'signals', signals: { energy: .5, density: .3, speed: .5, ambient: 0, zones: [0,0,0,0,0,0], blobs: [] }, master: 1, muted: false, audioEnabled: true, audioTime: 2.5 } });

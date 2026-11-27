@@ -13,7 +13,7 @@ import { exportRecording, shareToInstagramStory } from './recording-export.js';
 import { clearVideoComposition } from './video-crop.js';
 import { loadPreferences } from './preferences.js';
 import { createScaleRouter } from './audio/scale-router.js';
-import { createRoiMask } from './core/roiMask.js';
+import { createRoiMask, roiHandleAt, resizeRoiRect } from './core/roiMask.js';
 import { attachScalesUI } from './ui/scales-ui.js';
 import { strings as defaultStrings } from './ui/i18n/pt-BR.js';
 import { createNavigation } from './ui/navigation.js';
@@ -108,6 +108,8 @@ const stageViewport = { width: 0, height: 0 };
 const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, powerPreference: 'high-performance', desynchronized: true });
 const fallbackContext = gl ? null : canvas.getContext('2d', { alpha: false });
 const overlayContext = overlayCanvas.getContext('2d', { desynchronized: true });
+const roiVeilCanvas = $('roiVeil');
+const roiVeilContext = roiVeilCanvas.getContext('2d');
 const ctx = analysisCanvas.getContext('2d', { willReadFrequently: true });
 const frameCanvas = document.createElement('canvas');
 const frameContext = frameCanvas.getContext('2d', { alpha: false });
@@ -121,7 +123,7 @@ const state = {
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
-  lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
+  lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null, resizeRect: null, showRoiVeil: true,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0, rhythmEnabled: true,
   audioEffects: { echo: false, space: false, chorus: false },
@@ -143,7 +145,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v84',
+    cacheVersion: 'blobtrack-celular-00-v89',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -211,6 +213,7 @@ if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0,
 if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
 if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
 if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
+if (typeof saved.showRoiVeil === 'boolean') state.showRoiVeil = saved.showRoiVeil;
 if (typeof saved.videoWindows === 'boolean') state.videoWindows = saved.videoWindows;
 if (typeof saved.trailEffect === 'boolean') state.trailEffect = saved.trailEffect;
 if (typeof saved.waveEffect === 'boolean') state.waveEffect = saved.waveEffect;
@@ -290,7 +293,7 @@ function showCameraIssue(error) {
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,originalVideoWindows:state.originalVideoWindows,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,originalVideoWindows:state.originalVideoWindows,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled,showRoiVeil:state.showRoiVeil})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let preferencesSaveTimer = null;
 function scheduleSavePreferences(delay = 300) {
@@ -333,6 +336,8 @@ const render = createRender({
   glState,
   fallbackContext,
   overlayContext,
+  roiVeilCanvas,
+  roiVeilContext,
   video,
   maskCanvas,
   maskContext,
@@ -401,6 +406,7 @@ toggle($('minEffectsButton'),state.minEffects);
 toggle($('extremeModeButton'),state.extremeMode);
 $('maxConnectionDistance').value=String(state.maxConnectionDistance);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;
 toggle($('visualOnlyButton'),state.visualOnly);
+toggle($('roiVeilButton'),state.showRoiVeil);
 $('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
 $('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
@@ -540,6 +546,7 @@ function resize() {
   const ratio = Math.min(devicePixelRatio || 1, deviceProfile.pixelRatio, 1.5); const w = Math.round(rect.width * ratio), h = Math.round(rect.height * ratio);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   if (overlayCanvas.width !== w || overlayCanvas.height !== h) { overlayCanvas.width = w; overlayCanvas.height = h; }
+  if (roiVeilCanvas.width !== w || roiVeilCanvas.height !== h) { roiVeilCanvas.width = w; roiVeilCanvas.height = h; }
   if (gl) gl.viewport(0, 0, canvas.width, canvas.height);
 }
 new ResizeObserver(resize).observe(canvas);
@@ -627,7 +634,7 @@ function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   return applied;
 }
 let hudCache = null;
-function updateHud(raw, applied, result) {
+function updateHud(raw, applied, result, source = null) {
   const now = performance.now();
   if (now - state.lastHudAt < 100) return;
   state.lastHudAt = now;
@@ -654,7 +661,21 @@ function updateHud(raw, applied, result) {
   const sr=$('statusReadout'); if(sr) sr.textContent=`${Math.round(state.envelopes.energy*100)}% energia · ${Math.round(state.envelopes.density*100)}% dens`;
   const ms=x=>Number.isFinite(x)?x.toFixed(1):'—'; $('timeReadout').textContent=`${ms(state.timing.tracking)} · ${ms(state.timing.cycle)} ms`;
   $('windowCostReadout').textContent=state.videoWindows?`${ms(state.timing.windows)} ms · ${result.blobs.length} recortes`:'Desligada';
-  $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`; if($('blobReadout')) $('blobReadout').textContent=`${result.blobs.length} blobs`;
+  const roi = state.manualRects.length && source ? getTrackingRoi(source) : null;
+  let inside = 0;
+  if (roi) {
+    for (const blob of result.blobs) {
+      const bx = Math.min(result.width - 1, Math.max(0, Math.floor(blob.x * result.width)));
+      const by = Math.min(result.height - 1, Math.max(0, Math.floor(blob.y * result.height)));
+      if (roi[by * result.width + bx]) inside++;
+    }
+  }
+  const roiReadout = $('roiReadout');
+  if (roiReadout) roiReadout.textContent = roi
+    ? `${Math.round(100 * roi.reduce((sum, value) => sum + value, 0) / roi.length)}% · ${inside}/${result.blobs.length} blobs`
+    : '—';
+  $('frameInfo').textContent=`${result.width}×${result.height} · fps ${Math.round(1/Math.max(result.dt,.001))}`;
+  if($('blobReadout')) $('blobReadout').textContent = roi ? `${inside}/${result.blobs.length} blobs` : `${result.blobs.length} blobs`;
   if (now - state.lastAccessibleAt >= 1500 && result.blobs.length !== state.lastAccessibleCount) {
     state.lastAccessibleAt = now;
     state.lastAccessibleCount = result.blobs.length;
@@ -745,7 +766,7 @@ function frame(now) {
           state.timing.render = performance.now() - renderStarted;
           // Diagnóstico opcional: só com &gl=1 para não poluir FPS/longTasks.
           if (glReadbackEnabled) perfProbe.stage('glReadback', () => render.probeGlReadback());
-          updateHud(result.raw, applied, result);
+          updateHud(result.raw, applied, result, source);
           const perf = state.performance;
           const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);
           perf.analysisAverage = next.analysisAverage;
@@ -1162,6 +1183,18 @@ $('rectangleButton').addEventListener('click',e=>{
   else $('rectangleKeyboardStatus').textContent='Criação de região cancelada.';
   showToast(state.drawingRect?'Use as setas e Enter, ou arraste no palco':'Criação cancelada');
 });
+$('clearRectanglesButton').addEventListener('click',()=>{
+  state.manualRects.length=0;state.dragRect=null;state.resizeRect=null;state.keyboardPoint=null;
+  state.drawingRect=false;toggle($('rectangleButton'),false);
+  render.drawRoiVeil();
+  showToast('Retângulos removidos');scheduleSavePreferences();
+});
+$('roiVeilButton').addEventListener('click',event=>{
+  state.showRoiVeil=!state.showRoiVeil;
+  toggle(event.currentTarget,state.showRoiVeil);
+  render.drawRoiVeil();
+  scheduleSavePreferences();
+});
 function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;scheduleSavePreferences();}
 function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
@@ -1284,13 +1317,14 @@ tabButtons.forEach((button,index)=>{
     event.preventDefault();activateTab(tabButtons[next],true);
   });
 });
-let touchStartY=0,touchStartTime=0;
+let touchStartY=0,touchStartTime=0,didResizeRect=false;
 stage.addEventListener('touchstart',e=>{if(e.target===canvas||e.target===overlayCanvas){touchStartY=e.changedTouches[0].clientY;touchStartTime=Date.now();}},{passive:true});
 stage.addEventListener('touchend',e=>{
   if(e.target!==canvas&&e.target!==overlayCanvas)return;
 
   const dy=e.changedTouches[0].clientY-touchStartY;
-  if(!state.drawingRect&&Math.abs(dy)>65&&Date.now()-touchStartTime<600)switchCamera();
+  if(!state.drawingRect&&!didResizeRect&&Math.abs(dy)>65&&Date.now()-touchStartTime<600)switchCamera();
+  didResizeRect=false;
 },{passive:true});
 stage.addEventListener('keydown',e=>{
   if(!state.drawingRect||!state.keyboardPoint)return;
@@ -1317,9 +1351,30 @@ stage.addEventListener('keydown',e=>{
     e.preventDefault();state.dragRect=null;state.keyboardPoint=null;state.drawingRect=false;toggle($('rectangleButton'),false);status.textContent='Criação de região cancelada.';$('rectangleButton').focus();
   }
 });
-overlayCanvas.addEventListener('pointerdown',e=>{if(!state.drawingRect)return;state.keyboardPoint=null;const r=overlayCanvas.getBoundingClientRect();state.dragRect={x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height,w:0,h:0};overlayCanvas.setPointerCapture(e.pointerId);});
-overlayCanvas.addEventListener('pointermove',e=>{if(!state.dragRect)return;const r=overlayCanvas.getBoundingClientRect(),x=(e.clientX-r.left)/r.width,y=(e.clientY-r.top)/r.height;state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};});
-overlayCanvas.addEventListener('pointerup',()=>{if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;state.keyboardPoint=null;toggle($('rectangleButton'),false);}});
+overlayCanvas.addEventListener('pointerdown',e=>{
+  const bounds=overlayCanvas.getBoundingClientRect();
+  const x=(e.clientX-bounds.left)/bounds.width,y=(e.clientY-bounds.top)/bounds.height;
+  if(!state.drawingRect){
+    const handle=roiHandleAt(x,y,state.manualRects,10/bounds.width,10/bounds.height);
+    if(handle){state.resizeRect=handle;didResizeRect=true;overlayCanvas.setPointerCapture(e.pointerId);}
+    return;
+  }
+  state.keyboardPoint=null;
+  state.dragRect={x,y,w:0,h:0};
+  overlayCanvas.setPointerCapture(e.pointerId);
+});
+overlayCanvas.addEventListener('pointermove',e=>{
+  const bounds=overlayCanvas.getBoundingClientRect();
+  const x=(e.clientX-bounds.left)/bounds.width,y=(e.clientY-bounds.top)/bounds.height;
+  if(state.resizeRect){resizeRoiRect(state.resizeRect.rect,state.resizeRect.corner,x,y);return;}
+  if(!state.dragRect)return;
+  state.dragRect={x:Math.min(x,state.dragRect.x),y:Math.min(y,state.dragRect.y),w:Math.abs(x-state.dragRect.x),h:Math.abs(y-state.dragRect.y)};
+});
+overlayCanvas.addEventListener('pointerup',()=>{
+  if(state.resizeRect){state.resizeRect=null;return;}
+  if(state.dragRect){if(state.dragRect.w>.015&&state.dragRect.h>.015)state.manualRects.push(state.dragRect);state.dragRect=null;state.drawingRect=false;state.keyboardPoint=null;toggle($('rectangleButton'),false);}
+});
+overlayCanvas.addEventListener('pointercancel',()=>{state.resizeRect=null;state.dragRect=null;});
 if(isStandaloneApp)$('installButton').hidden=true;
 if(isAppleMobile && !isStandaloneApp){$('installButton').setAttribute('aria-label','Como adicionar à Tela de Início');}
 if(isAppleMobile && isStandaloneApp)$('fullscreenButton').hidden=true;
