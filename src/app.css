@@ -403,7 +403,9 @@ body.focus-mode .dock { visibility:hidden }
 body.focus-mode .stage-shade { opacity:0 }
 body.focus-mode .stage-pill { opacity:0 }
 body.focus-mode .stage-keyboard,
+body.fullscreen-active .stage-keyboard,
 html:fullscreen body:not(.gear-vr) .stage-keyboard { display:block }
+body.gear-vr .stage-keyboard { display:none!important }
 .focus-hint {
   position:absolute;z-index:5;
   left:50%;bottom:14px;

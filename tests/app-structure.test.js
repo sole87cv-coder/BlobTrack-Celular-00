@@ -209,7 +209,12 @@ test('Tom base keyboard mirrors the eight selectable keys without bypassing audi
   assert.ok(keyRule && keyRule.includes('min-height:44px'), 'keys keep an accessible touch target');
   assert.ok(css.includes('.audio-keyboard {'));
   assert.ok(css.includes('.stage-keyboard {'));
-  assert.ok(css.includes('html:fullscreen body:not(.gear-vr) .stage-keyboard { display:block }'));
+  assert.ok(css.includes('body.fullscreen-active .stage-keyboard,'));
+  assert.ok(css.includes('body.gear-vr .stage-keyboard { display:none!important }'));
+  assert.ok(app.includes('function syncFullscreenUi()'));
+  assert.ok(app.includes("document.body.classList.toggle('fullscreen-active',on);"));
+  assert.ok(app.includes("document.addEventListener('fullscreenchange',syncFullscreenUi);"));
+  assert.ok(app.includes("document.addEventListener('webkitfullscreenchange',syncFullscreenUi);"));
   assert.ok(app.includes("const audioKeyButtons=[...document.querySelectorAll('[data-audio-key]')];"));
   assert.ok(app.includes('function syncAudioKey()'));
   assert.ok(app.includes("syncAudioKey();"));

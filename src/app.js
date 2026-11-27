@@ -143,7 +143,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v75',
+    cacheVersion: 'blobtrack-celular-00-v76',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -1162,12 +1162,17 @@ async function enterFullscreen(orientation='portrait'){
 }
 async function toggleFullscreen(){ isFullscreen() ? await exitFullscreen() : await enterFullscreen(); }
 $('fullscreenButton').addEventListener('click',toggleFullscreen);
-document.addEventListener('fullscreenchange',()=>{
+/* Um único sinal do app diz que estamos em tela cheia. CSS :fullscreen falha em alguns
+   navegadores de Android/PWA; a classe no body funciona nos dois caminhos. */
+function syncFullscreenUi(){
   const on=isFullscreen();
+  document.body.classList.toggle('fullscreen-active',on);
   $('fullscreenButton').querySelector('.chip-icon').textContent=on?'⤢':'⛶';
   $('fullscreenButton').setAttribute('aria-label',on?'Sair da tela cheia':'Tela cheia');
-});
-document.addEventListener('webkitfullscreenchange',()=>$('fullscreenButton').querySelector('.chip-icon').textContent=isFullscreen()?'⤢':'⛶');
+}
+document.addEventListener('fullscreenchange',syncFullscreenUi);
+document.addEventListener('webkitfullscreenchange',syncFullscreenUi);
+syncFullscreenUi();
 /* Esc / gesto de volta do sistema: sempre reflete o estado */
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&focusMode)setFocusMode(false);else if(e.key==='Escape'&&isFullscreen())exitFullscreen();});
 window.addEventListener('resize',()=>{ if(!isFullscreen()) $('fullscreenButton').querySelector('.chip-icon').textContent='⛶'; });
