@@ -92,11 +92,20 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 
 **Mudança de política (v69):** com autorização do dono, a pausa dos efeitos e o `recordingBudget` foram removidos. Isso **não** é uma otimização e **não** tem medição de FPS: só elimina o corte de reatividade. O gargalo de `~41 ms` no readback continua o mesmo e segue sendo a frente de desempenho.
 
-**Próxima frente:** manter os pixels fora do caminho 2D síncrono (alvo WebGL pequeno com `readPixels`). Antes de implementar, a `v68` mede o custo bruto: com `?perf=1`, `render.probeGlReadback()` faz um `gl.readPixels` de no máximo `240×427` do framebuffer já desenhado e publica o tempo em `glReadback`. Isso **não** muda o rastreador, os efeitos nem o conteúdo da tela; sem `?perf=1`, o custo é zero. Se `glReadback` ficar muito abaixo dos `~41 ms` do caminho 2D, o alvo WebGL passa a ser implementado de verdade. Ainda **sem medição em aparelho**.
+**Frente WebGL — medida e descartada (v68 → v70):** a `v68` acrescentou a sonda `render.probeGlReadback()` (`gl.readPixels` de até `240×427`) para saber se vale a pena trocar o caminho 2D. A amostra da `v69` respondeu:
+
+| Etapa (amostra v69, gravando, cache v69) | p50 | p95 | máx |
+|---|---:|---:|---:|
+| `readback` (total, caminho 2D atual) | 17,7 ms | 32,44 ms | 80,4 ms |
+| `readbackDraw` | 0,1 ms | 0,4 ms | 5,4 ms |
+| `readbackPixels` (`getImageData`) | 17,4 ms | 32,0 ms | 79,9 ms |
+| `glReadback` (sonda WebGL) | **33,1 ms** | **45,64 ms** | **105,2 ms** |
+
+`glReadback` custou quase o dobro do `readbackPixels` na mesma rodada. A hipótese "WebGL `readPixels` é barato" foi **refutada por número**; nenhum alvo WebGL foi implementado e o rastreador permanece intacto. A sonda também era executada a cada quadro e somava ~`33 ms` ao ciclo, contaminando `fps: 12,89` e `longTasks` p50 `70 ms` — esses números **não** representam o app sem a sonda. Desde a `v70`, `glReadback` só liga com `?perf=1&gl=1`; `?perf=1` sozinho mede o app limpo (`sondaGl: false` no JSON). `salvamentoMs: null` e `eventos: {}` também nesta amostra: salvar o MP4 segue sem medição.
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 
-Rode cada linha no Realme C67 com `?perf=1`. Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.
+Rode cada linha no Realme C67 com `?perf=1` (sem `&gl=1`: a sonda WebGL foi descartada e só serve para medir a si mesma). Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.
 
 | # | Cenário | O que mede | FPS | p95 da etapa-chave |
 |---|---|---|---|---|

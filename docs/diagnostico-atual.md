@@ -251,4 +251,11 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - No lugar do badge entrou um aviso discreto no palco, **Aparelho no limite · efeitos mantidos**, traduzido nos 4 idiomas. Ele acende após 8 quadros com FPS médio abaixo de `max(12, fps do perfil × 0,55)` e apaga quando a média volta; gravar não é exceção. Não há toast, não há corte de efeitos e não há rebaixamento: só a largura do rastreio continua automática.
 - `__blobtrackPerf` e `__blobtrackMetrics` ganharam `deviceLimit` para o dono conferir no JSON se o aviso apareceu sem precisar olhar a tela.
 - Testes de contrato reescritos para exigir o contrário do antigo: nenhum `renderPause`, nenhum `recordingBudget`, nenhuma porta `effectsPaused` no renderer e desenho incondicional de rastro/ondas/malha/rede/telemetria.
-- **Não medido:** FPS, travamento ao salvar e aparecimento do aviso no Realme C67 depois da `v69`. Aprovação depende do JSON novo e do Teste final do dono (2 min com tudo, 1 min gravando + salvar, rotação, segundo plano, 30 min).
+- **Medido depois:** chegou a amostra da `v69` (19:37) com `effectsPaused: false`, `pauseReason: ''`, `pauseCount: 0`, `deviceLimit: true` e `recordingState: recording`. A política de pausa foi confirmada removida no aparelho e o aviso discreto apareceu como previsto. O FPS dessa amostra, porém, veio contaminado pela sonda WebGL (seção 21). Travamento ao salvar segue sem medição.
+
+## 21. Sonda WebGL medida e descartada (v70)
+
+- Amostra da `v69` no Realme C67, gravando, todos os efeitos ativos: `glReadback` p50 `33,1 ms` / p95 `45,64 ms`; no mesmo ciclo, `readback` p50 `17,7 ms` com `readbackDraw` `0,1 ms` e `readbackPixels` `17,4 ms`. A sonda custou ~1,9× o caminho 2D atual. **Hipótese WebGL descartada por número**; nenhum alvo WebGL foi implementado, nenhuma linha do rastreador mudou.
+- Como a sonda rodava a cada quadro, acrescentava ~`33 ms` ao ciclo: `fps: 12,89` e `longTasks` p50 `70 ms` nessa amostra **não** medem o app sem ela. Não há base para dizer que a `v69` caiu de `15,92` para `12,89 FPS` por causa da remoção da pausa.
+- A `v70` coloca `glReadback` atrás de `?perf=1&gl=1` e publica `sondaGl` no JSON. Com `?perf=1` sozinho, a coleta fica limpa. Nenhum efeito, render, áudio ou gravação mudou; só o custo do kit de medição.
+- `salvamentoMs: null`, `eventos: {}` e nenhuma medição de 30 min continuam em aberto. Aprovação final depende de JSON limpo da `v70` com gravação + **Salvar** e do teste manual do dono (y/N).

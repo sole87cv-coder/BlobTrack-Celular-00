@@ -139,9 +139,11 @@ const recorder = createRecorder({
 let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
 let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
+// A sonda glReadback custa ~33 ms/quadro no Realme C67: fica só atrás de &gl=1.
+const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v69',
+    cacheVersion: 'blobtrack-celular-00-v70',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -149,6 +151,7 @@ function perfProbeMeta() {
     pauseCount: state.performance.pauseCount,
     effectsPaused: state.performance.effectsPaused,
     deviceLimit: state.performance.limitShown,
+    sondaGl: glReadbackEnabled,
     recordingState: recordingSnapshot.state,
     canvases: {
       visual: [canvas.width, canvas.height],
@@ -738,8 +741,8 @@ function frame(now) {
           perfProbe.push('janelas', state.timing.windows);
           perfProbe.stage('gravacao', () => render.drawRecordingComposite());
           state.timing.render = performance.now() - renderStarted;
-          // Diagnóstico:mede uma leitura WebGL pequena, sem mudar o rastreador.
-          if (perfProbe.active) perfProbe.stage('glReadback', () => render.probeGlReadback());
+          // Diagnóstico opcional: só com &gl=1 para não poluir FPS/longTasks.
+          if (glReadbackEnabled) perfProbe.stage('glReadback', () => render.probeGlReadback());
           updateHud(result.raw, applied, result);
           const perf = state.performance;
           const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);

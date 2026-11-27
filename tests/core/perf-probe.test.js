@@ -96,7 +96,8 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   for (const key of ['fps:', 'tAnalysis:', 'tRender:', 'effectsPaused:']) assert.ok(app.includes(key), key);
   for (const key of ['pauseReason: state.performance.pauseReason', 'pauseCount: state.performance.pauseCount', 'tPorEfeito: perfProbe.active ? perfProbe.etapas() : null']) assert.ok(app.includes(key), key);
   for (const key of ["perfProbe.stage('readbackDraw'", "perfProbe.stage('readbackPixels'", 'fps: Number((state.performance.fpsAverage || 0).toFixed(2))', 'trackingWidth: state.trackingWidth']) assert.ok(app.includes(key), key);
-  assert.ok(app.includes("perfProbe.stage('glReadback', () => render.probeGlReadback())"));
+  assert.ok(app.includes("const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1'"));
+  assert.ok(app.includes("if (glReadbackEnabled) perfProbe.stage('glReadback', () => render.probeGlReadback())"));
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
 });
 
