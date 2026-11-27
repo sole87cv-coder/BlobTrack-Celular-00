@@ -141,6 +141,7 @@ let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
 function perfProbeMeta() {
   return {
+    cacheVersion: 'blobtrack-celular-00-v64',
     perfil: deviceProfile.name,
     pauseReason: state.performance.pauseReason,
     pauseCount: state.performance.pauseCount,
@@ -165,6 +166,33 @@ if (perfProbe.active) {
     json: () => JSON.stringify(perfProbe.report(perfProbeMeta()), null, 2),
     reset: () => perfProbe.reset(),
   };
+  // Painel no celular: sem PC, sem chrome://inspect e sem abrir console.
+  const diag = $('perfDiag'), dump = $('perfDump');
+  const refreshPerfDump = () => { const text = window.__blobtrackPerf.json(); dump.textContent = text; return text; };
+  diag.hidden = false;
+  refreshPerfDump();
+  diag.addEventListener('toggle', () => { if (diag.open) refreshPerfDump(); });
+  $('perfRefresh').addEventListener('click', refreshPerfDump);
+  $('perfReset').addEventListener('click', () => { perfProbe.reset(); refreshPerfDump(); });
+  $('perfCopy').addEventListener('click', async () => {
+    const text = refreshPerfDump();
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Diagnóstico copiado');
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents(dump);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      showToast('Selecione e copie o texto');
+    }
+  });
+  $('perfShare').addEventListener('click', async () => {
+    const text = refreshPerfDump();
+    if (!navigator.share) { showToast('Compartilhamento indisponível'); return; }
+    try { await navigator.share({ title: 'BlobTrack · diagnóstico', text }); } catch {}
+  });
 }
 let themeChoice = ['system','dark','light'].includes(saved.theme) ? saved.theme : 'system';
 let reduceMotion = saved.reduceMotion === true;

@@ -78,6 +78,21 @@
         <div class="stage-bottom"><span id="frameInfo">—</span><span id="statusReadout">—</span></div>
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+        <!-- Só aparece com ?perf=1: coleta no próprio celular, sem chrome://inspect. -->
+        <details class="perf-diag" id="perfDiag" hidden>
+          <summary id="perfDiagSummary">Diagnóstico</summary>
+          <div class="perf-diag-body">
+            <p class="hint" id="perfDiagHint">Toque para medir e copiar o JSON.</p>
+            <div class="perf-diag-actions">
+              <button class="page-button" id="perfRefresh" type="button">Atualizar</button>
+              <button class="page-button" id="perfCopy" type="button">Copiar</button>
+              <button class="page-button" id="perfShare" type="button">Compartilhar</button>
+              <button class="page-button" id="perfReset" type="button">Zerar</button>
+            </div>
+            <pre id="perfDump" tabindex="0" aria-live="polite">—</pre>
+          </div>
+        </details>
       </section>
 
       <!-- Painel inferior deslizante: arraste a alça ou toque no botão ○ -->
