@@ -141,7 +141,7 @@ let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v67',
+    cacheVersion: 'blobtrack-celular-00-v68',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -764,6 +764,8 @@ function frame(now) {
           perfProbe.push('janelas', state.timing.windows);
           perfProbe.stage('gravacao', () => render.drawRecordingComposite());
           state.timing.render = performance.now() - renderStarted;
+          // Diagnóstico:mede uma leitura WebGL pequena, sem mudar o rastreador.
+          if (perfProbe.active) perfProbe.stage('glReadback', () => render.probeGlReadback());
           updateHud(result.raw, applied, result);
           const perf = state.performance;
           const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);

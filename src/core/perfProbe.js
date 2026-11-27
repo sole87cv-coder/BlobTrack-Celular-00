@@ -4,7 +4,7 @@
 const MAX_SAMPLES = 1200;
 const ETAPAS = [
   'captura', 'readback', 'readbackDraw', 'readbackPixels', 'analise', 'estipple', 'renderWebGL',
-  'overlay', 'composicao', 'janelas', 'audio', 'gravacao',
+  'overlay', 'composicao', 'janelas', 'audio', 'gravacao', 'glReadback',
 ];
 
 function quantile(sorted, q) {

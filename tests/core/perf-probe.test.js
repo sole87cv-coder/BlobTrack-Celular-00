@@ -96,5 +96,12 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   for (const key of ['fps:', 'tAnalysis:', 'tRender:', 'effectsPaused:']) assert.ok(app.includes(key), key);
   for (const key of ['pauseReason: state.performance.pauseReason', 'pauseCount: state.performance.pauseCount', 'tPorEfeito: perfProbe.active ? perfProbe.etapas() : null']) assert.ok(app.includes(key), key);
   for (const key of ["perfProbe.stage('readbackDraw'", "perfProbe.stage('readbackPixels'", 'fps: Number((state.performance.fpsAverage || 0).toFixed(2))', 'trackingWidth: state.trackingWidth']) assert.ok(app.includes(key), key);
+  assert.ok(app.includes("perfProbe.stage('glReadback', () => render.probeGlReadback())"));
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
+});
+
+test('relatório inclui a leitura WebGL de diagnóstico', () => {
+  const { probe } = probeWith();
+  probe.push('glReadback', 3);
+  assert.deepEqual(probe.report().etapas.glReadback, { n: 1, p50: 3, p95: 3, max: 3 });
 });

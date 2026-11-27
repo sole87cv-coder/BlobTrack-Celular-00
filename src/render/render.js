@@ -973,6 +973,19 @@ export function createRender({
     drawRecordingFrame(recordingContext, canvas, overlayCanvas, recordingCanvas.width, recordingCanvas.height, includeShade, recordingWatermark);
   }
 
+  // Só diagnóstico (?perf=1): mede o custo de uma leitura pequena via WebGL,
+  // sem alterar o caminho de pixels do rastreador nem o conteúdo da tela.
+  let glReadbackBuffer = null;
+  function probeGlReadback() {
+    if (!gl) return;
+    const width = Math.min(240, gl.drawingBufferWidth || 0);
+    const height = Math.min(427, gl.drawingBufferHeight || 0);
+    if (width < 1 || height < 1) return;
+    const length = width * height * 4;
+    if (!glReadbackBuffer || glReadbackBuffer.length !== length) glReadbackBuffer = new Uint8Array(length);
+    try { gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, glReadbackBuffer); } catch {}
+  }
+
   return {
     calculateCoverCrop,
     calculateContainRect,
@@ -991,6 +1004,7 @@ export function createRender({
     renderFrame,
     drawMaskOverlay,
     drawRecordingComposite,
+    probeGlReadback,
     render: renderFrame,
   };
 }

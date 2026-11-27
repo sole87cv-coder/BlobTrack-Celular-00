@@ -238,3 +238,9 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - `pauseReason: render-budget` na `v66` é **rótulo inferido**, não gatilho: `fps` `16,22` estava abaixo do limiar `16,5` de `low-fps`, e os estágios de render somam `~3,3 ms` contra o limite de `13,33 ms`. A etiqueta será corrigida junto com a remoção da pausa.
 - `salvamentoMs: null`, `eventos: {}` também na `v66`: o cenário de gravação foi coletado, o de **salvar o MP4** segue sem medição.
 - **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável). Números de gravação já existem; falta o de salvamento antes de mexer na política.
+
+## 19. Sonda WebGL (v68, publicada, sem medição)
+
+- Antes de implementar um caminho de pixels via WebGL, a `v68` acrescenta `render.probeGlReadback()` e a etapa `glReadback` ao relatório. Com `?perf=1`, ela faz um `gl.readPixels` de até `240×427` do framebuffer já desenhado, reaproveitando um buffer, e publica só o tempo. Sem `?perf=1`, nada é chamado: rastreador, efeitos, render e gravador seguem idênticos à `v67`.
+- Objetivo: comparar a sincronização de leitura do WebGL com os `~41 ms` do caminho 2D. Se for barata, o próximo commit implementa o alvo pequeno; se não for, a hipótese é descartada por número, sem mudança de comportamento.
+- **Bloqueio:** remover a pausa dos efeitos exige alterar `tests/core/qualityController.test.js` e `tests/network-effect.test.js`, que hoje exigem `renderPause` e `effectsPaused`. O dono autorizou mexer nesses testes de contrato? Sem resposta, a política permanece intacta.

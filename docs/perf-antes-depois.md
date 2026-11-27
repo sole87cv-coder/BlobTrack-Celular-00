@@ -90,7 +90,7 @@ Na `v65`, a cópia para o canvas de análise era `0,1 ms` e todo o custo estava 
 
 A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `301×624`, `gravacao` p50 `0,6 ms` / p95 `1 ms`, `salvamentoMs: null`, `eventos: {}`. `pauseReason: render-budget` é uma **etiqueta inferida** (`renderAverage > 13,33 ms` no instante da pausa), não o gatilho registrado: com `16,22 FPS` abaixo do limiar `16,5`, o gatilho real foi `low-fps`. Os estágios de render somam ~`3,3 ms` de p50, muito abaixo de `13,33 ms`. Isso será corrigido junto com a política de pausa.
 
-**Próxima frente:** manter os pixels fora do caminho 2D síncrono (alvo WebGL pequeno com `readPixels`) — ainda **não implementada e não medida**. Qualquer mudança de runtime continua exigindo um JSON novo do Realme C67.
+**Próxima frente:** manter os pixels fora do caminho 2D síncrono (alvo WebGL pequeno com `readPixels`). Antes de implementar, a `v68` mede o custo bruto: com `?perf=1`, `render.probeGlReadback()` faz um `gl.readPixels` de no máximo `240×427` do framebuffer já desenhado e publica o tempo em `glReadback`. Isso **não** muda o rastreador, os efeitos nem o conteúdo da tela; sem `?perf=1`, o custo é zero. Se `glReadback` ficar muito abaixo dos `~41 ms` do caminho 2D, o alvo WebGL passa a ser implementado de verdade. Ainda **sem medição em aparelho**.
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 
