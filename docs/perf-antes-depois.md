@@ -107,6 +107,8 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 
 **Primeira amostra limpa (v70, `sondaGl: false`, `glReadback.n: 0`):** `fps` **23,35**, `readback` p50 `44,4 ms` / p95 `60,325 ms`, `readbackPixels` p50 `44,1 ms`, `analise` p50 `7,1 ms`, `longTasks` p50 `62 ms` / p95 `84,3 ms`, `salvamentoMs` `4462,2 ms`, `deviceLimit: false`. É a referência válida de FPS sem a sonda; as de `12,89`/`14,13` não são. O mesmo `readbackPixels` já mediu `17,4`, `22,0` e `44,1 ms` de p50 em amostras diferentes — variabilidade alta, sem base para uma conclusão de causa com uma única amostra.
 
+**Segunda amostra limpa (v71, cache destravado em janela anônima):** `fps` **23,6**, `readback` p50 `50,6 ms` / p95 `69,83 ms`, `readbackPixels` p50 `50,2 ms`, `analise` p50 `8,3 ms`, `longTasks` p50 `71 ms` / p95 `100,7 ms`, `effectsPaused: false`, `deviceLimit: false`. A série de p50 do `readbackPixels` agora é `17,4 / 22,0 / 44,1 / 50,2 ms`: confirma variabilidade, mas ainda não separa causa. `estipple.n: 0` mostra que o Pontilhado não estava ligado — esta amostra **não** é de "todos os efeitos". O salvamento finalmente foi dividido: total `4384,4 ms` = `seletorMs` `2696,6 ms` (~61%, diálogo do Android) + `escritaMs` `1687,3 ms` (~39%, arquivo); `saveEnd` veio `0,5 ms` depois de `saveWrite`.
+
 ### Fase 2 — matriz de ablação para o V1su4rt
 
 Rode cada linha no Realme C67 com `?perf=1` (sem `&gl=1`: a sonda WebGL foi descartada e só serve para medir a si mesma). Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.

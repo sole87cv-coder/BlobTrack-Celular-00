@@ -355,7 +355,7 @@ O JSON traz p50 / p95 / máximo em milissegundos de cada etapa: `captura`, `read
 
 **Veredito WebGL (`v70`):** na amostra da `v69`, `glReadback` mediu p50 `33,1 ms` / p95 `45,64 ms` — mais caro que os `17,4 ms` de p50 do `readbackPixels` do caminho 2D atual na mesma rodada. A hipótese do alvo WebGL foi **descartada por número**; o rastreador continua como está. A sonda também rodava a cada quadro e contaminava `fps`/`longTasks`: desde a `v70` ela só liga com `?perf=1&gl=1`. Use `?perf=1` para medir o app limpo. O `fps: 12,89` daquela amostra **não** é o FPS do app sem a sonda.
 
-**Salvamento medido (`v71`):** uma amostra da `v69` finalmente trouxe `salvamentoMs: 11044,9` (`saveStart` → `saveEnd`). Como o contador incluía o seletor de arquivos do Android, a `v71` separa `seletorMs` (diálogo), `escritaMs` (gravar o arquivo), `compartilhamentoMs` e `downloadMs`. Antes dessa separação, **não há número** que diga quanto dos `11,0 s` é espera do seletor e quanto é trabalho do app. O fluxo de salvar em si não mudou.
+**Salvamento medido (`v71`):** uma amostra da `v69` trouxe `salvamentoMs: 11044,9` (`saveStart` → `saveEnd`), ainda com o seletor do Android embutido. Na primeira coleta já em `v71`, o total foi `4384,4 ms`, separado em `seletorMs: 2696,6` (diálogo, ~61%) e `escritaMs: 1687,3` (arquivo, ~39%). Ou seja, a maior espera ao salvar é o diálogo do sistema; o fluxo de salvar em si não mudou. Duas amostras limpas marcaram `fps: 23,35` e `23,6` — ainda abaixo de 24–30 FPS e ainda sem teste longo. Atenção: `estipple.n: 0` nessa coleta significa que o Pontilhado estava desligado; para validar "todos os efeitos", ligue também o Pontilhado.
 
 #### Se algo deu errado
 
