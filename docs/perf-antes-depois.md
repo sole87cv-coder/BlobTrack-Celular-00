@@ -126,3 +126,19 @@ Rode cada linha no Realme C67 com `?perf=1` (sem `&gl=1`: a sonda WebGL foi desc
 | 7 | Parar e salvar o MP4 | tempo de bloqueio da UI | _não medido_ | `salvamentoMs` |
 
 Orçamento de referência: `33,3 ms` por quadro a 30 FPS (`24–30 FPS` é a meta declarada). Preencher esta tabela é pré-requisito para os vereditos H1–H8 e para qualquer mudança de performance: sem esses números, não há causa raiz provada nem "depois" para comparar.
+
+### Frente dos três efeitos e piano do Tom Base (v72 → v75)
+
+Medição **local do núcleo** (`node scripts/bench-blobtrack.js`, 3 execuções isoladas). Teto combinado: p95 ≤ `1,347 ms`. Não é medição de FPS no celular.
+
+| Versão | Mudança | p95 (ms) | Veredito |
+|---|---|---|---|
+| v71 (linha de base) | Pontilhado v71 no aparelho | `estipple` p50 `0,8` / p95 `1,5` | referência viva, `fps 21,65` |
+| v72 | Inverter e P&B no quadro todo | `1,121 / 1,166 / 1,236` | 🟢 dentro do teto |
+| v73 | `smoothstep` no P&B, `contrast(4)` no fallback | `1,212 / 1,215 / 1,216` | 🟢 estável; `renderWebGL` local ~`0,2 ms` |
+| v74 | Pontilhado 8 tons + jitter menor na borda | `1,225 / 1,198 / 0,985` | 🟢 dentro do teto; sem novo `getImageData` |
+| v75 | Piano do Tom Base no palco | `1,221 / 1,245 / 1,263` | 🟢 dentro do teto; UI, não mexe no rastreio |
+
+**O que não mudou:** `src/domain/blobTrackerCore.js`, `trackingWidth`, `state.threshold`, estratégia de cache do `sw.js`, manifest, `android/` e a política de reatividade (`effectsPaused` segue `false`). Gravação continua só MP4, máx. 5 min. Nenhum `getImageData` extra, nenhum segundo rAF e nenhum fallback WebM entraram.
+
+**O que ainda falta para veredito de desempenho no aparelho:** amostra limpa com `?perf=1` (nunca `&gl=1`), confirmando `cacheVersion: blobtrack-celular-00-v75`, `sondaGl: false`, `glReadback.n: 0`, e comparando `estipple` p50/p95 com a linha de base `0,8 / 1,5 ms`. Sem isso, as linhas da tabela acima valem só como checagem local de não regressão — não como prova de FPS no Realme C67.
