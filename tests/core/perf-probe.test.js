@@ -47,6 +47,15 @@ test('relatório traz p50, p95 e máximo por etapa', () => {
   assert.deepEqual(probe.report().etapas.overlay, { n: 4, p50: 25, p95: 38.5, max: 40 });
 });
 
+test('relatório separa a cópia do readback do getImageData', () => {
+  const { probe } = probeWith();
+  probe.push('readbackDraw', 25);
+  probe.push('readbackPixels', 6);
+  const report = probe.report();
+  assert.deepEqual(report.etapas.readbackDraw, { n: 1, p50: 25, p95: 25, max: 25 });
+  assert.deepEqual(report.etapas.readbackPixels, { n: 1, p50: 6, p95: 6, max: 6 });
+});
+
 test('eventos de salvamento, memória e reset', () => {
   const { api, probe } = probeWith([5, 125]);
   api.memory = { usedJSHeapSize: 1048576, jsHeapSizeLimit: 104857600 };
@@ -86,5 +95,6 @@ test('app publica kit separado e o service worker precacheia o módulo', async (
   assert.ok(app.includes('window.__blobtrackPerf = {'));
   for (const key of ['fps:', 'tAnalysis:', 'tRender:', 'effectsPaused:']) assert.ok(app.includes(key), key);
   for (const key of ['pauseReason: state.performance.pauseReason', 'pauseCount: state.performance.pauseCount', 'tPorEfeito: perfProbe.active ? perfProbe.etapas() : null']) assert.ok(app.includes(key), key);
+  for (const key of ["perfProbe.stage('readbackDraw'", "perfProbe.stage('readbackPixels'", 'fps: Number((state.performance.fpsAverage || 0).toFixed(2))', 'trackingWidth: state.trackingWidth']) assert.ok(app.includes(key), key);
   assert.match(sw, /\.\/src\/core\/perfProbe\.js/);
 });

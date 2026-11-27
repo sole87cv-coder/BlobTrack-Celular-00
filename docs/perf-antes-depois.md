@@ -52,9 +52,32 @@ node scripts/bench-blobtrack.js
 
 Execute três vezes na mesma máquina/runtime e compare o mesmo cenário com os três limites. Se qualquer limite estourar, reverta a mudança responsável antes de continuar. Os números de computador não substituem [`device-matrix.md`](device-matrix.md).
 
-## Kit de medição no celular (v64)
+## Kit de medição no celular (v65)
 
-`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera as chaves antigas de `__blobtrackMetrics`: acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `?perf=1`) e publica o relatório completo em `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback`, `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `pauseReason`, `pauseCount`, `effectsPaused`, perfil, resolução e DPR dos canvases. Nenhum número de aparelho foi coletado ainda.
+`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera as chaves antigas de `__blobtrackMetrics`: acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `?perf=1`) e publica o relatório completo em `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback` (com `readbackDraw` e `readbackPixels` separados desde `v65`), `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `fps`, `trackingWidth`, `pauseReason`, `pauseCount`, `effectsPaused`, `cacheVersion`, perfil, resolução e DPR dos canvases.
+
+### Primeira amostra em aparelho físico (v64, 27/11/2026)
+
+Enviada pelo V1su4rt; cenário não declarado e `recordingState: idle`. Realme C67, perfil **`alto`**, DPR informado `2,55` com canvas limitado a `1,5` (`635×1316`), câmera `540×960`, análise já reduzida a `160×284`. `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`.
+
+| Etapa | p50 (ms) | p95 (ms) | máx (ms) |
+|---|---:|---:|---:|
+| captura | 1,4 | 3,0 | 9,6 |
+| **readback** | **31,7** | **53,2** | **133,3** |
+| analise | 2,9 | 5,41 | 34,1 |
+| estipple | 0,7 | 1,6 | 5,0 |
+| renderWebGL | 0,2 | 0,7 | 3,0 |
+| overlay | 0,6 | 1,3 | 7,2 |
+| composicao | 1,8 | 3,8 | 10,3 |
+| janelas | 0,3 | 0,9 | 5,6 |
+| audio | 0,1 | 0,3 | 2,9 |
+| gravacao | 0,1 | 0,3 | 2,8 |
+| **soma dos p50** | **39,8** | — | — |
+| **soma dos p95** | — | **70,5** | — |
+
+`longTasks`: 429 em 1200 amostras (35,75%), p50 `56 ms`, p95 `77,6 ms`, máx `243 ms`. `gc`: nenhum registrado. Memória: `9,537 MB` constante nas 1200 amostras, limite `1964,57 MB` — sem base para afirmar estabilidade em 30 min.
+
+**Leitura:** o orçamento de 30 FPS é `33,3 ms`; o p50 medido já é `39,8 ms`. Os efeitos reativos juntos somam `3,6 ms` de p50 (`estipple 0,7 + renderWebGL 0,2 + overlay 0,6 + composicao 1,8 + janelas 0,3`), e áudio/gravação `0,2 ms` — descartados como causa principal. O `readback` responde sozinho por ~57% do p50 dos long tasks e ~69% do p95. A largura de análise já estava no mínimo `160` e mesmo assim o readback continuou em `31,7 ms`: reduzir mais a resolução da análise não é a alavanca. O gatilho foi `low-fps`, não `render-budget` (render p95 `0,7 ms` muito abaixo de `13,33 ms`). Causa **provada**: gargalo no caminho síncrono de leitura de pixels. Causa **ainda não provada**: se o custo está no `drawImage` (cópia GPU→CPU) ou no `getImageData` — é o que `readbackDraw`/`readbackPixels` vão separar na `v65`.
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 

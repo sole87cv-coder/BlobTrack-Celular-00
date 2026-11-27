@@ -210,7 +210,7 @@ Pedido do V1su4rt: aplicar o Pacote 3. Como não há aparelho físico neste ambi
 - Etapa 0: `sw.js:16-22` **já apaga** caches antigos com o prefixo `blobtrack-celular-00-`, preserva o atual e chama `clients.claim()`; `tests/sw-behavior.test.js:98-104` prova que `another-app-v1` não é apagado. O V1su4rt escolheu **manter `blobtrack-celular-00-v60`**; nenhuma linha de cache foi alterada.
 - Diagnóstico A–F, plano priorizado e diffs mínimos foram entregues na conversa. O V1su4rt aprovou o **P0**: com `state.maxEffects` e gravação ativa, `src/render/render.js` deixa de repintar o pontilhado dentro das janelas e de desenhar rastro/ondas/malha/rede/telemetria; o vídeo e o efeito base continuam. Cache subiu para `blobtrack-celular-00-v61` e os testes de versão acompanham. Commit `027f6c8` publicado em 27/11/2026: `blobtrak.vercel.app` e `blobtraking.vercel.app` servem `sw.js` com `v61` (HTTP 200). Validação antes do deploy: `npm test` 232/232, `node --check` e `git diff --check` limpos, bench p95 `1,086 / 0,966 / 1,153 ms` ≤ `1,347 ms`. O ganho no Realme C67 ainda **não foi medido**; depende do teste manual na Vercel.
 
-## 15. Kit de medição cirúrgica (cache v62 → v63 → v64, publicado)
+## 15. Kit de medição cirúrgica (cache v62 → v63 → v64 → v65, publicado)
 
 - O prompt cirúrgico proíbe otimizar por palpite. Antes de qualquer nova mudança de comportamento, entrou o medidor desativável `src/core/perfProbe.js`, ativo só com `?perf=1`. Ele publica `window.__blobtrackPerf` (separado de `__blobtrackMetrics`) com `report()`, `json()` e `reset()`; mede `captura`, `readback`, `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio`, `gravacao`, `longTasks`, `gc`, memória, `salvamentoMs`, `pauseReason`, `pauseCount` e resoluções/DPR. Nenhuma chave antiga de `__blobtrackMetrics` foi alterada: entraram só `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `?perf=1`). Nenhum efeito muda quando a URL não tem `?perf=1`.
 - Commit `6360b5a` publicou o kit em `v62`; `254d714` documentou. A rodada seguinte de FASE 1 expôs as três chaves pedidas no prompt (`pauseReason`, `pauseCount`, `tPorEfeito`) em `__blobtrackMetrics` e subiu para `v63`. `npm test` **238/238**, `node --check src/app.js`/`src/render/render.js` e `git diff --check` limpos. Bench do núcleo: três execuções isoladas em `v62` deram p95 `1,150 / 1,294 / 1,225 ms`; em `v63`, `1,251 / 1,253 / 1,147 ms` (todas ≤ `1,347 ms`). Descartamos uma amostra rodada em paralelo com `npm test` (p95 `3,076 ms` por contenção de CPU, não por regressão).
@@ -218,7 +218,17 @@ Pedido do V1su4rt: aplicar o Pacote 3. Como não há aparelho físico neste ambi
 
 ## 16. Coleta sem PC (cache v64)
 
+_Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`/`trackingWidth` ao relatório._
+
 - O V1su4rt informou que não sabe usar `chrome://inspect` e que o aviso "Efeitos reativos pausados" continua aparecendo no celular. Então entrou um painel visível só com `?perf=1`: `index.html` ganha `<details id="perfDiag" hidden>`, `src/app.css` o estilo fixo no canto, e `src/app.js` liga **Atualizar / Copiar / Compartilhar / Zerar** em `__blobtrackPerf`. O texto sai pelo `navigator.clipboard`, por `navigator.share` ou por seleção manual do `<pre>`.
 - Os quatro idiomas (`pt-BR`, `en`, `es`, `fr`) receberam juntos `ui.perfDiagnostic`, `perfDiagHint`, `perfRefresh`, `perfCopy`, `perfShare`, `perfReset` e `messages.perfCopied`, `perfSelectCopy`, `perfShareUnavailable`. Nenhuma string antiga foi apagada. `perfProbeMeta()` agora publica `cacheVersion`, conferido por teste contra `sw.js`.
 - O aparelho segue sem medição: o painel é o que permite trazer os números sem depuração USB. O aviso de pausa permanece até a FASE 3, que depende desses números.
+## 17. Primeira medição em aparelho físico (v64, 27/11/2026)
+
+- O V1su4rt enviou o JSON do Realme C67: perfil `alto`, cache `v64`, `recordingState: idle`, `pauseReason: low-fps`, `pauseCount: 2`, `effectsPaused: true`. Canvas visual/overlay `635×1316` com DPR `2,55` limitado a `1,5`; câmera `540×960`; análise já no piso de `160×284`.
+- Orçamento excedido: soma dos p50 das etapas `39,8 ms` contra `33,3 ms` de 30 FPS. `readback` p50 `31,7 ms` / p95 `53,2 ms` / máx `133,3 ms`; `analise` p50 `2,9 ms`; todos os efeitos visuais juntos `3,6 ms`; áudio e gravação `0,2 ms`. `longTasks` em 429 de 1200 quadros, p50 `56 ms` / p95 `77,6 ms`.
+- **Causa provada:** o gargalo é o caminho síncrono de leitura de pixels, não os efeitos, não o áudio, não os shaders e não a gravação (que estava inativa). O badge veio do gatilho de FPS baixo, não do orçamento de render: render p95 `0,7 ms` está longe do limiar de `13,33 ms`.
+- **Ainda não provado:** se os `31,7 ms` estão no `drawImage` para o canvas de análise ou no `getImageData`. A `v65` separa as duas etapas e acrescenta `fps`/`trackingWidth` ao JSON. Nenhuma mudança de comportamento foi aplicada: somente instrumentação.
+- Detalhes e tabela completa em [`perf-antes-depois.md`](perf-antes-depois.md).
+
 - **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável) e só será resolvido depois que a matriz de ablação da FASE 2 trouxer números do celular. Nenhum número de aparelho foi coletado até aqui.

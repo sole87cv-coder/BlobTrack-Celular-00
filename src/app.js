@@ -141,8 +141,10 @@ let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v64',
+    cacheVersion: 'blobtrack-celular-00-v65',
     perfil: deviceProfile.name,
+    fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
+    trackingWidth: state.trackingWidth,
     pauseReason: state.performance.pauseReason,
     pauseCount: state.performance.pauseCount,
     effectsPaused: state.performance.effectsPaused,
@@ -588,9 +590,12 @@ function analyze(source = video) {
     analysisCanvas.height = height;
   }
   const pixels = perfProbe.stage('readback', () => {
-    ctx.drawImage(source, 0, 0, width, height);
-    const pixels = ctx.getImageData(0, 0, width, height).data;
-    return pixels;
+    // FASE 2: separar a cópia GPU→CPU do getImageData para provar onde está o custo.
+    perfProbe.stage('readbackDraw', () => ctx.drawImage(source, 0, 0, width, height));
+    return perfProbe.stage('readbackPixels', () => {
+      const pixels = ctx.getImageData(0, 0, width, height).data;
+      return pixels;
+    });
   });
   const result = perfProbe.stage('analise', () => tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source)));
   if (!result) return null;

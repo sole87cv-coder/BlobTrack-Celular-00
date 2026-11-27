@@ -3,7 +3,7 @@
 
 const MAX_SAMPLES = 1200;
 const ETAPAS = [
-  'captura', 'readback', 'analise', 'estipple', 'renderWebGL',
+  'captura', 'readback', 'readbackDraw', 'readbackPixels', 'analise', 'estipple', 'renderWebGL',
   'overlay', 'composicao', 'janelas', 'audio', 'gravacao',
 ];
 
