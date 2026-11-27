@@ -28,6 +28,7 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
   assert.ok(app.includes('else if(uEffect==2){rgb=vec3(1.0);}'));
+  assert.ok(app.includes('float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
   assert.ok(render.includes('const STIPPLE_LEVELS = 6;'));

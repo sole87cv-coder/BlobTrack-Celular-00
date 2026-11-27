@@ -410,7 +410,7 @@ export function createRender({
     c.save();
     const effectFilter =
       state.effect === 'invert' ? 'invert(1)'
-        : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+        : state.effect === 'threshold' ? 'grayscale(1) contrast(4)'
           : 'grayscale(1) contrast(2)';
     const invertPart = state.invertBlend ? ' invert(1)' : '';
     // Botão ligado = efeito na janela. Desligado = vídeo cru dentro do blob, como Janela viva.
@@ -545,7 +545,7 @@ export function createRender({
           fallbackContext.save();
           // Paridade com o shader: Inverter e Preto e branco agora valem no quadro todo.
           fallbackContext.filter = state.effect === 'invert' ? 'invert(1)'
-            : state.effect === 'threshold' ? 'grayscale(1) contrast(8)'
+            : state.effect === 'threshold' ? 'grayscale(1) contrast(4)'
               : 'none';
           const eyes = state.gearVr ? 2 : 1;
           const eyeWidth = canvas.width / eyes;

@@ -183,7 +183,7 @@ test('Vídeo original ligado aplica o efeito nos três; desligado devolve vídeo
   }
   assert.deepEqual(filtrosDe('invert', true), ['invert(1)']);
   assert.deepEqual(filtrosDe('invert', false), []);
-  assert.deepEqual(filtrosDe('threshold', true), ['grayscale(1) contrast(8)']);
+  assert.deepEqual(filtrosDe('threshold', true), ['grayscale(1) contrast(4)']);
   assert.deepEqual(filtrosDe('threshold', false), []);
   assert.deepEqual(filtrosDe('dither', true), ['grayscale(1) contrast(2)']);
   assert.deepEqual(filtrosDe('dither', false), []);
@@ -589,7 +589,7 @@ test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
 
 test('Fallback 2D aplica Inverter e Preto e branco no quadro todo', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
-  for (const [effect, expected] of [['invert', 'invert(1)'], ['threshold', 'grayscale(1) contrast(8)']]) {
+  for (const [effect, expected] of [['invert', 'invert(1)'], ['threshold', 'grayscale(1) contrast(4)']]) {
     const filters = [];
     const c = {
       filter: '', fillStyle: '',
