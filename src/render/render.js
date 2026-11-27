@@ -329,7 +329,7 @@ export function createRender({
   }
 
   function drawDistanceTelemetry(c, blobs, viewWidth, viewHeight, offsetX = 0, preparedCount) {
-    if (!state.distanceTelemetry || state.performance?.effectsPaused) return 0;
+    if (!state.distanceTelemetry) return 0;
     const count = preparedCount ?? prepareBlobViewPoints(blobs, viewWidth, viewHeight);
     if (count < 2) return 0;
     const minDistance = Math.min(viewWidth, viewHeight) * clamp(state.maxConnectionDistance, 0.08, 0.5);
@@ -407,8 +407,6 @@ export function createRender({
 
   function drawRawVideoWindows(c, blobs, viewWidth, viewHeight, offsetX, source, applied = {}) {
     if (!source?.videoWidth || !blobs.length) return;
-    // Gravando com todos os efeitos: mantém o vídeo na janela, corta o 2º pontilhado.
-    const recordingBudget = recordingSnapshot?.state === 'recording' && state.maxEffects;
     c.save();
     const effectFilter =
       state.effect === 'invert' ? 'invert(1)'
@@ -517,7 +515,7 @@ export function createRender({
     }
     // Pontilhado vive na janela só com o botão ligado: desligado, o blob fica com vídeo cru.
     if (state.effect === 'dither' && state.originalVideoWindows) {
-      if (!recordingBudget) paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
     }
     c.restore();
   }
@@ -805,8 +803,7 @@ export function createRender({
     const c = overlayContext;
     if (!c) return;
     // Nada a pintar: só limpa se o quadro anterior deixou algo no overlay.
-    const reactive = !state.performance.effectsPaused
-      && (state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry);
+    const reactive = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
     const dotted = state.effect === 'dither';
     const needsDrawing = dotted || state.trailEffect || state.showMask || state.videoWindows || state.overlay || reactive;
     if (!needsDrawing) {
@@ -830,7 +827,6 @@ export function createRender({
     c.save();
     c.scale(overlayCanvas.width / rect.width, overlayCanvas.height / rect.height);
     const eyeCount = state.gearVr ? 2 : 1;
-    const recordingBudget = recordingSnapshot?.state === 'recording' && state.maxEffects;
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
@@ -899,23 +895,14 @@ export function createRender({
         }
         c.restore();
       }
-      const wantsViewPoints = !state.performance.effectsPaused
-        && (state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry);
-      const blobViewCount = !recordingBudget && wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
+      const wantsViewPoints = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
+      const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
       const overlayStarted = performance.now();
-      if (!recordingBudget) {
-        if (!state.performance.effectsPaused) {
-          if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
-          if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
-          if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
-        }
-        if (state.networkEffect && !state.performance.effectsPaused) {
-          drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
-        }
-        if (state.distanceTelemetry && !state.performance.effectsPaused) {
-          drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
-        }
-      }
+      if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
+      if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
+      if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
+      if (state.networkEffect) drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
+      if (state.distanceTelemetry) drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
       overlayCost += performance.now() - overlayStarted;
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;

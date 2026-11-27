@@ -48,7 +48,7 @@ test('rede não conecta vértices além do raio de proximidade', () => {
   assert.equal(canvas.calls.nodes, 2);
 });
 
-test('botão da rede alterna e persiste o efeito e o renderer respeita pausa', async () => {
+test('botão da rede alterna e persiste o efeito e o renderer desenha sempre', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
@@ -57,7 +57,7 @@ test('botão da rede alterna e persiste o efeito e o renderer respeita pausa', a
   assert.ok(app.includes('saved.networkEffect'));
   assert.ok(app.includes('networkEffect:state.networkEffect'));
   assert.ok(app.includes("bindReactiveToggle('blobNetworkButton', 'networkEffect')"));
-  assert.match(render, /if \(state\.networkEffect && !state\.performance\.effectsPaused\)\s*\{\s*drawBlobNetwork/);
+  assert.match(render, /if \(state\.networkEffect\) drawBlobNetwork/);
 });
 
 test('janelas aparecem antes dos efeitos reativos e da rede', async () => {
@@ -73,27 +73,28 @@ test('janelas aparecem antes dos efeitos reativos e da rede', async () => {
   assert.ok(trails < waves && waves < mesh && mesh < network);
 });
 
-test('pausa por FPS tem badge visível no palco e mantém descrição detalhada', async () => {
+test('limite do aparelho mostra aviso discreto e nunca pausa efeitos', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.match(html, /id="effectsPausedBadge"[^>]*role="status"[^>]*hidden/);
-  assert.ok(app.includes("const badge = $('effectsPausedBadge')"));
-  assert.ok(app.includes('badge.hidden = !perf.effectsPaused'));
-  assert.ok(app.includes('Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps'));
+  assert.match(html, /id="deviceLimitNotice"[^>]*role="status"[^>]*hidden/);
+  assert.ok(!html.includes('effectsPausedBadge'));
+  assert.ok(!html.includes('effectPerformanceHint'));
+  assert.ok(app.includes("const DEVICE_LIMIT_NOTICE = 'Aparelho no limite · efeitos mantidos'"));
+  assert.ok(app.includes('notice.textContent = translateText(DEVICE_LIMIT_NOTICE, locale)'));
+  assert.ok(app.includes('effectsPaused: false'));
 });
 
-test('reactive pause has a cooldown and updates the badge only when state changes', async () => {
+test('nenhum gatilho de pausa nem orçamento de gravação corta os efeitos', async () => {
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
-  assert.ok(app.includes('const EFFECT_PAUSE_COOLDOWN_MS = 4000'));
-  assert.ok(app.includes('const EFFECT_PAUSE_TOAST_INTERVAL_MS = 30000'));
-  assert.ok(app.includes('function setReactiveEffectsPaused(paused, now)'));
-  assert.ok(app.includes('if (perf.effectsPaused === paused || now - perf.pauseChangedAt < EFFECT_PAUSE_COOLDOWN_MS) return false;'));
-  assert.ok(app.includes('if (paused && now - perf.pauseToastAt > EFFECT_PAUSE_TOAST_INTERVAL_MS)'));
-  assert.ok(app.includes('if (perf.effectsPaused !== perf.effectsPausedShown)'));
-  assert.ok(app.includes('perf.renderSlowFrames = 0;'));
-  assert.ok(app.includes('perf.renderAverage < 1000 / deviceProfile.fps * 0.4'));
-  assert.ok(!app.includes("showToast('Efeitos reativos retomados')"));
-  assert.equal(app.split('setReactiveEffectsPaused(true, now)').length - 1, 2);
-  assert.equal(app.split('setReactiveEffectsPaused(false, now)').length - 1, 1);
-  assert.ok(app.includes("if (next.renderPause && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) setReactiveEffectsPaused(true, now);"));
+  const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
+  const controller = await readFile(new URL('../src/core/qualityController.js', import.meta.url), 'utf8');
+  for (const source of [app, render, controller]) {
+    assert.ok(!source.includes('renderPause'), 'sem gatilho renderPause');
+    assert.ok(!source.includes('recordingBudget'), 'sem corte ao gravar');
+    assert.ok(!source.includes('setReactiveEffectsPaused'), 'sem política de pausa');
+  }
+  assert.ok(!render.includes('effectsPaused'), 'renderer não tem porta de pausa');
+  assert.ok(!app.includes("showToast('Efeitos reativos pausados"));
+  assert.ok(render.includes('if (state.networkEffect) drawBlobNetwork'));
+  assert.ok(render.includes('if (state.distanceTelemetry) drawDistanceTelemetry'));
 });

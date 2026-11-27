@@ -235,12 +235,20 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 
 - `v65`: `readbackDraw` p50 `0,1 ms`, `readbackPixels` p50 `40,0 ms`, `fps` `15,4`. O custo inteiro estava no `getImageData`.
 - `v66` (gravando, canvas `301×624`): `analyze()` desenhou do vídeo em vez do `frameCanvas`. O custo migrou: `readbackDraw` p50 `41,7 ms`, `readbackPixels` p50 `1,2 ms`, `readback` p50 `43,0 ms`, `fps` `16,22`. Sem ganho; **revertido** em `v67` com o cache avançando. Veredito: a espera é a sincronização GPU→CPU, não a função 2D escolhida.
-- `pauseReason: render-budget` na `v66` é **rótulo inferido**, não gatilho: `fps` `16,22` estava abaixo do limiar `16,5` de `low-fps`, e os estágios de render somam `~3,3 ms` contra o limite de `13,33 ms`. A etiqueta será corrigida junto com a remoção da pausa.
+- `pauseReason: render-budget` na `v66` é **rótulo inferido**, não gatilho: `fps` `16,22` estava abaixo do limiar `16,5` de `low-fps`, e os estágios de render somam `~3,3 ms` contra o limite de `13,33 ms`. A etiqueta deixou de existir na `v69`, junto com a remoção da pausa.
 - `salvamentoMs: null`, `eventos: {}` também na `v66`: o cenário de gravação foi coletado, o de **salvar o MP4** segue sem medição.
-- **Conflito em aberto:** o P0 (`recordingBudget`) ainda corta rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. Isso contradiz a lei do prompt cirúrgico (reatividade intocável). Números de gravação já existem; falta o de salvamento antes de mexer na política.
+- **Conflito resolvido na `v69`:** o P0 (`recordingBudget`) cortava rastro/ondas/malha/rede/telemetria ao gravar com Todos os efeitos, sem badge. O dono autorizou alterar os testes de contrato e a política de pausa foi removida. O cenário de **salvar MP4** continua sem medição (`salvamentoMs: null`, `eventos: {}`).
 
 ## 19. Sonda WebGL (v68, publicada, sem medição)
 
 - Antes de implementar um caminho de pixels via WebGL, a `v68` acrescenta `render.probeGlReadback()` e a etapa `glReadback` ao relatório. Com `?perf=1`, ela faz um `gl.readPixels` de até `240×427` do framebuffer já desenhado, reaproveitando um buffer, e publica só o tempo. Sem `?perf=1`, nada é chamado: rastreador, efeitos, render e gravador seguem idênticos à `v67`.
 - Objetivo: comparar a sincronização de leitura do WebGL com os `~41 ms` do caminho 2D. Se for barata, o próximo commit implementa o alvo pequeno; se não for, a hipótese é descartada por número, sem mudança de comportamento.
-- **Bloqueio:** remover a pausa dos efeitos exige alterar `tests/core/qualityController.test.js` e `tests/network-effect.test.js`, que hoje exigem `renderPause` e `effectsPaused`. O dono autorizou mexer nesses testes de contrato? Sem resposta, a política permanece intacta.
+- O dono autorizou alterar os testes de contrato (`tests/core/qualityController.test.js`, `tests/network-effect.test.js` e, por consequência, `tests/distance-telemetry.test.js`). A remoção da pausa virou a `v69` abaixo.
+
+## 20. Reatividade intocável (v69, implementada, sem medição em aparelho)
+
+- Autorização recebida: remover os gatilhos de pausa, o `renderPause` do `qualityController`, o `recordingBudget` do render e o badge "Efeitos reativos pausados". `effectsPaused` agora é sempre `false`; `pauseReason`/`pauseCount` seguem no JSON como `''`/`0` só para compatibilidade com medições antigas.
+- No lugar do badge entrou um aviso discreto no palco, **Aparelho no limite · efeitos mantidos**, traduzido nos 4 idiomas. Ele acende após 8 quadros com FPS médio abaixo de `max(12, fps do perfil × 0,55)` e apaga quando a média volta; gravar não é exceção. Não há toast, não há corte de efeitos e não há rebaixamento: só a largura do rastreio continua automática.
+- `__blobtrackPerf` e `__blobtrackMetrics` ganharam `deviceLimit` para o dono conferir no JSON se o aviso apareceu sem precisar olhar a tela.
+- Testes de contrato reescritos para exigir o contrário do antigo: nenhum `renderPause`, nenhum `recordingBudget`, nenhuma porta `effectsPaused` no renderer e desenho incondicional de rastro/ondas/malha/rede/telemetria.
+- **Não medido:** FPS, travamento ao salvar e aparecimento do aviso no Realme C67 depois da `v69`. Aprovação depende do JSON novo e do Teste final do dono (2 min com tudo, 1 min gravando + salvar, rotação, segundo plano, 30 min).

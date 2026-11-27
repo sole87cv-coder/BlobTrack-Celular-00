@@ -119,7 +119,7 @@ const state = {
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: true, extremeMode: false, videoBlend: 0, invertBlend: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
-  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, renderSlowFrames: 0, fpsAverage: 0, lastFrameAt: 0, lowFpsFrames: 0, recoveredFrames: 0, effectsPaused: false, pauseChangedAt: -Infinity, pauseToastAt: -Infinity, effectsPausedShown: false, pauseReason: '', pauseCount: 0 },
+  performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null,
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
@@ -141,13 +141,14 @@ let pendingRecording = null;
 const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v68',
+    cacheVersion: 'blobtrack-celular-00-v69',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
     pauseReason: state.performance.pauseReason,
     pauseCount: state.performance.pauseCount,
     effectsPaused: state.performance.effectsPaused,
+    deviceLimit: state.performance.limitShown,
     recordingState: recordingSnapshot.state,
     canvases: {
       visual: [canvas.width, canvas.height],
@@ -656,50 +657,22 @@ function updateHud(raw, applied, result) {
     $('visualSummary').textContent = count === 1 ? 'Uma região de movimento detectada.' : `${count} regiões de movimento detectadas.`;
   }
 }
-const EFFECT_PAUSE_COOLDOWN_MS = 4000;
-const EFFECT_PAUSE_TOAST_INTERVAL_MS = 30000;
-function setReactiveEffectsPaused(paused, now) {
-  const perf = state.performance;
-  if (perf.effectsPaused === paused || now - perf.pauseChangedAt < EFFECT_PAUSE_COOLDOWN_MS) return false;
-  perf.effectsPaused = paused;
-  perf.pauseChangedAt = now;
-  perf.lowFpsFrames = 0;
-  perf.recoveredFrames = 0;
-  perf.renderSlowFrames = 0;
-  if (paused) {
-    perf.pauseCount++;
-    perf.pauseReason = perf.renderAverage > 1000 / deviceProfile.fps * 0.4 ? 'render-budget' : 'low-fps';
-  } else perf.pauseReason = '';
-  if (paused && now - perf.pauseToastAt > EFFECT_PAUSE_TOAST_INTERVAL_MS) {
-    perf.pauseToastAt = now;
-    showToast('Efeitos reativos pausados para proteger o FPS');
-  }
-  return true;
-}
+const DEVICE_LIMIT_FRAMES = 8;
+const DEVICE_LIMIT_NOTICE = 'Aparelho no limite · efeitos mantidos';
 function updateReactiveEffectQuality(now) {
   const perf = state.performance, elapsed = perf.lastFrameAt ? now - perf.lastFrameAt : 0;
   perf.lastFrameAt = now;
   const fps = elapsed > 0 ? 1000 / elapsed : deviceProfile.fps;
   perf.fpsAverage = perf.fpsAverage ? perf.fpsAverage * .88 + fps * .12 : fps;
-  const pauseBelow = Math.max(12, deviceProfile.fps * 0.55);
-  const resumeAt = Math.max(pauseBelow + 2, deviceProfile.fps * 0.65);
-  const isRecording = ['recording', 'paused', 'stopping'].includes(recordingSnapshot.state);
-  if (!perf.effectsPaused && !isRecording) {
-    perf.lowFpsFrames = perf.fpsAverage < pauseBelow ? perf.lowFpsFrames + 1 : 0;
-    if (perf.lowFpsFrames >= 8) setReactiveEffectsPaused(true, now);
-  } else if (perf.effectsPaused) {
-    const renderRecovered = perf.renderAverage < 1000 / deviceProfile.fps * 0.4;
-    perf.recoveredFrames = perf.fpsAverage >= resumeAt && renderRecovered ? perf.recoveredFrames + 1 : 0;
-    if (perf.recoveredFrames >= 45) setReactiveEffectsPaused(false, now);
-  }
-  if (perf.effectsPaused !== perf.effectsPausedShown) {
-    perf.effectsPausedShown = perf.effectsPaused;
-    const hint = $('effectPerformanceHint');
-    hint.hidden = !perf.effectsPaused;
-    if (perf.effectsPaused) hint.textContent = `Efeitos reativos pausados · ${Math.round(perf.fpsAverage)} fps · a Janela viva continua ativa.`;
-    const badge = $('effectsPausedBadge');
-    badge.hidden = !perf.effectsPaused;
-    if (perf.effectsPaused) badge.textContent = 'Efeitos reativos pausados para proteger o FPS';
+  // Reatividade intocável: o limite só liga um aviso discreto, nunca pausa efeitos.
+  const limitBelow = Math.max(12, deviceProfile.fps * 0.55);
+  perf.limitFrames = perf.fpsAverage < limitBelow ? perf.limitFrames + 1 : 0;
+  const atLimit = perf.limitFrames >= DEVICE_LIMIT_FRAMES;
+  if (atLimit !== perf.limitShown) {
+    perf.limitShown = atLimit;
+    const notice = $('deviceLimitNotice');
+    notice.hidden = !atLimit;
+    if (atLimit) notice.textContent = translateText(DEVICE_LIMIT_NOTICE, locale);
   }
 }
 function publishBlobTrackMetrics(now, result) {
@@ -732,6 +705,7 @@ function publishBlobTrackMetrics(now, result) {
     idsNovosUltimos60s: idsNewLast60s,
     recordingState: recordingSnapshot.state,
     effectsPaused: state.performance.effectsPaused,
+    deviceLimit: state.performance.limitShown,
     pauseReason: state.performance.pauseReason,
     pauseCount: state.performance.pauseCount,
     tPorEfeito: perfProbe.active ? perfProbe.etapas() : null,
@@ -773,9 +747,7 @@ function frame(now) {
           perf.renderAverage = next.renderAverage;
           perf.slowFrames = next.slowFrames;
           perf.fastFrames = next.fastFrames;
-          perf.renderSlowFrames = next.renderSlowFrames;
           if (state.autoQuality && next.trackingWidth !== state.trackingWidth) setTrackingWidth(next.trackingWidth);
-          if (next.renderPause && !['recording', 'paused', 'stopping'].includes(recordingSnapshot.state)) setReactiveEffectsPaused(true, now);
           updateReactiveEffectQuality(now);
           publishBlobTrackMetrics(now, result);
         }
@@ -1089,7 +1061,7 @@ $('maxConnectionDistance').addEventListener('input',event=>{state.maxConnectionD
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();scheduleSavePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
-$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;state.performance.renderSlowFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
+$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);scheduleSavePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);scheduleSavePreferences();});
 

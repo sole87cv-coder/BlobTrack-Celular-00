@@ -63,7 +63,7 @@
 
         <div class="stage-pill" id="stagePill" hidden><span id="cameraLabel">Câmera aguardando</span><span id="blobReadout">0
             blobs</span><span id="renderInfo">WebGL2</span></div>
-        <div class="effect-paused-badge" id="effectsPausedBadge" role="status" aria-live="polite" hidden>Efeitos reativos pausados para proteger o FPS</div>
+        <div class="device-limit-notice" id="deviceLimitNotice" role="status" aria-live="polite" hidden>Aparelho no limite · efeitos mantidos</div>
 
         <div class="stage-message" id="stageMessage">
           <div class="stage-welcome">
@@ -223,7 +223,6 @@
                 <button type="button" class="pill small effect-toggle min-effects" id="minEffectsButton" aria-pressed="false" title="Desligar todos os efeitos reativos de uma vez">Efeitos mínimos</button>
               </div>
             </div>
-            <small class="hint" id="effectPerformanceHint" hidden></small>
             <details class="advanced-controls">
               <summary>Mais ajustes</summary>
             <div class="dock-row slider-row">

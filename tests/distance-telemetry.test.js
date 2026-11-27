@@ -20,7 +20,7 @@ function context() {
 function renderer(state = {}) {
   return createRender({
     state: { camera: 'environment', flip: false, gearVr: false, distanceTelemetry: true,
-      maxConnectionDistance: 0.22, performance: { effectsPaused: false }, ...state },
+      maxConnectionDistance: 0.22, ...state },
     video: { videoWidth: 640, videoHeight: 480 },
     cropRect: new Float32Array(4),
     mapPointA: new Float32Array(2), mapPointB: new Float32Array(2),
@@ -62,12 +62,10 @@ test('cada blob recebe no máximo três vizinhos e pares não duplicam', () => {
   assert.equal(drawn, 3);
 });
 
-test('telemetria não desenha quando desligada ou efeitos estão pausados', () => {
-  for (const state of [{ distanceTelemetry: false }, { performance: { effectsPaused: true } }]) {
-    const c = context();
-    assert.equal(renderer(state).drawDistanceTelemetry(c, [{ x: .4, y: .5 }, { x: .5, y: .5 }], 320, 240), 0);
-    assert.equal(c.calls.lines.length, 0);
-  }
+test('telemetria não desenha quando desligada', () => {
+  const c = context();
+  assert.equal(renderer({ distanceTelemetry: false }).drawDistanceTelemetry(c, [{ x: .4, y: .5 }, { x: .5, y: .5 }], 320, 240), 0);
+  assert.equal(c.calls.lines.length, 0);
 });
 
 test('drawMaskOverlay não contém mais a mira central do teclado', async () => {

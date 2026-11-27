@@ -26,7 +26,7 @@ export const strings = {
   ui: {
     audioIncluded: 'com áudio do app', audioNotIncluded: 'sem áudio',
     ready: 'Pronto', offline: 'Offline', send: 'Enviar', record: 'Gravar', save: 'Salvar', screen: 'Tela',
-    stage: 'Palco', install: 'Instalar', cameraWaiting: 'Câmera aguardando', pausedEffects: 'Efeitos reativos pausados para proteger o FPS',
+    stage: 'Palco', install: 'Instalar', cameraWaiting: 'Câmera aguardando', deviceLimit: 'Aparelho no limite · efeitos mantidos',
     motionTitle: '@V1su4rt', startHint: 'Ligue a câmera para começar.', noMicrophone: 'Movimento vira imagem e som. Sem microfone.',
     startCamera: 'Iniciar câmera', retry: 'Tentar novamente', close: 'Fechar', quickSettings: 'Ajustes rápidos', mute: 'Mudo',
     perfDiagnostic: 'Diagnóstico', perfDiagHint: 'Toque para medir e copiar o JSON.', perfRefresh: 'Atualizar', perfCopy: 'Copiar', perfShare: 'Compartilhar', perfReset: 'Zerar',

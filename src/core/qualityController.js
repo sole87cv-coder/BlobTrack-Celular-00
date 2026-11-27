@@ -7,8 +7,6 @@ export function updateQualityBudgets(performanceState, analysisMs, renderMs, int
     : renderMs;
   let slowFrames = analysisAverage > intervalMs * 0.5 ? performanceState.slowFrames + 1 : 0;
   let fastFrames = analysisAverage < intervalMs * 0.294 ? performanceState.fastFrames + 1 : 0;
-  const renderSlowFrames = renderAverage > intervalMs * 0.4 ? performanceState.renderSlowFrames + 1 : 0;
-  const renderPause = renderSlowFrames >= 8;
   let nextWidth = trackingWidth;
 
   if (slowFrames >= 12 && trackingWidth > 160) {
@@ -25,8 +23,6 @@ export function updateQualityBudgets(performanceState, analysisMs, renderMs, int
     renderAverage,
     slowFrames,
     fastFrames,
-    renderSlowFrames,
     trackingWidth: nextWidth,
-    renderPause,
   };
 }
