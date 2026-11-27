@@ -31,9 +31,11 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(app.includes('float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
-  assert.ok(render.includes('const STIPPLE_LEVELS = 8;'));
+  assert.ok(render.includes('const STIPPLE_LEVELS = 12;'));
   assert.ok(render.includes('const jitter = 1 - .75 * edge;'));
-  assert.ok(render.includes('Math.abs(l - below)) / .15,'));
+  assert.ok(render.includes('Math.abs(l - belowLuma)) / .15,'));
+  assert.ok(render.includes('const localMean = (l + left + right + above + belowLuma) * .2;'));
+  assert.ok(render.includes('grid.dotR[count] = maxR * Math.sqrt(quantized);'));
   assert.ok(render.includes('grid.jitterX[i] * cellW * jitter'));
   assert.ok(render.includes('grid.error[i + 1] += diffusion * 7 / 16'));
   assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
@@ -108,6 +110,21 @@ test('production app uses the tested audio and session factories', () => {
   assert.ok(!app.includes('async function makeAudio()'));
 });
 
+test('band rhythm comes from blob motion and is cut when disabled', async () => {
+  const processor = await readFile(new URL('../src/audio-processor.js', import.meta.url), 'utf8');
+  assert.ok(processor.includes('trackBlobMotion(signals)'));
+  assert.ok(processor.includes('scheduleBlobRhythm(signals, energy, speed, density)'));
+  assert.ok(processor.includes('if (this.bandMode) {'));
+  assert.ok(processor.includes('this.blobMotionSeen = false;'));
+  assert.ok(processor.includes('if (this.rhythmEnabled && this.rhythmEnvelope > .0005)'));
+  assert.ok(processor.includes("Gota d'água"));
+  assert.ok(processor.includes('this.rhythmDropAge += 1 / sampleRate'));
+  assert.ok(processor.includes('this.rhythmDropFrequency = dropFrequency'));
+  assert.ok(processor.includes('this.rhythmEnvelope * .26 * this.rhythmVelocity'));
+  assert.ok(!processor.includes('(this.bandMode ? .45 : 1)'));
+  assert.ok(!processor.includes('(this.bandMode ? .34 : .26)'));
+});
+
 test('blob signals are delivered in the same frame with the AudioContext clock', () => {
   const queueIndex = app.indexOf('audioBus.queueSignals({ type:\'signals\'');
   const flushIndex = app.indexOf('audioBus.flushSignals();');
@@ -115,7 +132,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v78'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v81'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {

@@ -213,6 +213,79 @@ test('band mode sounds only while blobs move', () => {
   assert.equal(peakOf(0), 0);
 });
 
+test('band rhythm fires on every moving step without random rests', () => {
+  const processor = new RegisteredProcessor();
+  processor.rhythmRandomState = 12345;
+  processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: true } });
+  let beats = 0;
+  for (let step = 0; step < 16; step++) {
+    processor.port.onmessage({ data: { type: 'signals', signals: { energy: .5, density: .4, speed: .8, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 1, x: .2 + (step % 2) * .02, y: .5, size: 600, speed: .8 }] }, master: 1, muted: false, audioEnabled: true } });
+    processor.rhythmClock = processor.rhythmNextAt;
+    processor.rhythmEnvelope = 0;
+    processor.scheduleRhythmicNote(processor.signals, .5, .8, .4);
+    if (processor.rhythmEnvelope > 0) beats++;
+  }
+  assert.equal(beats, 16);
+});
+
+test('band rhythm takes pitch from the moving blob band and never repeats at random', () => {
+  const makeProcessor = seed => {
+    const processor = new RegisteredProcessor();
+    processor.rhythmRandomState = seed;
+    processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: true } });
+    processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .5, speed: .7, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 7, x: .8, y: .1, size: 900, speed: .7 }] }, master: 1, muted: false, audioEnabled: true } });
+    processBlock(processor);
+    return processor;
+  };
+  const first = makeProcessor(11), second = makeProcessor(987654);
+  assert.equal(first.rhythmFrequency, first.bandFrequency[5]);
+  assert.equal(first.rhythmFrequency, second.rhythmFrequency);
+  assert.equal(first.rhythmVelocity, second.rhythmVelocity);
+  assert.ok(first.rhythmBpm > 58 && first.rhythmBpm <= 132);
+});
+
+test('band rhythm stops pulsing when blobs stop but keeps the frequency when disabled', () => {
+  const moving = { type: 'signals', signals: { energy: .6, density: .5, speed: .8, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 3, x: .4, y: .5, size: 800, speed: .8 }] }, master: 1, muted: false, audioEnabled: true };
+  const still = { type: 'signals', signals: { ...moving.signals, speed: 0, blobs: [{ id: 3, x: .4, y: .5, size: 800, speed: 0 }] }, master: 1, muted: false, audioEnabled: true };
+  const warmup = { type: 'signals', signals: { ...moving.signals, speed: 0, blobs: [{ id: 3, x: .3, y: .5, size: 800, speed: 0 }] }, master: 1, muted: false, audioEnabled: true };
+  const peakOf = (rhythmEnabled, packet) => {
+    const processor = new RegisteredProcessor();
+    processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled, oscillation: 0, pitchRange: 0 } });
+    // O ganho principal sobe em 35 ms; no app ele já está estabilizado quando o blob se mexe.
+    processor.port.onmessage({ data: warmup });
+    for (let block = 0; block < 24; block++) processBlock(processor);
+    processor.port.onmessage({ data: packet });
+    let peak = 0;
+    for (let block = 0; block < 12; block++) {
+      for (const channel of processBlock(processor)) for (const sample of channel) peak = Math.max(peak, Math.abs(sample));
+    }
+    return { processor, peak };
+  };
+  const pulsing = peakOf(true, moving);
+  assert.ok(pulsing.processor.rhythmEnvelope > 0);
+  const stopped = peakOf(true, still);
+  assert.equal(stopped.processor.rhythmEnvelope, 0);
+  assert.equal(stopped.processor.rhythmActive, false);
+  const frequencyOnly = peakOf(false, moving);
+  assert.equal(frequencyOnly.processor.rhythmEnvelope, 0);
+  assert.ok(frequencyOnly.peak > 0, 'a frequência das faixas continua com o ritmo desligado');
+  assert.ok(pulsing.peak > frequencyOnly.peak, 'o pulso do blob aumenta o nível do som');
+});
+
+test('band beat is a water drop: pitch falls fast and the tail is short', () => {
+  const processor = new RegisteredProcessor();
+  processor.port.onmessage({ data: { type: 'sound', bandMode: true, rhythmEnabled: true, oscillation: 0, pitchRange: 0 } });
+  processor.port.onmessage({ data: { type: 'signals', signals: { energy: .6, density: .5, speed: .9, ambient: 0, zones: [0,0,0,0,0,0], blobs: [{ id: 9, x: .5, y: .1, size: 800, speed: .9 }] }, master: 1, muted: false, audioEnabled: true } });
+  processBlock(processor);
+  const startFrequency = processor.rhythmDropFrequency;
+  const startEnvelope = processor.rhythmEnvelope;
+  assert.ok(startFrequency > processor.rhythmFrequency * 1.2, 'a gota começa aguda');
+  for (let block = 0; block < 18; block++) processBlock(processor);
+  assert.ok(processor.rhythmDropFrequency < processor.rhythmFrequency, 'a altura cai abaixo da nota da faixa');
+  assert.ok(processor.rhythmEnvelope < startEnvelope * .25, 'o rastro some rápido');
+  assert.ok(processor.rhythmDropAge > .04 && processor.rhythmDropAge < .06);
+});
+
 test('audioTime from the captured frame aligns the schedule to the AudioContext clock', () => {
   const processor = new RegisteredProcessor();
   processor.port.onmessage({ data: { type: 'signals', signals: { energy: .5, density: .3, speed: .5, ambient: 0, zones: [0,0,0,0,0,0], blobs: [] }, master: 1, muted: false, audioEnabled: true, audioTime: 2.5 } });

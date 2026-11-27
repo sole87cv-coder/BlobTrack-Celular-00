@@ -384,6 +384,48 @@ test('Pointillism difunde erro e desenha pontos pretos de tamanhos diferentes', 
   }
 });
 
+test('Pontilhado dissolve o tom por área: escuro tem ponto maior que claro', () => {
+  const previousDocument = globalThis.document;
+  const arcs = [];
+  const offscreenContext = {
+    drawImage() {},
+    getImageData(x, y, width, height) {
+      const data = new Uint8ClampedArray(width * height * 4);
+      for (let row = 0; row < height; row++) {
+        for (let col = 0; col < width; col++) {
+          const value = col < width / 2 ? 110 : 146;
+          const i = (row * width + col) * 4;
+          data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
+        }
+      }
+      return { data, width, height };
+    },
+  };
+  const sampleCanvas = { width: 0, height: 0, getContext() { return offscreenContext; } };
+  globalThis.document = { createElement() { return sampleCanvas; } };
+  try {
+    const render = createRender({
+      state: makeState({ effect: 'dither', timing: {} }),
+      cropRect: new Float32Array(4),
+      mapPointA: new Float32Array(2),
+      mapPointB: new Float32Array(2),
+    });
+    const c = {
+      fillStyle: '', save() {}, restore() {}, translate() {}, scale() {},
+      beginPath() {}, moveTo() {}, fill() {},
+      arc(...args) { arcs.push(args); },
+    };
+    render.drawStipple(c, { width: 60, height: 36 }, 320, 240, 0, false);
+    const dark = arcs.filter(([x]) => x < 160);
+    const light = arcs.filter(([x]) => x >= 160);
+    assert.ok(dark.length > 0 && light.length > 0);
+    const average = list => list.reduce((total, point) => total + point[2], 0) / list.length;
+    assert.ok(average(dark) > average(light) * 1.2, `escuro ${average(dark)} vs claro ${average(light)}`);
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('Pointillism no Gear VR respeita o contain e espelha o segundo olho', () => {
   const previousDocument = globalThis.document;
   const arcs = [], transforms = [];

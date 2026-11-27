@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v78`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v81`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -177,10 +177,10 @@ O Pontilhado transforma a **imagem** em pontos: fundo claro fica vazio, e a pess
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 3;
-const STIPPLE_LEVELS = 6;
+const STIPPLE_LEVELS = 12;
 ```
 
-O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **6 níveis de raio**. `STIPPLE_SPACING` define a distância entre os pontos; `STIPPLE_LEVELS` define quantos tamanhos diferentes existem. A média da cena equaliza o contraste, então quarto escuro não vira tela preta. Para pontos maiores, aumente o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **12 níveis de tom**. `STIPPLE_SPACING` define a distância entre os pontos; `STIPPLE_LEVELS` define quantos degraus existem entre o pó e o ponto cheio. Desde a `v79` o **tamanho é proporcional à raiz do tom** (área, não raio), então cada degrau escurece o mesmo tanto, e a referência de contraste mistura a média da cena com a média dos 5 vizinhos para a silhueta não sumir num fundo claro. Para pontos maiores, aumente o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
 #### Manual dos três efeitos — explicado para um jovem de 16 anos
 
@@ -214,7 +214,7 @@ state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect 
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 3;
-const STIPPLE_LEVELS = 8;
+const STIPPLE_LEVELS = 12;
 ```
 
 Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais distância = pontos maiores), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; `blobsClipRect` recorta a união dos blobs e `paintStipple` pinta o papel lá dentro e desenha os pontos no overlay. **Inverter vídeo** virou a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
@@ -266,6 +266,28 @@ São três pares de vozes: `0/1 = Low`, `2/3 = Mid`, `4/5 = Hi`. Dentro de cada 
 Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é analisada, em vez de esperar um `requestAnimationFrame` extra, e carrega `capturedAt` e `audioTime` (relógio do `AudioContext`). O worklet usa esse relógio para alinhar o agendamento e expõe a idade do sinal como `lag` no medidor. Os controles de sliders e do Tom base mantêm o debounce de `80 ms` — só o canal de sinal é liberado na hora.
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
+
+#### Ritmo BlobTrack virou gota d’água (cache v81)
+
+Pense numa torneira pingando: cada vez que o blob se mexe, cai uma gota. No modo das três faixas, o **movimento do blob abre o pulso**: um blob parado não pinga, e quanto mais ele se mexe, mais rápido vai o pingo (de `58` a `132` gotas por minuto). A nota da gota sai da **mesma faixa** do blob que mais se moveu — topo = Hi, meio = Mid, baixo = Low — e o lado esquerdo/direito escolhe uma das duas notas da dupla. Não há sorteado de nota, de pausa nem de espaçamento: a gota some só quando o blob para.
+
+O som foi trocado de “toque de tambor” por **gota d’água**: começa com um ataque de `3,5 ms` (sem estalo), a altura despenca de cerca de `1,75x` para `0,7x` da nota da faixa em `22 ms` (é o `plop`) e o rastro apaga em `30 ms`. Como a gota é mais curta, o volume dela subiu para ser ouvida por cima do tom contínuo.
+
+Ao desligar **Ritmo BlobTrack**, a gota é cortada na hora (inclusive a que ainda estava caindo) e sobram apenas as frequências contínuas das faixas, que continuam seguindo os blobs.
+
+🟢 Pode mexer: `src/audio-processor.js` (detecção de movimento, relógio do pulso, ataque/queda da gota e ganho) e as dicas de texto em `src/ui/i18n/`. 🟡 Meça e teste: `npm test` **262/262**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o jeito que a gota soa no Realme C67 ainda **não foi medido** — a conferência no aparelho decide. 🔴 Contrato congelado: o modo legado fora das faixas (com seu beat antigo), `baseFrequency`, o rastreador, a reatividade e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+
+#### Pontos menores no claro, maiores no escuro — dissolução por área (cache v79)
+
+Pense numa folha de jornal vista de longe: a foto escura tem pontos grandes e juntos; a clara tem pontos miúdos e espalhados. O olho lê **tinta** (área do ponto), não o raio. Antes o raio crescia em linha reta com o tom, então os degraus do meio pareciam todos iguais e as formas começavam a sumir quando o fundo estava claro. Agora:
+
+- o raio é `maxR * sqrt(tom)` — com isso a **área** cresce em linha reta: do pó quase invisível ao ponto cheio, cada nível escurece o mesmo tanto;
+- `STIPPLE_LEVELS` subiu de `8` para `12`, então a passagem entre claro e escuro tem mais degraus (a "dissolução" fica mais macia, sem aquele salto de tamanho);
+- a referência de contraste mistura `75%` da média da cena com `25%` da média dos 5 vizinhos — é como olhar a foto inteira e, ao mesmo tempo, a esquina que está sendo desenhada. A silhueta fica mais nítida sem pintar o fundo claro de pontos.
+
+Nada disso cria um novo efeito nem mexe na máscara: os pontos continuam formando a **imagem inteira** dentro da união dos blobs, com fundo preto fora dela, e o MP4 grava exatamente esse overlay (com Inverter virando o negativo). A difusão de erro Floyd–Steinberg e o jitter menor na borda continuam iguais.
+
+🟢 Pode mexer: só `src/render/render.js` (e as travas de teste). 🟡 Meça e teste: `npm test` **257/257**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms` antes de publicar; o ganho visual no Realme C67 ainda **não foi medido** — a conferência no aparelho é quem decide. 🔴 Contrato congelado: não troque os pontos por máscara, não mude a estratégia de cache do `sw.js` (só o número) e não mexa no rastreador nem na reatividade.
 
 #### Pontilhado vira a imagem gravada (cache v77)
 

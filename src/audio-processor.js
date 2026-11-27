@@ -28,12 +28,17 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     this.rhythmActive = false;
     this.rhythmPhase = 0;
     this.rhythmEnvelope = 0;
+    this.rhythmDropAge = 0;
+    this.rhythmDropFrequency = 0;
     this.rhythmFrequency = 220;
     this.rhythmVelocity = .7;
     this.rhythmStep = 0;
     this.rhythmBpm = 62;
     this.rhythmLastDegree = -1;
     this.rhythmRandomState = (Math.random() * 0xffffffff) >>> 0 || 1;
+    // Ritmo do modo faixas: pulso gerado pelo movimento real dos blobs.
+    this.blobMotion = new Map();
+    this.blobMotionSeen = false;
     this.oscillation = .4;
     this.pitchRange = 2;
     this.key = 0;
@@ -90,6 +95,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
           this.signalAudioTime = data.audioTime;
           this.rhythmClock = Math.max(this.rhythmClock, data.audioTime);
         }
+        if (this.bandMode && this.rhythmEnabled) this.trackBlobMotion(data.signals);
         if (this.preset) this.signalsPending = true;
         if (data.timbre !== undefined || data.soundEffects) this.setSoundOptions(data);
         if (PRESETS[data.preset]) this.setPreset(data.preset);
@@ -121,7 +127,78 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     return this.rhythmRandomState / 0x100000000;
   }
 
+  // O modo faixas não sorteia nota nem pausa: o pulso só existe quando um blob
+  // andou desde o último quadro. A posição e a velocidade do blob mandam no som.
+  trackBlobMotion(signals) {
+    const blobs = Array.isArray(signals?.blobs) ? signals.blobs : [];
+    const seen = new Set();
+    for (const blob of blobs) {
+      if (!blob || !Number.isFinite(blob.x) || !Number.isFinite(blob.y)) continue;
+      const id = blob.id === undefined ? `x${blob.x.toFixed(3)}y${blob.y.toFixed(3)}` : String(blob.id);
+      seen.add(id);
+      const x = unitAudioSignal(blob.x), y = unitAudioSignal(blob.y);
+      const previous = this.blobMotion.get(id);
+      if (!previous) {
+        this.blobMotion.set(id, { x, y });
+        this.blobMotionSeen = true;
+        continue;
+      }
+      if (Math.abs(x - previous.x) + Math.abs(y - previous.y) > .004) this.blobMotionSeen = true;
+      previous.x = x;
+      previous.y = y;
+    }
+    for (const id of this.blobMotion.keys()) if (!seen.has(id)) this.blobMotion.delete(id);
+  }
+
+  // Relógio determinístico: andar do blob abre a janela, a velocidade dá o andamento,
+  // a faixa do blob dá a nota. Sem sorteado, sem descanso aleatório.
+  scheduleBlobRhythm(signals, energy, speed, density) {
+    if (!this.rhythmEnabled || this.muted || !this.audioEnabled || this.master <= .001) {
+      this.rhythmEnvelope = 0;
+      this.rhythmActive = false;
+      return;
+    }
+    const blobs = Array.isArray(signals?.blobs) ? signals.blobs : [];
+    let moving = false;
+    for (const blob of blobs) {
+      if (blob && Number(blob.speed) > .02) { moving = true; break; }
+    }
+    if (!moving || !this.blobMotionSeen) {
+      this.rhythmActive = false;
+      this.rhythmNextAt = this.rhythmClock + .05;
+      return;
+    }
+    const bpm = Math.min(132, Math.max(58, 58 + energy * 22 + speed * 50 + density * 12));
+    this.rhythmBpm = bpm;
+    if (!this.rhythmActive) {
+      this.rhythmActive = true;
+      this.rhythmNextAt = this.rhythmClock;
+    }
+    if (this.rhythmClock + 1 / sampleRate < this.rhythmNextAt) return;
+    let chosen = null;
+    for (const blob of blobs) {
+      if (!blob || !Number.isFinite(blob.x) || !Number.isFinite(blob.y)) continue;
+      if (!chosen || Number(blob.speed) > Number(chosen.speed)) chosen = blob;
+    }
+    if (!chosen) return;
+    const id = chosen.id === undefined ? `x${chosen.x.toFixed(3)}y${chosen.y.toFixed(3)}` : String(chosen.id);
+    const band = this.bandForBlob(id, unitAudioSignal(chosen.y));
+    const voice = unitAudioSignal(chosen.x) >= .5 ? 1 : 0;
+    this.rhythmFrequency = this.bandFrequency[band * 2 + voice] || this.bandFrequency[0];
+    this.rhythmVelocity = Math.min(1, .62 + unitAudioSignal(chosen.speed) * .34 + (this.rhythmStep % 4 === 0 ? .08 : 0));
+    this.rhythmEnvelope = .72;
+    this.rhythmDropAge = 0;
+    this.rhythmPhase = 0;
+    this.rhythmStep++;
+    this.blobMotionSeen = false;
+    this.rhythmNextAt = this.rhythmClock + 30 / bpm;
+  }
+
   scheduleRhythmicNote(signals, energy, speed, density) {
+    if (this.bandMode) {
+      this.scheduleBlobRhythm(signals, energy, speed, density);
+      return;
+    }
     if (!this.rhythmEnabled || this.muted || !this.audioEnabled || this.master <= .001) {
       this.rhythmActive = false;
       return;
@@ -229,6 +306,7 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       this.chorusBuffer.fill(0);
       for (const voice of this.polyVoices) voice.active = false;
       this.rhythmEnvelope = 0;
+      this.rhythmDropAge = 0;
       this.rhythmActive = false;
       this.gain = 0;
       this.peak = 0;
@@ -340,7 +418,15 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
       this.blobBands.clear();
       this.updateBandFrequencies();
     }
-    if (typeof options.rhythmEnabled === 'boolean') this.rhythmEnabled = options.rhythmEnabled;
+    if (typeof options.rhythmEnabled === 'boolean') {
+      this.rhythmEnabled = options.rhythmEnabled;
+      if (!this.rhythmEnabled) {
+        this.rhythmEnvelope = 0;
+        this.rhythmDropAge = 0;
+        this.rhythmActive = false;
+        this.blobMotionSeen = false;
+      }
+    }
     if (Number.isFinite(options.oscillation)) this.oscillation = Math.min(1, Math.max(0, options.oscillation));
     if (Number.isFinite(options.pitchRange)) this.pitchRange = Math.min(7, Math.max(0, options.pitchRange));
     if (Number.isFinite(options.timbre)) {
@@ -431,7 +517,8 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
     if (!output) return true;
     const s = this.signals;
     const energy = unitAudioSignal(s.energy), density = unitAudioSignal(s.density), speed = unitAudioSignal(s.speed), ambient = unitAudioSignal(s.ambient);
-    this.scheduleRhythmicNote(s, energy, speed, density);
+    if (this.rhythmEnabled) this.scheduleRhythmicNote(s, energy, speed, density);
+    else { this.rhythmEnvelope = 0; this.rhythmActive = false; }
     const target = (this.muted || !this.audioEnabled) ? 0 : Math.min(2, Math.max(0, Number.isFinite(this.master) ? this.master : 1));
     const gainAttack = 1 - Math.exp(-1 / (sampleRate * .035));
     const gainRelease = 1 - Math.exp(-1 / (sampleRate * .12));
@@ -480,12 +567,24 @@ class BlobTrackAudioProcessor extends AudioWorkletProcessor {
         this.modPhase[z] += 2 * Math.PI * lfoHz * (1 + z * .045) / sampleRate;
         if (this.modPhase[z] >= Math.PI * 2) this.modPhase[z] -= Math.PI * 2;
       }
-      if (this.rhythmEnvelope > .0005) {
+      if (this.rhythmEnabled && this.rhythmEnvelope > .0005) {
         const beat = Math.sin(this.rhythmPhase) * .76 + Math.sin(this.rhythmPhase * 2) * .24;
-        sample += beat * this.rhythmEnvelope * .26 * this.rhythmVelocity * (this.bandMode ? .45 : 1);
-        this.rhythmPhase += 2 * Math.PI * this.rhythmFrequency / sampleRate;
+        if (this.bandMode) {
+          // Gota d'água: ataque de 3,5 ms (sem clique), a altura cai de ~1,75x
+          // para ~0,7x da nota da faixa em 22 ms e o rastro some em 30 ms.
+          this.rhythmDropAge += 1 / sampleRate;
+          const attack = Math.min(1, this.rhythmDropAge / .0035);
+          const dropFrequency = this.rhythmFrequency * (.7 + 1.05 * Math.exp(-this.rhythmDropAge / .022));
+          this.rhythmDropFrequency = dropFrequency;
+          sample += beat * this.rhythmEnvelope * attack * .52 * this.rhythmVelocity;
+          this.rhythmPhase += 2 * Math.PI * dropFrequency / sampleRate;
+          this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .03));
+        } else {
+          sample += beat * this.rhythmEnvelope * .26 * this.rhythmVelocity;
+          this.rhythmPhase += 2 * Math.PI * this.rhythmFrequency / sampleRate;
+          this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .06));
+        }
         if (this.rhythmPhase >= Math.PI * 2) this.rhythmPhase -= Math.PI * 2;
-        this.rhythmEnvelope *= Math.exp(-1 / (sampleRate * .06));
       }
       const air = (this.rhythmEnabled || this.bandMode) ? 0 : Math.min(.08, speed * .055 * Math.max(.5, this.sensitivity));
       sample += air * Math.sin(this.phase[7]);

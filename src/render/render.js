@@ -3,7 +3,7 @@ import { clamp } from '../core/utils.js';
 // Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 3;
-const STIPPLE_LEVELS = 8;
+const STIPPLE_LEVELS = 12;
 const STIPPLE_TAU = Math.PI * 2;
 
 export function createRender({
@@ -742,7 +742,16 @@ export function createRender({
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
           const i = y * cols + x;
-          const stretched = clamp(.5 + (grid.luma[i] - mean) * 2.6, 0, 1);
+          const l = grid.luma[i];
+          const left = grid.luma[y * cols + (x > 0 ? x - 1 : x)];
+          const right = grid.luma[y * cols + (x + 1 < cols ? x + 1 : x)];
+          const above = grid.luma[(y > 0 ? y - 1 : y) * cols + x];
+          const belowLuma = grid.luma[(y + 1 < rows ? y + 1 : y) * cols + x];
+          // Contraste local: a média da cena sozinha achata a silhueta quando o fundo
+          // fica claro ou escuro. Misturar com a média dos 5 vizinhos mantém a forma.
+          const localMean = (l + left + right + above + belowLuma) * .2;
+          const reference = mean * .75 + localMean * .25;
+          const stretched = clamp(.5 + (l - reference) * 2.6, 0, 1);
           const value = 1 - stretched + grid.error[i];
           const tone = Math.pow(clamp((value - cut) / (1 - cut), 0, 1), .75);
           const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS;
@@ -757,19 +766,16 @@ export function createRender({
           if (quantized <= 0) continue;
           // Onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula.
           // Usa só a luma da grade: não há leitura nova nem array novo por quadro.
-          const l = grid.luma[i];
-          const left = grid.luma[y * cols + (x > 0 ? x - 1 : x)];
-          const right = grid.luma[y * cols + (x + 1 < cols ? x + 1 : x)];
-          const above = grid.luma[(y > 0 ? y - 1 : y) * cols + x];
-          const below = grid.luma[(y + 1 < rows ? y + 1 : y) * cols + x];
           const edge = clamp(
-            (Math.abs(l - left) + Math.abs(l - right) + Math.abs(l - above) + Math.abs(l - below)) / .15,
+            (Math.abs(l - left) + Math.abs(l - right) + Math.abs(l - above) + Math.abs(l - belowLuma)) / .15,
             0, 1
           );
           const jitter = 1 - .75 * edge;
           grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW * jitter;
           grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH * jitter;
-          grid.dotR[count] = maxR * quantized;
+          // Dissolução por área: raio proporcional à raiz do tom. O olho lê tinta,
+          // não raio — assim cada degrau escurece o mesmo tanto, do pó ao ponto cheio.
+          grid.dotR[count] = maxR * Math.sqrt(quantized);
           count++;
         }
       }
