@@ -23,11 +23,11 @@ test('binary mask renderer receives the live mask context', () => {
   assert.ok(!app.includes('maskContext: null'));
 });
 
-test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos', async () => {
+test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos', async () => {
   assert.ok(!app.includes('bayer8'));
   assert.ok(app.includes('uEffect==2'));
   assert.ok(app.includes('glState.program = glProgram'));
-  assert.ok(app.includes('else if(uEffect==2){rgb=vec3(1.0);}'));
+  assert.ok(app.includes('else if(uEffect==2){rgb=vec3(0.0);}'));
   assert.ok(app.includes('float e=0.06;rgb=vec3(smoothstep(t-e,t+e,l));'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
@@ -38,8 +38,9 @@ test('Pontilhado é pointillism: papel branco, difusão de erro e pontos pretos'
   assert.ok(render.includes('grid.error[i + 1] += diffusion * 7 / 16'));
   assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
   assert.ok(render.includes('const quantized = Math.round(tone * STIPPLE_LEVELS) / STIPPLE_LEVELS'));
-  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample)'));
-  assert.ok(render.includes("fillStyle = '#fff'"));
+  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors)'));
+  assert.ok(render.includes("const paper = colors?.paper || '#fff';"));
+  assert.ok(render.includes("const dot = colors?.dot || '#000';"));
   assert.ok(!render.includes('DOT_CELL'));
   assert.ok(!render.includes('DOT_RADIUS_SQ'));
   assert.ok(!render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
@@ -63,21 +64,23 @@ test('Pacote 2 compartilha o readback e atualiza textura e máscara sem realocar
   assert.ok(tracker.includes('update(video, context, canvas, trackingWidth, threshold, dt, roiMask = null)'));
 });
 
-test('Pontilhado nas janelas reaproveita a grade calculada para o palco', async () => {
+test('Pontilhado desenha só nos blobs e reaproveita a grade calculada para o quadro', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('function prepareStipple(source, viewWidth, viewHeight, sample = null)'));
-  assert.ok(render.includes('function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect = null)'));
-  assert.ok(render.includes('paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom])'));
-  assert.ok(render.includes('function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null)'));
+  assert.ok(render.includes('function blobsClipRect(blobs, viewWidth, viewHeight, offsetX)'));
+  assert.ok(render.includes('function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect = null, colors = null)'));
+  assert.ok(render.includes('function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null, clipRect = null, colors = null)'));
+  assert.ok(render.includes("const colors = state.invertBlend"));
+  assert.ok(render.includes("? { paper: '#000', dot: '#fff' }"));
   assert.ok(render.includes('stippleReady = false;'));
 });
 
-test('Vídeo original ligado aplica efeito na janela e desligado deixa vídeo cru', async () => {
+test('Vídeo original ligado aplica efeito na janela; Pontilhado não usa janela de vídeo', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const enableEffect = state.originalVideoWindows || state.videoBlend > 0;'));
   assert.ok(render.includes("const filter = (effectPart + invertPart).trim() || 'none';"));
-  assert.ok(render.includes("if (state.effect === 'dither' && state.originalVideoWindows) {"));
-  assert.ok(render.includes('paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom])'));
+  assert.ok(render.includes('if (state.videoWindows && !dotted) {'));
+  assert.ok(render.includes('// Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.'));
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.ok(html.includes('Ligado: aplica o efeito na janela; desligado: vídeo cru dentro do blob'));
 });

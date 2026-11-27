@@ -513,11 +513,30 @@ export function createRender({
       drawSource();
       c.restore();
     }
-    // Pontilhado vive na janela só com o botão ligado: desligado, o blob fica com vídeo cru.
-    if (state.effect === 'dither' && state.originalVideoWindows) {
-      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
-    }
     c.restore();
+  }
+
+  // União dos blobs em coordenadas da tela. O Pontilhado usa esta área como recorte:
+  // os pontos substituem o vídeo dentro dela e não aparecem fora.
+  function blobsClipRect(blobs, viewWidth, viewHeight, offsetX) {
+    if (!blobs?.length) return null;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    let visible = 0;
+    for (const blob of blobs) {
+      mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
+      mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
+      const x1 = offsetX + Math.min(mapPointA[0], mapPointB[0]) * viewWidth;
+      const x2 = offsetX + Math.max(mapPointA[0], mapPointB[0]) * viewWidth;
+      const y1 = Math.min(mapPointA[1], mapPointB[1]) * viewHeight;
+      const y2 = Math.max(mapPointA[1], mapPointB[1]) * viewHeight;
+      if (x2 <= offsetX || x1 >= offsetX + viewWidth || y2 <= 0 || y1 >= viewHeight) continue;
+      left = Math.min(left, x1);
+      top = Math.min(top, y1);
+      right = Math.max(right, x2);
+      bottom = Math.max(bottom, y2);
+      visible++;
+    }
+    return visible ? [left, top, right, bottom] : null;
   }
 
   // ---------- renderização principal ----------
@@ -533,10 +552,10 @@ export function createRender({
     if (useFallback) {
       if (fallbackContext) {
         if (state.effect === 'dither') {
-          // Papel branco: os pontos pretos são desenhados no overlay por drawStipple.
+          // Fundo preto: o vídeo não entra; os pontos (e o papel do blob) vivem no overlay.
           fallbackContext.save();
           fallbackContext.filter = 'none';
-          fallbackContext.fillStyle = '#fff';
+          fallbackContext.fillStyle = '#000';
           fallbackContext.fillRect(0, 0, canvas.width, canvas.height);
           fallbackContext.restore();
         } else {
@@ -772,7 +791,7 @@ export function createRender({
     }
   }
 
-  function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect = null) {
+  function paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect = null, colors = null) {
     if (!stippleReady || !stippleGrid.count) return;
     const width = stippleSampleWidth, height = stippleSampleHeight;
     const cr = stippleCropRect;
@@ -780,16 +799,28 @@ export function createRender({
     const scaleY = state.gearVr ? cr[3] / height : viewHeight / cr[3];
     const baseX = state.gearVr ? cr[0] : -cr[0] * scaleX;
     const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
+    const paper = colors?.paper || '#fff';
+    const dot = colors?.dot || '#000';
+    c.save();
+    if (clipRect) {
+      const clipW = clipRect[2] - clipRect[0], clipH = clipRect[3] - clipRect[1];
+      c.beginPath();
+      c.rect(clipRect[0], clipRect[1], clipW, clipH);
+      c.clip();
+      // O papel vive só dentro do blob; fora dele o fundo preto permanece.
+      c.fillStyle = paper;
+      c.fillRect(clipRect[0], clipRect[1], clipW, clipH);
+    }
     c.save();
     c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
     c.scale(mirrorX ? -1 : 1, 1);
-    c.fillStyle = '#000';
+    c.fillStyle = dot;
     c.beginPath();
     for (let i = 0; i < stippleGrid.count; i++) {
       const x = baseX + stippleGrid.dotX[i] * scaleX;
       const y = baseY + stippleGrid.dotY[i] * scaleY;
       const r = Math.max(.35, stippleGrid.dotR[i] * Math.min(scaleX, scaleY));
-      // Na janela, só os pontos que cruzam a união dos blobs entram no caminho.
+      // Só os pontos que cruzam os blobs entram no caminho.
       if (clipRect) {
         const screenX = offsetX + (mirrorX ? viewWidth - x : x);
         if (screenX + r < clipRect[0] || screenX - r > clipRect[2]
@@ -800,17 +831,18 @@ export function createRender({
     }
     c.fill();
     c.restore();
+    c.restore();
   }
 
-  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null) {
+  function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null, clipRect = null, colors = null) {
     if (!perfProbe) {
       if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
-      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
       return;
     }
     perfProbe.stage('estipple', () => {
       if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
-      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX);
+      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
     });
   }
 
@@ -889,9 +921,17 @@ export function createRender({
         const sample = result.pixels && result.pixelWidth && result.pixelHeight
           ? { data: result.pixels, width: result.pixelWidth, height: result.pixelHeight }
           : null;
-        drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample);
+        const clip = blobsClipRect(result.blobs, viewWidth, viewHeight, offsetX);
+        if (clip) {
+          // Inverter vídeo passa a ser o negativo do Pontilhado: pontos brancos em papel preto.
+          const colors = state.invertBlend
+            ? { paper: '#000', dot: '#fff' }
+            : { paper: '#fff', dot: '#000' };
+          drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
+        }
       }
-      if (state.videoWindows) {
+      // Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.
+      if (state.videoWindows && !dotted) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
@@ -1005,6 +1045,7 @@ export function createRender({
     drawBlobNetwork,
     drawDistanceTelemetry,
     drawRawVideoWindows,
+    blobsClipRect,
     drawStipple,
     renderFrame,
     drawMaskOverlay,

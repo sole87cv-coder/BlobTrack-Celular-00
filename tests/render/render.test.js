@@ -192,7 +192,7 @@ test('Vídeo original ligado aplica o efeito nos três; desligado devolve vídeo
   assert.deepEqual(filtrosDe('dither', false, { videoBlend: 0.5 }), ['grayscale(1) contrast(2)']);
 });
 
-test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
+test('Pontilhado desenha só nos blobs, sem segundo getImageData e sem vídeo na composição', () => {
   const previousDocument = globalThis.document;
   globalThis.document = { createElement() { throw new Error('não deve criar canvas'); } };
   try {
@@ -213,26 +213,24 @@ test('Pontilhado nas janelas reusa a grade sem segundo getImageData', () => {
         data[i] = value; data[i + 1] = value; data[i + 2] = value; data[i + 3] = 255;
       }
     }
-    let arcs = 0, images = 0;
+    let arcs = 0, images = 0, clips = 0, fills = 0;
     const c = {
       fillStyle: '', filter: 'none', globalAlpha: 1,
-      save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+      save() {}, restore() {}, beginPath() {}, rect() {}, clip() { clips++; },
       translate() {}, scale() {}, drawImage() { images++; },
-      moveTo() {}, arc() { arcs++; }, fill() {},
+      moveTo() {}, arc() { arcs++; }, fill() { fills++; }, fillRect() {},
     };
-
-    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height });
-    const dotsNoPalco = arcs;
-    assert.ok(dotsNoPalco > 20, `pontos no palco: ${dotsNoPalco}`);
+    const blobs = [{ left: 0.1, top: 0.1, right: 0.5, bottom: 0.5 }];
+    const clip = render.blobsClipRect(blobs, 320, 240, 0);
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height }, clip, { paper: '#fff', dot: '#000' });
+    assert.ok(arcs > 20, `pontos desenhados: ${arcs}`);
+    assert.ok(clips > 0, 'o recorte dos blobs foi aplicado');
+    assert.ok(fills > 0, 'o papel dos blobs foi pintado');
+    assert.equal(images, 0, 'nenhum vídeo entra no Pontilhado');
+    state.invertBlend = true;
     arcs = 0;
-    render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, { videoWidth: 640, videoHeight: 360 });
-    assert.ok(arcs > 0 && arcs < dotsNoPalco, `pontos podados na janela: ${arcs} de ${dotsNoPalco}`);
-    assert.equal(images, 1, 'o vídeo continua na janela');
-    state.originalVideoWindows = false;
-    arcs = 0;
-    render.drawRawVideoWindows(c, [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }], 320, 240, 0, { videoWidth: 640, videoHeight: 360 });
-    assert.equal(arcs, 0, 'desligado não repinta pontos dentro do blob');
-    assert.equal(images, 2, 'desligado ainda desenha o vídeo cru na janela');
+    render.drawStipple(c, { width, height }, 320, 240, 0, false, { data, width, height }, clip, { paper: '#000', dot: '#fff' });
+    assert.ok(arcs > 20, 'o negativo também desenha pontos');
   } finally {
     globalThis.document = previousDocument;
   }
@@ -301,7 +299,7 @@ test('ondas reaproveitam os pontos de view já calculados para o olho', () => {
   assert.ok(arcs.every(([x, y]) => Math.abs(x - 80) < 1e-6 && Math.abs(y - 120) < 1e-6));
 });
 
-test('fallback do Pontilhado pinta papel branco, sem desenhar o quadro inteiro', () => {
+test('fallback do Pontilhado pinta fundo preto, sem desenhar o quadro inteiro', () => {
   const state = makeState({ effect: 'dither', timing: {} });
   const fills = [];
   const c = {
@@ -327,8 +325,8 @@ test('fallback do Pontilhado pinta papel branco, sem desenhar o quadro inteiro',
   render.renderFrame({}, { videoWidth: 640, videoHeight: 360 });
 
   assert.deepEqual(fills, [
-    [0, 0, 320, 240, '#fff'],
-    [0, 0, 320, 240, '#fff'],
+    [0, 0, 320, 240, '#000'],
+    [0, 0, 320, 240, '#000'],
   ]);
   assert.equal(c.filter, 'none');
 });
@@ -553,7 +551,7 @@ test('binarizada só publica no canvas quando a máscara muda', () => {
   assert.equal(puts, 2, 'nova máscara igual não repinta');
 });
 
-test('WebGL mantém uEffect 2 para o papel branco do Pontilhado', () => {
+test('WebGL mantém uEffect 2 com fundo preto no Pontilhado', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
     'uImageAspect', 'uViewportAspect', 'uMirror', 'uFlip', 'uFit',

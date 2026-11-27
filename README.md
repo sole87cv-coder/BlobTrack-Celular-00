@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v76`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`).
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. A versão publicada está em `https://blobtrak.vercel.app` (cache offline `v77`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`).
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -172,7 +172,7 @@ Pense no projeto como uma **receita**: alguns ingredientes você pode trocar à 
 
 #### Exemplo prático: ajustar o Pointillism
 
-O Pontilhado transforma a **imagem** em pontos pretos: fundo claro fica vazio, e a pessoa ou o prédio aparecem como pontos de tamanhos diferentes. Tudo vive em `src/render/render.js`, na função `drawStipple`:
+O Pontilhado transforma a **imagem** em pontos: fundo claro fica vazio, e a pessoa ou o prédio aparecem como pontos de tamanhos diferentes. Desde a `v77` o vídeo não entra na composição: fora dos blobs fica **fundo preto**, e dentro deles o papel (branco, ou preto no negativo) recebe os pontos. Isso é o que o MP4 grava. Tudo vive em `src/render/render.js`, na função `drawStipple`:
 
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
@@ -195,7 +195,7 @@ Os três botões só escolhem qual “filtro” entra nessa montagem. O nome int
 |---|---|---|---|
 | Inverter / Invertir | `invert` | negativo de filme no **quadro todo** e também nas janelas (`v72`) | ramo `uEffect==0` do shader + fallback em `src/render/render.js` |
 | Preto e branco | `threshold` | cinza com transição suave no **quadro todo** e nas janelas (`v72`/`v73`) | ramo `uEffect==1` do shader + fallback em `src/render/render.js` |
-| Pontilhado | `dither` | papel branco com pontos pretos formando a imagem inteira **e também as janelas** (`v59`, refinado na `v74`) | `drawStipple` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
+| Pontilhado | `dither` | fundo preto fora dos blobs; dentro deles, pontos formando a imagem — o próprio vídeo gravado (`v77`) | `drawStipple` + `blobsClipRect` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
 
 **Inverter e Preto e branco, passo a passo.** Antes da `v72` os dois viviam só nas janelas. Hoje o botão escolhe um número que o shader entende; o fallback 2D usa o mesmo número:
 
@@ -203,7 +203,7 @@ Os três botões só escolhem qual “filtro” entra nessa montagem. O nome int
 state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect === 'dither' ? 2 : 3
 ```
 
-É como trocar o filtro de uma lanterna: o número 0 inverte o quadro inteiro, o 1 pinta em cinza, o 2 prepara o papel do Pontilhado e o 3 deixa a imagem crua. No fallback (sem WebGL), os mesmos efeitos viram `invert(1)` e `grayscale(1) contrast(4)`.
+É como trocar o filtro de uma lanterna: o número 0 inverte o quadro inteiro, o 1 pinta em cinza, o 2 prepara o fundo preto do Pontilhado (os pontos vivem no overlay) e o 3 deixa a imagem crua. No fallback (sem WebGL), os mesmos efeitos viram `invert(1)` e `grayscale(1) contrast(4)`.
 
 - `invert(1)` troca claro por escuro, como um negativo de filme.
 - `grayscale(1)` tira a cor; o `smoothstep` estreito do shader (`e=0.06`) faz a passagem de preto para branco sem o "corte seco" de antes. No fallback, `contrast(4)` chega perto do mesmo resultado.
@@ -217,13 +217,13 @@ const STIPPLE_SPACING = 3;
 const STIPPLE_LEVELS = 8;
 ```
 
-Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais distância = pontos maiores), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. O papel branco vem do shader (`uEffect==2`); os pontos pretos são desenhados no overlay. Se você pintar o papel de preto, os pontos pretos desaparecem — já aconteceu na `v56`.
+Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (mais distância = pontos maiores), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; `blobsClipRect` recorta a união dos blobs e `paintStipple` pinta o papel lá dentro e desenha os pontos no overlay. **Inverter vídeo** virou a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
 
 **Regras do jogo, para os três efeitos:**
 
 1. Mude **uma** coisa por vez e anote o valor antigo.
 2. Rode `npm test` e `git diff --check`. Se falhar, pare.
-3. Abra `http://localhost:8000`, clique em **Iniciar câmera** e alterne os três botões. Confira também **Janela viva** e **Inverter vídeo** — eles podem esconder o efeito.
+3. Abra `http://localhost:8000`, clique em **Iniciar câmera** e alterne os três botões. No Pontilhado, confira que os pontos aparecem só nos blobs, que o resto fica preto e que **Inverter vídeo** troca para negativo. *Janela viva* não acrescenta vídeo quando o Pontilhado está ligado.
 4. Suba o número do cache em `sw.js` (de `v60` para `v61`, por exemplo). Sem isso, o celular continua vendo o efeito antigo.
 5. Sem aparelho físico na mão, escreva **não medido** na sua anotação.
 
@@ -252,6 +252,14 @@ Para conferir: abra o palco, toque em **Palco** (ou em **Tela**), toque em `G`/`
 Sem mudar a imagem, o quadro agora reaproveita o que já existe: a view `Uint32Array` da máscara, as linhas da malha (`xSteps`/`ySteps`), os pontos mapeados de cada blob (uma vez por olho), o gradiente da gravação e as referências `<b>` do HUD. As janelas de vídeo não desenham o quadro-base quando `videoBlend === 0` e há filtro, e o payload de áudio deixa de ser montado com som desligado, mudo ou sem porta. Nada disso altera o contrato congelado.
 
 Para acompanhar o custo, `window.__blobtrackMetrics` ganhou `tOverlay` (tempo dos efeitos no canvas de overlay) e `tComposition` (tempo total de montar o overlay). As chaves antigas (`fps`, `tAnalysis`, `tRender`, `tCapture`, `blobsAtivos`, `idsNovosUltimos60s`, `recordingState`, `effectsPaused`) continuam iguais. Abra o console do navegador e rode `window.__blobtrackMetrics` para comparar.
+
+#### Pontilhado vira a imagem gravada (cache v77)
+
+Você pediu prioridade para o Pontilhado, sem sobrepor o vídeo, com os pontos aparecendo só nos blobs e coerentes com o Inverter. A resposta foi: fora dos blobs = **fundo preto**; com Inverter = **negativo**. Agora `renderFrame` não compõe `drawRawVideoWindows` quando `state.effect === 'dither'`; o shader (`uEffect==2`) e o fallback pintam preto, `blobsClipRect` recorta a união dos blobs, e `paintStipple` pinta o papel e os pontos dentro desse recorte. Como o app permite **um** estilo de imagem por vez, **Inverter vídeo** passou a ser a polaridade do Pontilhado (branco sobre preto); o botão **Inverter** continua sendo o estilo exclusivo de negativo do quadro. `drawRecordingComposite` já junta `canvas` + `overlayCanvas`, então o MP4 registra exatamente esse resultado — sem nova estratégia de gravação.
+
+Na mesma leva, a `v76` corrigiu o piano do Tom Base na tela cheia: o CSS `:fullscreen` não aparecia no seu aparelho, então `syncFullscreenUi()` liga a classe `fullscreen-active` no `body` nos eventos `fullscreenchange` e `webkitfullscreenchange`, e o CSS mostra o piano por essa classe (com `html:fullscreen` como reforço). No Gear VR ele continua escondido.
+
+🟡 Mexa só com medição: `npm test` **249/249**, `node --check` nos dois arquivos de runtime e `git diff --check` limpos; bench do núcleo 3× com p95 `1,134 / 1,225 / 1,262 ms` (teto `1,347 ms`). Nada disso foi medido no Realme C67: a validação final no aparelho, com Pontilhado selecionado (`estipple.n > 0`) e MP4 salvo, ainda está pendente.
 
 #### Pointillism de verdade (cache v57)
 
@@ -285,7 +293,7 @@ const effectPart = enableEffect ? effectFilter : '';
 const filter = (effectPart + invertPart).trim() || 'none';
 ```
 
-E o Pontilhado dentro da janela tem o mesmo guard:
+E o Pontilhado dentro da janela tinha o mesmo guard (isto descreve a `v60`; na `v77` o Pontilhado não usa mais janela de vídeo — veja a seção da `v77` acima):
 
 ```js
 if (state.effect === 'dither' && state.originalVideoWindows) {
@@ -293,7 +301,7 @@ if (state.effect === 'dither' && state.originalVideoWindows) {
 }
 ```
 
-Em palavras de adolescente: **botão ligado = a janela ganha o efeito escolhido** (Inverter, Preto e branco ou Pontilhado com pontos por cima do vídeo). **Botão desligado = lupa limpa**, o vídeo cru entra dentro do retângulo e os pontos não são repintados ali. Inverter vídeo e a mistura continuam com prioridade quando você os aciona.
+Em palavras de adolescente, naquela versão: **botão ligado = a janela ganha o efeito escolhido** (Inverter, Preto e branco ou Pontilhado com pontos por cima do vídeo). **Botão desligado = lupa limpa**, o vídeo cru entra dentro do retângulo e os pontos não são repintados ali. Inverter vídeo e a mistura continuam com prioridade quando você os aciona.
 
 Depois de fixada a semântica, três otimizações entraram na mesma rodada, uma de cada vez:
 
@@ -338,16 +346,16 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** os dois sites (`blobtrak.vercel.app` e `blobtraking.vercel.app`) responderam `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v76`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v77`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
-#### Kit de medição — diagnóstico cirúrgico (cache v76)
+#### Kit de medição — diagnóstico cirúrgico (cache v77)
 
 O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e não altera as chaves antigas de `__blobtrackMetrics`: só acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (este último, `null` sem `?perf=1`). O relatório completo fica em `__blobtrackPerf`.
 
 **Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
 
 1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v76"` e `sondaGl: false`.
+2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v77"` e `sondaGl: false`.
 3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
 4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
 
@@ -355,7 +363,7 @@ O painel também funciona pelo computador, se você preferir: com o celular liga
 
 O JSON traz p50 / p95 / máximo em milissegundos de cada etapa: `captura`, `readback` (total), `readbackDraw` (cópia do quadro para o canvas de análise) e `readbackPixels` (`getImageData`), `analise` (rastreador), `estipple` (Pontilhado), `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio`, `gravacao` e `glReadback` (leitura WebGL, só com `?perf=1&gl=1`). Também traz `fps`, `trackingWidth`, `longTasks` e `gc` (`PerformanceObserver`), `memoria` (`performance.memory`), `salvamentoMs`, `seletorMs`, `escritaMs`, `compartilhamentoMs`, `downloadMs`, `pauseReason`, `pauseCount`, `effectsPaused`, `deviceLimit`, `sondaGl`, `cacheVersion`, perfil e resoluções/DPR reais dos canvases. `seletorMs` é o tempo gasto no diálogo do Android (você escolhendo onde salvar); `escritaMs` é o trabalho do arquivo depois que o diálogo fechou. `salvamentoMs` é o total dos dois. Cada etapa ainda vira uma marca no flame chart via `performance.mark`/`measure`. Desde a `v69`, `pauseReason` fica vazio, `pauseCount` é `0` e `effectsPaused` é sempre `false` — as três chaves continuam no JSON só para compatibilidade com medições antigas. `deviceLimit: true` indica que o aviso discreto apareceu; os efeitos continuam ativos.
 
-🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador, e escondido por trás de `?perf=1`. 🟡 A virada para `v76` é obrigatória porque `src/app.js`, `src/app.css`, `sw.js` e os testes mudaram (piano passa a aparecer por sinal do app na tela cheia, sem depender de CSS :fullscreen); rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
+🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador, e escondido por trás de `?perf=1`. 🟡 A virada para `v77` é obrigatória porque `src/app.js`, `src/render/render.js`, `sw.js` e os testes mudaram (Pontilhado passa a ser a própria imagem gravada, só nos blobs, com fundo preto e negativo pelo Inverter); rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
 
 **Experimento `v66` revertido:** ler do vídeo direto apenas mudou o custo de lugar — `getImageData` caiu para `1,2 ms`, mas o `drawImage` subiu para `41,7 ms`. O total ficou em `43 ms` contra `40,3 ms` da `v65`; não houve ganho de FPS. A `v67` restaurou a leitura pelo `frameCanvas`. A `v68` acrescentou `glReadback`: uma leitura pequena via WebGL para saber se esse caminho é barato no Realme C67. Sem `?perf=1`, ela não existe.
 
