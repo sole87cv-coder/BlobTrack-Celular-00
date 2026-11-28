@@ -533,34 +533,52 @@ function getTrackingRoi(source) {
   return mask;
 }
 
-const DISPLAY_SMOOTH_TAU = 0.08; // suavização de apresentação: estável sem atrasar áudio/sinais
+const DISPLAY_SMOOTH_TAU = 0.08; // suaviza??o de apresenta??o: est?vel sem atrasar ?udio/sinais
+const DISPLAY_HOLD_FRAMES = 3; // segura trilha visual por poucos frames ausentes (apresenta??o apenas)
 function resetDisplayTracks() { state.displayTracks.clear(); }
 function smoothBlobsForDisplay(blobs, dt) {
-  if (!blobs.length) { state.displayTracks.clear(); return blobs; }
-  const alpha = 1 - Math.exp(-Math.max(0.001, dt) / DISPLAY_SMOOTH_TAU);
+  const safeDt = Math.max(0.001, dt);
+  const alpha = 1 - Math.exp(-safeDt / DISPLAY_SMOOTH_TAU);
   const seen = new Set();
-  const out = new Array(blobs.length);
+  const out = [];
   for (let i = 0; i < blobs.length; i++) {
     const b = blobs[i];
     const id = b.id;
     seen.add(id);
     const prev = state.displayTracks.get(id);
     if (!prev) {
-      const s = { x: b.x, y: b.y, left: b.left, top: b.top, right: b.right, bottom: b.bottom, area: b.area };
+      const s = { x: b.x, y: b.y, left: b.left, top: b.top, right: b.right, bottom: b.bottom, area: b.area, vx: 0, vy: 0, miss: 0 };
       state.displayTracks.set(id, s);
-      out[i] = b;
+      out.push(b);
       continue;
     }
-    prev.x += (b.x - prev.x) * alpha;
-    prev.y += (b.y - prev.y) * alpha;
+    const dx = b.x - prev.x, dy = b.y - prev.y;
+    prev.vx = prev.vx * 0.6 + (dx / safeDt) * 0.4;
+    prev.vy = prev.vy * 0.6 + (dy / safeDt) * 0.4;
+    prev.x += dx * alpha;
+    prev.y += dy * alpha;
     prev.left += (b.left - prev.left) * alpha;
     prev.top += (b.top - prev.top) * alpha;
     prev.right += (b.right - prev.right) * alpha;
     prev.bottom += (b.bottom - prev.bottom) * alpha;
     prev.area += (b.area - prev.area) * alpha;
-    out[i] = { ...b, x: prev.x, y: prev.y, left: prev.left, top: prev.top, right: prev.right, bottom: prev.bottom, area: prev.area };
+    prev.miss = 0;
+    out.push({ ...b, x: prev.x, y: prev.y, left: prev.left, top: prev.top, right: prev.right, bottom: prev.bottom, area: prev.area });
   }
-  for (const id of state.displayTracks.keys()) if (!seen.has(id)) state.displayTracks.delete(id);
+  for (const [id, prev] of state.displayTracks.entries()) {
+    if (seen.has(id)) continue;
+    prev.miss = (prev.miss || 0) + 1;
+    if (prev.miss > DISPLAY_HOLD_FRAMES) { state.displayTracks.delete(id); continue; }
+    const pdx = (prev.vx || 0) * safeDt;
+    const pdy = (prev.vy || 0) * safeDt;
+    prev.x = clamp(prev.x + pdx, 0, 1);
+    prev.y = clamp(prev.y + pdy, 0, 1);
+    prev.left = clamp(prev.left + pdx, 0, 1);
+    prev.top = clamp(prev.top + pdy, 0, 1);
+    prev.right = clamp(prev.right + pdx, 0, 1);
+    prev.bottom = clamp(prev.bottom + pdy, 0, 1);
+    out.push({ id, x: prev.x, y: prev.y, left: prev.left, top: prev.top, right: prev.right, bottom: prev.bottom, area: prev.area, held: true });
+  }
   return out;
 }
 function analyze(source = video) {
@@ -691,7 +709,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v102',
+    cacheVersion: 'blobtrack-celular-00-v103',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
