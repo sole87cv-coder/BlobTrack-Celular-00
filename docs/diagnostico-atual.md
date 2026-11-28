@@ -469,7 +469,7 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 
 - **Pedido:** restaurar qualidade visual dos efeitos principais como antes de 05:57 (-0300), opção 1a (só visual, mantendo comportamento B2 dos botões).
 - **Mudança:** `src/render/render.js` — `STIPPLE_LEVELS` 24→12 e remoção do boost de contraste/tom do Pontilhado OFF; volta à curva visual de `f43594f` para o Pontilhado. Inverter/P&B mantêm a lógica de render atual; comportamento B2 (`showOriginalVideo`) preservado.
-- **Cache:** `blobtrack-celular-00-v101`.
+- **Cache:** `blobtrack-celular-00-v102`.
 - **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms. Deploy confirmado.
 - **Medido no aparelho: nada.**
 
@@ -497,13 +497,22 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Pedido:** aprimorar/perfeiçoar/otimizar sobreposições e tamanhos dos blobs.
 - **Tamanho mínimo:** novo controle `Tamanho mínimo do blob` (Mínimo/Pequeno/Médio/Grande/Muito grande), persistido em `minBlobAreaRatio`, aplicado ao tracker em runtime; clamp seguro `0.00025..0.006` respeitando piso do contrato.
 - **Sobreposição:** supressão **visual** da caixa de guia quando um blob maior cobre >80% do menor (apenas render/overlay; não toca efeitos de imagem, S3, S9, nem dados do tracker). NMS por bbox foi testado e revertido no núcleo por ser inseguro em componentes côncavos (caso de cavidade no teste de diagnóstico).
-- **Cache:** `blobtrack-celular-00-v101`.
+- **Cache:** `blobtrack-celular-00-v102`.
 - **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,181/1,044/1,024 ms (teto 1,347 ms).
 - **Medido no aparelho: nada.** Confirmar no Realme C67: controle de tamanho mínimo, redução de sobreposições visuais incômodas, estabilidade de rastreio e ausência de regressão nos 3 efeitos de imagem.
 
 ## 52. Rollback para comportamento v98 para teste de travamento (v101)
 
 - **Pedido:** app travando muito ap?s v99/v100; usu?rio pediu voltar ? v98 para testar no celular.
-- **Mudan?a:** c?digo restaurado ao estado da v98 (`0786f98`) e publicado com cache novo `blobtrack-celular-00-v101` para for?ar atualiza??o de PWA. Reverte v99 (filtro >45% em janela/overlays reativos) e v100 (controle Tamanho m?ximo do blob).
+- **Mudan?a:** c?digo restaurado ao estado da v98 (`0786f98`) e publicado com cache novo `blobtrack-celular-00-v102` para for?ar atualiza??o de PWA. Reverte v99 (filtro >45% em janela/overlays reativos) e v100 (controle Tamanho m?ximo do blob).
 - **Valida??o local:** `npm test` 269/269 pass, `node --check` OK, `git diff --check` limpo antes do push.
 - **Medido no aparelho: nada.** Testar no Realme C67 se o travamento some; reportar resultado para decidir pr?ximo passo.
+
+## 53. Coerência dos controles e Máximo de blobs (v102)
+
+- **Pedido:** melhorar coerência dos controles Sensibilidade do movimento, Detalhe do rastreio e Tamanho mínimo do blob; adicionar controle de número de blobs (máximo 4–12, padrão 12).
+- **Coerência:** controles mantidos com rótulos/valores claros na UI (Sensibilidade, Detalhe, Tamanho mínimo) e defaults preservados.
+- **Máximo de blobs:** novo controle `Máximo de blobs` (4–12, padrão 12), persistido em `maxBlobs`, aplicado ao tracker em runtime via `setMaxBlobs()` com reset limpo. Sem mínimo forçado.
+- **Cache:** `blobtrack-celular-00-v102`.
+- **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,290/1,250/1,077 ms (teto 1,347 ms).
+- **Medido no aparelho: nada.** Confirmar no Realme C67: coerência dos controles, comportamento do Máximo de blobs e ausência de travamento/regressão.

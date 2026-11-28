@@ -53,6 +53,22 @@ export class BlobTrackerCore {
     this.sceneShiftLatched = false;
   }
 
+  setMaxBlobs(n) {
+    n = Math.max(4, Math.min(20, Math.floor(Number(n) || 12)));
+    if (n === this.maxBlobs) return;
+    this.maxBlobs = n;
+    this.tracks = Array.from({ length: n }, () => ({
+      id: 0, x: 0, y: 0, vx: 0, vy: 0,
+      left: 0, top: 0, right: 0, bottom: 0, area: 0,
+      age: 0, miss: 0, stationaryFrames: 0, alive: false,
+    }));
+    this.trackForBlob = new Int16Array(n);
+    this.matchedTracks = new Uint8Array(n);
+    this.matchedBlobs = new Uint8Array(n);
+    this.nextId = 1;
+    this.idsNew = 0;
+  }
+
   reset() {
     this.background = null;
     this.lastRoiMask = null;
