@@ -272,7 +272,7 @@ if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
 if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0.02,0.60);
 if (Number.isFinite(saved.minBlobAreaRatio)) state.minBlobAreaRatio = clamp(saved.minBlobAreaRatio, 0.00025, 0.006);
 if (Number.isFinite(saved.maxBlobs)) state.maxBlobs = clamp(Math.round(saved.maxBlobs), 4, 12);
-if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,120,deviceProfile.maxWidth);
+if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,80,deviceProfile.maxWidth);
 if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
 if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
 if (typeof saved.showRoiVeil === 'boolean') state.showRoiVeil = saved.showRoiVeil;
@@ -831,7 +831,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v108',
+    cacheVersion: 'blobtrack-celular-00-v109',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
@@ -853,7 +853,13 @@ let frameErrors = 0;
 function frame(now) {
   if (!state.active) return;
   try {
-    const interval = 1000 / deviceProfile.fps;
+    const perfNow = state.performance;
+    const totalAvg = (perfNow.analysisAverage || 0) + (perfNow.renderAverage || 0);
+    const baseFps = deviceProfile.fps;
+    const targetFps = totalAvg > 1000 / baseFps ? Math.max(12, Math.round(baseFps * 0.5))
+      : totalAvg > (1000 / baseFps) * 0.72 ? Math.max(15, Math.round(baseFps * 0.67))
+      : baseFps;
+    const interval = 1000 / targetFps;
     if (video.readyState >= 2 && now - state.lastFrame >= interval) {
       state.lastFrame = now;
       try {
@@ -875,7 +881,7 @@ function frame(now) {
           state.timing.render = performance.now() - renderStarted;
           updateHud(result.raw, applied, result, source);
           const perf = state.performance;
-          const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);
+          const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth, state.performance.limitShown);
           perf.analysisAverage = next.analysisAverage;
           perf.renderAverage = next.renderAverage;
           perf.slowFrames = next.slowFrames;
@@ -1346,7 +1352,7 @@ $('roiVeilButton').addEventListener('click',event=>{
   render.drawRoiVeil();
   scheduleSavePreferences();
 });
-function setTrackingWidth(value){const next=Math.round(clamp(value,120,deviceProfile.maxWidth)/40)*40;if(next===state.trackingWidth){syncTrackingUi();return;}state.trackingWidth=next;tracker.reset();resetDisplayTracks();$('trackingWidth').value=String(next);syncTrackingUi();scheduleSavePreferences();}
+function setTrackingWidth(value){const next=Math.round(clamp(value,80,deviceProfile.maxWidth)/40)*40;if(next===state.trackingWidth){syncTrackingUi();return;}state.trackingWidth=next;tracker.reset();resetDisplayTracks();$('trackingWidth').value=String(next);syncTrackingUi();scheduleSavePreferences();}
 function adjustTracking(delta){state.autoQuality=false;setTrackingWidth(state.trackingWidth+delta);syncTrackingUi();}
 $('trackDown').addEventListener('click',()=>adjustTracking(-40));$('trackUp').addEventListener('click',()=>adjustTracking(40));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});

@@ -1,4 +1,4 @@
-export function updateQualityBudgets(performanceState, analysisMs, renderMs, intervalMs, trackingWidth, maxWidth) {
+export function updateQualityBudgets(performanceState, analysisMs, renderMs, intervalMs, trackingWidth, maxWidth, deviceLimit = false) {
   const analysisAverage = performanceState.analysisAverage
     ? performanceState.analysisAverage * 0.9 + analysisMs * 0.1
     : analysisMs;
@@ -8,16 +8,16 @@ export function updateQualityBudgets(performanceState, analysisMs, renderMs, int
   const totalAverage = analysisAverage + renderAverage;
   const overBudget = totalAverage > intervalMs * 0.72;
   let slowFrames = overBudget ? performanceState.slowFrames + 1 : 0;
-  let fastFrames = totalAverage < intervalMs * 0.45 ? performanceState.fastFrames + 1 : 0;
+  let fastFrames = (totalAverage < intervalMs * 0.40 && !deviceLimit) ? performanceState.fastFrames + 1 : 0;
   let nextWidth = trackingWidth;
-  const minWidth = 120;
+  const minWidth = 80;
   const dropAfter = totalAverage > intervalMs ? 4 : 8;
 
   if (slowFrames >= dropAfter && trackingWidth > minWidth) {
     nextWidth = Math.max(minWidth, trackingWidth - 40);
     slowFrames = 0;
     fastFrames = 0;
-  } else if (fastFrames >= 180 && trackingWidth < maxWidth) {
+  } else if (!deviceLimit && fastFrames >= 300 && trackingWidth < maxWidth) {
     nextWidth = Math.min(maxWidth, trackingWidth + 40);
     fastFrames = 0;
   }

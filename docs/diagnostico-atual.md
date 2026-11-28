@@ -551,3 +551,12 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v108`.
 - **Valida??o local:** `npm test` 270/270 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,270/1,372/1,289 ms (1 com ru?do) e rerun 1,277/1,070/1,254 ms (abaixo do teto 1,347 ms); mudan?a fora do hot path do core.
 - **Medido no aparelho: nada.** Repetir `?diag=1` no Realme C67 e comparar fps/analise/rastreio.
+
+## 58. AutoQuality piso 80 px, recupera??o lenta e FPS adaptativo (v109)
+
+- **Base:** diag v108 no Realme C67 mostrou `fps avg 6.7`, `analise avg 137.4 ms`, rastreio subindo para 280/360 px em parte do teste e ficando pesado.
+- **Mudan?a segura:** piso AutoQuality 80 px; recupera??o bloqueada com `deviceLimit` e s? ap?s 300 frames est?veis; FPS alvo adaptativo (reduz quando custo total passa do or?amento). Sem tocar S3/S9, reatividade ou visual dos 3 efeitos.
+- **Risco:** 80 px reduz detalhe de rastreio; FPS adaptativo pode deixar movimento menos suave, mas reduz sobrecarga.
+- **Cache:** `blobtrack-celular-00-v109`.
+- **Valida??o local:** `npm test` 270/270 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,082/1,259/1,162 ms (teto 1,347 ms).
+- **Medido no aparelho: nada.** Repetir `?diag=1` no Realme C67 e enviar `.txt`.

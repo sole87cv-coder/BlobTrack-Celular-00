@@ -172,7 +172,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v108'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v109'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -187,7 +187,8 @@ test('camera loop initializes the device profile factory before using its FPS', 
 test('automatic quality separates analysis and render budgets', () => {
   assert.ok(app.includes("import { updateQualityBudgets } from './core/qualityController.js';"));
   assert.ok(app.includes('updateQualityBudgets(perf, state.timing.analysis, state.timing.render'));
-  assert.ok(app.includes('1000 / deviceProfile.fps'));
+  assert.ok(app.includes('baseFps = deviceProfile.fps'));
+  assert.ok(app.includes('1000 / targetFps'));
   assert.ok(app.includes('window.__blobtrackMetrics = {'));
   for (const key of ['tAnalysis:', 'tRender:', 'tCapture:', 'tOverlay:', 'tComposition:', 'blobsAtivos:', 'idsNovosUltimos60s:', 'recordingState:', 'effectsPaused:']) {
     assert.ok(app.includes(key), `${key} is published`);
@@ -366,5 +367,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v108'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v109'"));
 });
