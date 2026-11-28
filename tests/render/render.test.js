@@ -129,11 +129,11 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(out1[1] < out2[1]);
 });
 
-test('Pontilhado mantém Janela Viva, aplica o efeito ligado e deixa vídeo cru desligado', () => {
+test('Janela Viva com Vídeo original ON usa câmera com efeito; OFF fica estilizado sem vídeo cru', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
-  function run(originalVideoWindows) {
-    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows, invertBlend: false, videoBlend: 0 });
+  function run(showOriginalVideo) {
+    const state = makeState({ effect: 'dither', videoWindows: true, showOriginalVideo, invertBlend: false, videoBlend: 0 });
     const render = createRender({
       state, video,
       cropRect: new Float32Array(4),
@@ -141,29 +141,31 @@ test('Pontilhado mantém Janela Viva, aplica o efeito ligado e deixa vídeo cru 
       mapPointB: new Float32Array(2),
     });
     let images = 0;
+    let fills = 0;
     const filters = [];
     const c = {
       save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {}, drawImage() { images++; },
+      translate() {}, scale() {}, drawImage() { images++; }, fillRect() { fills++; },
     };
     Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { filters.push(value); } });
     render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
-    return { images, filters };
+    return { images, fills, filters };
   }
   const enhanced = run(true);
   assert.equal(enhanced.images, 1);
   assert.deepEqual(enhanced.filters, ['grayscale(1) contrast(2)']);
-  const raw = run(false);
-  assert.equal(raw.images, 1);
-  assert.deepEqual(raw.filters, []);
+  const stylized = run(false);
+  assert.equal(stylized.images, 0);
+  assert.ok(stylized.fills >= 1);
+  assert.deepEqual(stylized.filters, []);
 });
 
-test('Vídeo original ligado aplica o efeito nos três; desligado devolve vídeo cru', () => {
+test('Vídeo original ON aplica o efeito nos três; OFF fica estilizado (sem vídeo cru)', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
-  function filtrosDe(effect, originalVideoWindows, extra = {}) {
+  function filtrosDe(effect, showOriginalVideo, extra = {}) {
     const state = makeState({
-      effect, videoWindows: true, originalVideoWindows,
+      effect, videoWindows: true, showOriginalVideo,
       invertBlend: false, videoBlend: 0, ...extra,
     });
     const render = createRender({
@@ -175,7 +177,7 @@ test('Vídeo original ligado aplica o efeito nos três; desligado devolve vídeo
     const vistos = [];
     const c = {
       save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {}, drawImage() {},
+      translate() {}, scale() {}, drawImage() {}, fillRect() {},
     };
     Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { vistos.push(value); } });
     render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
@@ -196,7 +198,7 @@ test('Pontilhado desenha só nos blobs, sem segundo getImageData e sem vídeo na
   const previousDocument = globalThis.document;
   globalThis.document = { createElement() { throw new Error('não deve criar canvas'); } };
   try {
-    const state = makeState({ effect: 'dither', videoWindows: true, originalVideoWindows: true, invertBlend: false, videoBlend: 0, timing: {} });
+    const state = makeState({ effect: 'dither', videoWindows: true, showOriginalVideo: true, invertBlend: false, videoBlend: 0, timing: {} });
     const render = createRender({
       state,
       video: { videoWidth: 640, videoHeight: 360 },
@@ -301,12 +303,12 @@ test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   const video = { videoWidth: 640, videoHeight: 360 };
   function drawImageCalls(videoBlend) {
-    const state = makeState({ effect: 'invert', originalVideoWindows: false, videoBlend });
+    const state = makeState({ effect: 'invert', showOriginalVideo: true, videoBlend });
     const render = createRender({ state, video, cropRect: new Float32Array(4), mapPointA: new Float32Array(2), mapPointB: new Float32Array(2) });
     let images = 0;
     const c = {
       save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {}, drawImage() { images++; },
+      translate() {}, scale() {}, drawImage() { images++; }, fillRect() {},
     };
     render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
     return images;
@@ -317,7 +319,7 @@ test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
 
 test('Janela viva amostra só o pedaço da origem ocupado pelos blobs', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
-  const state = makeState({ effect: 'invert', videoWindows: true, originalVideoWindows: true });
+  const state = makeState({ effect: 'invert', videoWindows: true, showOriginalVideo: true });
   const render = createRender({ state, video, cropRect: new Float32Array(4), mapPointA: new Float32Array(2), mapPointB: new Float32Array(2) });
   const calls = [];
   const c = {

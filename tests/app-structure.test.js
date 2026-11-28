@@ -42,7 +42,8 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes('const level = Math.round(tone * STIPPLE_LEVELS);'));
   assert.ok(render.includes('const quantized = level / STIPPLE_LEVELS;'));
   assert.ok(render.includes('const reference = mean * .65 + localMean * .35;'));
-  assert.ok(render.includes('const stretched = clamp(.5 + (l - reference) * 3, 0, 1);'));
+  assert.ok(render.includes('const contrast = stylizedDither ? 4.2 : 3;'));
+  assert.ok(render.includes('const stretched = clamp(.5 + (l - reference) * contrast, 0, 1);'));
   assert.ok(render.includes('grid.dotR[count] = grainR;'));
   assert.ok(render.includes('grid.dotR[count] = grid.radii[level];'));
   assert.ok(render.includes('grid.jitterX[i] * cellW * jitter'));
@@ -102,14 +103,15 @@ test('Pontilhado desenha só nos blobs e reaproveita a grade calculada para o qu
   assert.ok(render.includes('stippleReady = false;'));
 });
 
-test('Vídeo original ligado aplica efeito na janela; Pontilhado não usa janela de vídeo', async () => {
+test('Vídeo original controla base reconhecível; Pontilhado não usa janela de vídeo', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const enableEffect = state.originalVideoWindows || state.videoBlend > 0;'));
+  assert.ok(render.includes('const showOriginal = state.showOriginalVideo;'));
+  assert.ok(render.includes('const enableEffect = showOriginal || state.videoBlend > 0;'));
   assert.ok(render.includes("const filter = (effectPart + invertPart).trim() || 'none';"));
   assert.ok(render.includes('if (state.videoWindows && !dotted && !styled) {'));
   assert.ok(render.includes('// Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.'));
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('Ligado: aplica o efeito na janela; desligado: vídeo cru dentro do blob'));
+  assert.ok(html.includes('Ligado: mostra a câmera como base reconhecível; desligado: visual mais estilizado, sem vídeo cru'));
 });
 
 test('recording snapshot retains identity shared with renderer', () => {
@@ -175,7 +177,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v93'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v94'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -371,5 +373,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('// Com Distância ligada, as guias ficam no canto oposto (inferior direito).'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v93'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v94'"));
 });

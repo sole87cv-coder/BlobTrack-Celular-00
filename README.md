@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v92`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v92`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `(perf removido no v94)` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -197,7 +197,7 @@ node scripts/bench-blobtrack.js
 Regra simples: **`npm test` tem que passar inteiro**, `node --check` e `git diff --check` não podem reclamar, e o p95 das três rodadas do bench tem que ficar em ou abaixo de `1,347 ms`. Se uma rodada passar do teto, repita antes de falar em regressão — a máquina tem ruído. O bench mede só o núcleo em Node; não é FPS de celular.
 
 5. **Olhe com os olhos.** Abra `http://localhost:8000`, clique em **Iniciar câmera** e teste exatamente o controle que você mexeu. No Pontilhado, confirme `estipple.n > 0`; com Guias + Distâncias juntos, confira se os números não se encostam; no Recorte, confira se o véu não aparece no MP4.
-6. **Escreva a verdade.** Com câmera real, use `?perf=1` (nunca `&gl=1`) e confira `sondaGl: false` e `glReadback.n: 0`. Sem o aparelho, registre **não medido**. FPS, latência, toque e som só viram afirmação depois de medidos no Realme C67.
+6. **Escreva a verdade.** Com câmera real, use `(perf removido no v94)` (nunca `&gl=1`) e confira `sondaGl: false` e `glReadback.n: 0`. Sem o aparelho, registre **não medido**. FPS, latência, toque e som só viram afirmação depois de medidos no Realme C67.
 
 **Hábitos que mantêm o quadro leve:**
 
@@ -324,7 +324,7 @@ Rodada cirúrgica no rastreamento e nos efeitos dos blobs, sem mexer nos contrat
 
 **Contratos preservados:** núcleo puro, `minAreaRatio=0.00025` (piso 6 px), `maxAreaRatio=0.72`, S3, S9, reatividade intocável, Pontilhado = pontos pretos formando a imagem.
 
-🟢 Pode mexer: `src/domain/blobTrackerCore.js`, `src/render/render.js`, `src/app.js`, testes e docs. 🟡 Meça e teste: `npm test`, `node --check` no runtime alterado, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`. **Medido no aparelho: nada.** No Realme C67 com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`), conferir vazamento visual em Janela viva/Inverter/P&B, jitter, troca de ID, FPS e MP4; no Pontilhado confirmar `estipple.n > 0`. 🔴 Contrato congelado: S3, S9, rastreador puro, reatividade, composição do MP4 e estratégia do `sw.js` (só o número muda).
+🟢 Pode mexer: `src/domain/blobTrackerCore.js`, `src/render/render.js`, `src/app.js`, testes e docs. 🟡 Meça e teste: `npm test`, `node --check` no runtime alterado, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`. **Medido no aparelho: nada.** No Realme C67, conferir vazamento visual em Janela viva/Inverter/P&B, jitter, troca de ID, FPS e MP4; no Pontilhado confirmar `estipple.n > 0`. 🔴 Contrato congelado: S3, S9, rastreador puro, reatividade, composição do MP4 e estratégia do `sw.js` (só o número muda).
 
 #### Pontilhado recortado pela máscara real do blob (cache v91)
 
@@ -334,7 +334,7 @@ O v90 tirou o vão entre blobs, mas o recorte ainda era por **retângulo** de ca
 
 **Não muda:** rastreador, reatividade, composição do MP4, Gear VR, Inverter como negativo, difusão Floyd–Steinberg, 24 níveis, grão, potência `.68` e a regra de que o Pontilhado não vira pontos só na máscara.
 
-🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,276 / 1,275 / 1,270 ms` (teto `1,347 ms`; uma rodada inicial deu `3,715 ms` por ruído da máquina e foi repetida). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se não há vazamento nos cantos/contorno dos blobs, salve um MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,276 / 1,275 / 1,270 ms` (teto `1,347 ms`; uma rodada inicial deu `3,715 ms` por ruído da máquina e foi repetida). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se não há vazamento nos cantos/contorno dos blobs, salve um MP4 e. 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
 
 #### Pontilhado com degradê suave e recorte só nos blobs (cache v90)
 
@@ -345,7 +345,7 @@ Dois ajustes pedidos pelo V1su4rt no Pontilhado:
 
 **Não muda:** o rastreador, a reatividade, a composição do MP4, a estratégia de cache do `sw.js` (só o número muda), o Inverter como negativo, a difusão Floyd–Steinberg, o grão, a potência `.68` e a regra de que o Pontilhado não vira pontos só na máscara.
 
-🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,271 / 1,218 / 1,195 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se o degradê ficou mais suave e se o vão entre dois blobs separados fica preto, salve um MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,271 / 1,218 / 1,195 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se o degradê ficou mais suave e se o vão entre dois blobs separados fica preto, salve um MP4 e. 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
 
 #### Guias e Distâncias em cantos opostos (cache v89)
 
@@ -353,7 +353,7 @@ Quando você liga **Guias** e **Distâncias** ao mesmo tempo, os números pequen
 
 Isso muda só a pintura no canvas de overlay. O rastreio, o som, o Pontilhado e o Recorte não são tocados. Os números **continuam entrando no MP4** (só o véu do recorte fica fora), e no Gear VR a regra vale para cada olho da imagem lado a lado.
 
-🟢 Pode mexer: `src/render/render.js` e as travas em `tests/`; `index.html`, `src/app.css`, o áudio e o rastreador ficam intactos. 🟡 Meça e teste: `npm test` **279/279**, `node --check`, `git diff --check` e bench 3× com p95 `1,214 / 1,148 / 0,929 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue Guias e Distâncias juntos, veja se os textos não se encostam, repita no Gear VR e salve um MP4 — use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o comportamento com um efeito só, a composição do MP4, o rastreador, a reatividade, o Ritmo, os efeitos de áudio e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/render/render.js` e as travas em `tests/`; `index.html`, `src/app.css`, o áudio e o rastreador ficam intactos. 🟡 Meça e teste: `npm test` **279/279**, `node --check`, `git diff --check` e bench 3× com p95 `1,214 / 1,148 / 0,929 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue Guias e Distâncias juntos, veja se os textos não se encostam, repita no Gear VR e salve um MP4 —. 🔴 Contrato congelado: o comportamento com um efeito só, a composição do MP4, o rastreador, a reatividade, o Ritmo, os efeitos de áudio e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Recorte com véu, cantos arrastáveis e número no painel (cache v88)
 
@@ -361,7 +361,7 @@ Pense numa moldura de papelão sobre a mesa: a área dentro do retângulo contin
 
 Agora dá para ajustar a moldura com o dedo: arraste um dos quatro cantos para enlargar ou encolher a área. A caixa nunca vira linha nem sai da tela. O botão **Limpar retângulos** apaga todos de uma vez e desliga o modo de desenho. No painel de medições, a linha **Recorte · rastreio** mostra o quanto da imagem está dentro da área e quantos blobs caíram nela (por exemplo `32% · 4/7 blobs`); o primeiro número é a cobertura do recorte e o segundo é a contagem de blobs reconhecidos dentro dele.
 
-🟢 Pode mexer: `index.html`, `src/app.css`, `src/core/roiMask.js`, `src/render/render.js`, `src/app.js`, os quatro idiomas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **275/275**, `node --check`, `git diff --check` e bench 3× com p95 `1,144 / 1,170 / 1,167 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue o véu, arraste os quatro cantos, limpe os retângulos, confira o número no painel, salve um MP4 e confirme que o véu não aparece no arquivo — use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: `manualRects` continuam sem persistência (só o botão do véu é salvo), o rastreador, a reatividade, o Pontilhado, o Ritmo, os efeitos de áudio, a composição do MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `index.html`, `src/app.css`, `src/core/roiMask.js`, `src/render/render.js`, `src/app.js`, os quatro idiomas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **275/275**, `node --check`, `git diff --check` e bench 3× com p95 `1,144 / 1,170 / 1,167 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: ligue o véu, arraste os quatro cantos, limpe os retângulos, confira o número no painel, salve um MP4 e confirme que o véu não aparece no arquivo —. 🔴 Contrato congelado: `manualRects` continuam sem persistência (só o botão do véu é salvo), o rastreador, a reatividade, o Pontilhado, o Ritmo, os efeitos de áudio, a composição do MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Eco, Espaço e Chorus com sala, largura e troca limpa (cache v87)
 
@@ -369,7 +369,7 @@ Pense em três controles de som. O **Eco** é a voz voltando depois de um instan
 
 A troca dos botões também ficou suave: cada efeito sobe em cerca de `40 ms` e desce em `80 ms` (sem estalo) e o volume é normalizado quando os três ligam juntos, para não estourar. O Espaço não realimenta mais o buffer do Eco — é um quarto, não um segundo eco. Com os três desligados, o worklet nem lê nem escreve os buffers: é trabalho morto cortado.
 
-🟢 Pode mexer: `src/audio-processor.js` (mistura dos efeitos), as travas em `tests/` e a documentação. 🟡 Meça e teste: `npm test` **272/272**, `node --check`, `git diff --check` e bench 3× com p95 `1,086 / 1,287 / 1,142 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com a gota, o Espaço passou de `56,6%` para `86,7%` de áudio audível; no tom contínuo, o pico subiu de `0,290` para `0,316`. O Chorus passou de diferença `0` entre os canais para `0,02857`; o fade aparece já no primeiro bloco (`0 → 0,0645`) e os buffers ficam parados com os efeitos desligados. **Medido no aparelho: nada.** A conferência no Realme C67 continua pendente: ligue um efeito por vez e depois os três juntos, com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o Ritmo e a gota, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/audio-processor.js` (mistura dos efeitos), as travas em `tests/` e a documentação. 🟡 Meça e teste: `npm test` **272/272**, `node --check`, `git diff --check` e bench 3× com p95 `1,086 / 1,287 / 1,142 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com a gota, o Espaço passou de `56,6%` para `86,7%` de áudio audível; no tom contínuo, o pico subiu de `0,290` para `0,316`. O Chorus passou de diferença `0` entre os canais para `0,02857`; o fade aparece já no primeiro bloco (`0 → 0,0645`) e os buffers ficam parados com os efeitos desligados. **Medido no aparelho: nada.** A conferência no Realme C67 continua pendente: ligue um efeito por vez e depois os três juntos,. 🔴 Contrato congelado: o Ritmo e a gota, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Ritmo BlobTrack separado do tom contínuo (cache v86)
 
@@ -382,7 +382,7 @@ A troca também ficou limpa: ao apertar o botão, o rastro do modo anterior é a
 
 O relógio do ritmo não mudou: a gota continua nascendo do movimento do blob, sem pausa sorteada, na mesma faixa (Hi/Mid/Low) e com o mesmo ataque de gota d’água.
 
-🟢 Pode mexer: `src/audio-processor.js` (gate das faixas e limpeza na troca), as dicas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **268/268**, `node --check`, `git diff --check` e bench 3× com p95 `1,181 / 0,979 / 1,085 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com blob em movimento, o Ritmo ligado teve pico `0,358` e som audível em `55,8%` do tempo; desligado, pico `0,290` e `99,6%` — ou seja, gota com silêncio entre elas contra tom contínuo. **Medido no aparelho: nada.** A conferência no Realme C67 ainda pendente: alterne o botão **Ritmo BlobTrack** e escute a troca com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o modo legado fora das faixas, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/audio-processor.js` (gate das faixas e limpeza na troca), as dicas em `src/ui/i18n/` e as travas em `tests/`. 🟡 Meça e teste: `npm test` **268/268**, `node --check`, `git diff --check` e bench 3× com p95 `1,181 / 0,979 / 1,085 ms` (teto `1,347 ms`). Medição em **Node**, não no aparelho: com blob em movimento, o Ritmo ligado teve pico `0,358` e som audível em `55,8%` do tempo; desligado, pico `0,290` e `99,6%` — ou seja, gota com silêncio entre elas contra tom contínuo. **Medido no aparelho: nada.** A conferência no Realme C67 ainda pendente: alterne o botão **Ritmo BlobTrack** e escute a troca. 🔴 Contrato congelado: o modo legado fora das faixas, `baseFrequency`, o rastreador, a reatividade, o Pontilhado e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Pontilhado com mais detalhe e volume (cache v85)
 
@@ -395,7 +395,7 @@ Os pontos pareciam bolinhas grandes porque a malha era de `3 px` na amostra: num
 
 Os pontos continuam **pretos formando a imagem** dentro dos blobs, com fundo preto fora eles; o Inverter segue sendo o negativo, e o MP4 continua gravando o overlay. Nenhum novo efeito, nenhuma leitura extra de imagem e nenhuma textura nova.
 
-🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **267/267**, `node --check`, `git diff --check` e bench 3× com p95 `1,270 / 1,210 / 1,178 ms` (teto `1,347 ms`; rodada anterior `0,981 / 1,193 / 0,990 ms`); o tamanho dos pontos e a sensação de volume no Realme C67 ainda **não foram medidos** — escolha Pontilhado, confira o MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o pointillism não pode virar pontos só na máscara, o rastreador, a reatividade, a gravação e a estratégia do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **267/267**, `node --check`, `git diff --check` e bench 3× com p95 `1,270 / 1,210 / 1,178 ms` (teto `1,347 ms`; rodada anterior `0,981 / 1,193 / 0,990 ms`); o tamanho dos pontos e a sensação de volume no Realme C67 ainda **não foram medidos** — escolha Pontilhado, confira o MP4 e. 🔴 Contrato congelado: o pointillism não pode virar pontos só na máscara, o rastreador, a reatividade, a gravação e a estratégia do `sw.js` (só o número muda) continuam iguais.
 
 #### Paisagem liberada na tela cheia (cache v84)
 
@@ -403,7 +403,7 @@ Antes, ao entrar em tela cheia, o app mandava o celular ficar em retrato — era
 
 O Gear VR continua diferente: ele entra em paisagem travada porque a imagem é lado a lado. Ao sair dele ou da tela cheia, a orientação volta a ser controlada pelo celular.
 
-🟢 Pode mexer: `src/app.js` (travamento) e `src/app.css` (posição do botão na dock lateral). 🟡 Meça e teste: `npm test` **266/266**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o giro no Realme C67 ainda **não foi medido** — entre em tela cheia e vire o aparelho com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o modo foco, o piano, o MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `src/app.js` (travamento) e `src/app.css` (posição do botão na dock lateral). 🟡 Meça e teste: `npm test` **266/266**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o giro no Realme C67 ainda **não foi medido** — entre em tela cheia e vire o aparelho. 🔴 Contrato congelado: o modo foco, o piano, o MP4 e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Gravar e salvar na base da tela cheia (cache v83)
 
@@ -415,7 +415,7 @@ Pense num controle remoto pequeno encostado no canto da televisão: ele está na
 
 Ele aparece só na tela cheia, fica com opacidade baixa e ganha brilho quando você encosta ou quando está gravando. O piano continua na faixa de `56 px` e a barra de ações em `12 px`; o botão novo fica em `8 px` no canto, fora dos dois. No Gear VR ele é desligado.
 
-🟢 Pode mexer: `index.html` (botão), `src/app.css` (posição e discretude) e `src/app.js` (texto e ação do botão). 🟡 Meça e teste: `npm test` **265/265**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o encaixe visual no Realme C67 ainda **não foi medido** — confira em tela cheia com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: o piano, a barra de ações, os botões antigos do painel e da barra flutuante, o MP4 (que não desenha botões HTML) e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
+🟢 Pode mexer: `index.html` (botão), `src/app.css` (posição e discretude) e `src/app.js` (texto e ação do botão). 🟡 Meça e teste: `npm test` **265/265**, `node --check`, `git diff --check` e bench 3× com p95 ≤ `1,347 ms`; o encaixe visual no Realme C67 ainda **não foi medido** — confira em tela cheia. 🔴 Contrato congelado: o piano, a barra de ações, os botões antigos do painel e da barra flutuante, o MP4 (que não desenha botões HTML) e a estratégia de cache do `sw.js` (só o número muda) continuam iguais.
 
 #### Inverter e Preto e branco com fundo próprio (cache v82)
 
@@ -485,7 +485,7 @@ Resultado: o quadro inteiro continua em pointillism (sua regra de ouro) e a jane
 Você pediu: **com o botão ligado, os três efeitos aparecem na janela; desligado, fica só o vídeo dentro do blob, como Janela viva**. A regra em `src/render/render.js` agora é:
 
 ```js
-const enableEffect = state.originalVideoWindows || state.videoBlend > 0;
+const enableEffect = state.showOriginalVideo || state.videoBlend > 0;
 const effectPart = enableEffect ? effectFilter : '';
 const filter = (effectPart + invertPart).trim() || 'none';
 ```
@@ -493,7 +493,7 @@ const filter = (effectPart + invertPart).trim() || 'none';
 E o Pontilhado dentro da janela tinha o mesmo guard (isto descreve a `v60`; na `v77` o Pontilhado não usa mais janela de vídeo — veja a seção da `v77` acima):
 
 ```js
-if (state.effect === 'dither' && state.originalVideoWindows) {
+if (state.effect === 'dither' && state.showOriginalVideo) {
   paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, [clipLeft, clipTop, clipRight, clipBottom]);
 }
 ```
@@ -544,32 +544,11 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v93`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/` e confirme que o app carregou o cache `blobtrack-celular-00-v94` (recarregue duas vezes ou limpe dados do site se aparecer vers?o antiga). Depois ligue os efeitos desejados, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
-#### Kit de medição — diagnóstico cirúrgico (cache v77)
+#### Diagn?stico removido (cache v94)
 
-O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e não altera as chaves antigas de `__blobtrackMetrics`: só acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (este último, `null` sem `?perf=1`). O relatório completo fica em `__blobtrackPerf`.
-
-**Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
-
-1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v93"` e `sondaGl: false`.
-3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
-4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
-
-O painel também funciona pelo computador, se você preferir: com o celular ligado via USB e depuração ativa, abra `chrome://inspect` → **Devices** → **Inspect**, rode o cenário e digite `copy(__blobtrackPerf.json())` no console. O resultado é o mesmo.
-
-O JSON traz p50 / p95 / máximo em milissegundos de cada etapa: `captura`, `readback` (total), `readbackDraw` (cópia do quadro para o canvas de análise) e `readbackPixels` (`getImageData`), `analise` (rastreador), `estipple` (Pontilhado), `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio`, `gravacao` e `glReadback` (leitura WebGL, só com `?perf=1&gl=1`). Também traz `fps`, `trackingWidth`, `longTasks` e `gc` (`PerformanceObserver`), `memoria` (`performance.memory`), `salvamentoMs`, `seletorMs`, `escritaMs`, `compartilhamentoMs`, `downloadMs`, `pauseReason`, `pauseCount`, `effectsPaused`, `deviceLimit`, `sondaGl`, `cacheVersion`, perfil e resoluções/DPR reais dos canvases. `seletorMs` é o tempo gasto no diálogo do Android (você escolhendo onde salvar); `escritaMs` é o trabalho do arquivo depois que o diálogo fechou. `salvamentoMs` é o total dos dois. Cada etapa ainda vira uma marca no flame chart via `performance.mark`/`measure`. Desde a `v69`, `pauseReason` fica vazio, `pauseCount` é `0` e `effectsPaused` é sempre `false` — as três chaves continuam no JSON só para compatibilidade com medições antigas. `deviceLimit: true` indica que o aviso discreto apareceu; os efeitos continuam ativos.
-
-🟢 O medidor é somente leitura: está em `src/core/perfProbe.js`, fora do núcleo do rastreador, e escondido por trás de `?perf=1`. 🟡 A virada para `v77` é obrigatória porque `src/app.js`, `src/render/render.js`, `sw.js` e os testes mudaram (Pontilhado passa a ser a própria imagem gravada, só nos blobs, com fundo preto e negativo pelo Inverter); rode `npm test`, `node --check src/app.js`, `node --check src/render/render.js`, `git diff --check` e `node scripts/bench-blobtrack.js` 3× (teto p95 ≤ `1,347 ms`) antes de publicar. 🔴 Não altere a estratégia de cache do `sw.js`: só o número muda. A matriz de ablação (7 cenários) está em [`docs/perf-antes-depois.md`](docs/perf-antes-depois.md).
-
-**Experimento `v66` revertido:** ler do vídeo direto apenas mudou o custo de lugar — `getImageData` caiu para `1,2 ms`, mas o `drawImage` subiu para `41,7 ms`. O total ficou em `43 ms` contra `40,3 ms` da `v65`; não houve ganho de FPS. A `v67` restaurou a leitura pelo `frameCanvas`. A `v68` acrescentou `glReadback`: uma leitura pequena via WebGL para saber se esse caminho é barato no Realme C67. Sem `?perf=1`, ela não existe.
-
-**Reatividade intocável (`v69`):** acabaram o badge "Efeitos reativos pausados", o gatilho de FPS baixo, o gatilho `renderPause` e o `recordingBudget` que cortava rastro/ondas/malha/rede/telemetria ao gravar. Rastro, ondas, malha, rede e telemetria são desenhados sempre, inclusive durante a gravação. Se o aparelho ficar no limite, aparece só um aviso discreto: **Aparelho no limite · efeitos mantidos** (traduzido em pt-BR, en, es e fr). O app não interrompe nem rebaixa os efeitos por FPS — a única adaptação automática que sobrou é a largura do rastreio. O ganho de FPS no Realme C67 ainda **não foi medido** depois dessa mudança: é o que o seu JSON e o teste manual vão dizer.
-
-**Veredito WebGL (`v70`):** na amostra da `v69`, `glReadback` mediu p50 `33,1 ms` / p95 `45,64 ms` — mais caro que os `17,4 ms` de p50 do `readbackPixels` do caminho 2D atual na mesma rodada. A hipótese do alvo WebGL foi **descartada por número**; o rastreador continua como está. A sonda também rodava a cada quadro e contaminava `fps`/`longTasks`: desde a `v70` ela só liga com `?perf=1&gl=1`. Use `?perf=1` para medir o app limpo. O `fps: 12,89` daquela amostra **não** é o FPS do app sem a sonda.
-
-**Salvamento medido (`v71`):** uma amostra da `v69` trouxe `salvamentoMs: 11044,9` (`saveStart` → `saveEnd`), ainda com o seletor do Android embutido. Na primeira coleta já em `v71`, o total foi `4384,4 ms`, separado em `seletorMs: 2696,6` (diálogo, ~61%) e `escritaMs: 1687,3` (arquivo, ~39%). Ou seja, a maior espera ao salvar é o diálogo do sistema; o fluxo de salvar em si não mudou. Três amostras limpas marcaram `fps: 23,35`, `23,6` e `21,65` — todas abaixo de 24–30 FPS e nenhuma com teste longo. Numa coleta `estipple.n: 0` (Pontilhado desligado); na seguinte, `estipple.n: 949` e o Pontilhado custou só `0,8 ms` por quadro — ou seja, a queda de FPS não pode ser atribuída a ele sem medição controlada. O JSON não tem campo separado para Ondas, Grade, Rede de blobs, Distâncias ou Rastro: esses cinco ficam marcados na tela, não no medidor.
+O modo diagn?stico `(perf removido no v94)` e o painel de medi??o foram removidos do app a pedido do V1su4rt. O runtime n?o publica mais `__blobtrackPerf`, painel de diagn?stico, nem coleta por etapa no celular. `__blobtrackMetrics` continua dispon?vel para leitura b?sica.
 
 #### Se algo deu errado
 

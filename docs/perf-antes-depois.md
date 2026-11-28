@@ -54,7 +54,7 @@ Execute três vezes na mesma máquina/runtime e compare o mesmo cenário com os 
 
 ## Kit de medição no celular (v65)
 
-`src/core/perfProbe.js` é desativado por padrão e ativa com `?perf=1`. Não altera as chaves antigas de `__blobtrackMetrics`: acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `?perf=1`) e publica o relatório completo em `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback` (com `readbackDraw` e `readbackPixels` separados desde `v65`), `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `fps`, `trackingWidth`, `pauseReason`, `pauseCount`, `effectsPaused`, `cacheVersion`, perfil, resolução e DPR dos canvases.
+`src/core/perfProbe.js` é desativado por padrão e ativa. Não altera as chaves antigas de `__blobtrackMetrics`: acrescenta `pauseReason`, `pauseCount` e `tPorEfeito` (`null` sem `(perf removido no v94)`) e publica o relatório completo em `window.__blobtrackPerf`, com `report()`, `json()` (JSON copiável) e `reset()`. As etapas medidas são `captura`, `readback` (com `readbackDraw` e `readbackPixels` separados desde `v65`), `analise`, `estipple`, `renderWebGL`, `overlay`, `composicao`, `janelas`, `audio` e `gravacao`, com p50/p95/máx; `longTasks`/`gc` vêm de `PerformanceObserver`, a memória de `performance.memory`, e o tempo de salvar de `saveStart`/`saveEnd`. O relatório também traz `fps`, `trackingWidth`, `pauseReason`, `pauseCount`, `effectsPaused`, `cacheVersion`, perfil, resolução e DPR dos canvases.
 
 ### Primeira amostra em aparelho físico (v64, 27/11/2026)
 
@@ -101,7 +101,7 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 | `readbackPixels` (`getImageData`) | 17,4 ms | 32,0 ms | 79,9 ms |
 | `glReadback` (sonda WebGL) | **33,1 ms** | **45,64 ms** | **105,2 ms** |
 
-`glReadback` custou quase o dobro do `readbackPixels` na mesma rodada. A hipótese "WebGL `readPixels` é barato" foi **refutada por número**; nenhum alvo WebGL foi implementado e o rastreador permanece intacto. A sonda também era executada a cada quadro e somava ~`33 ms` ao ciclo, contaminando `fps: 12,89` e `longTasks` p50 `70 ms` — esses números **não** representam o app sem a sonda. Desde a `v70`, `glReadback` só liga com `?perf=1&gl=1`; `?perf=1` sozinho mede o app limpo (`sondaGl: false` no JSON). `salvamentoMs: null` e `eventos: {}` também nesta amostra.
+`glReadback` custou quase o dobro do `readbackPixels` na mesma rodada. A hipótese "WebGL `readPixels` é barato" foi **refutada por número**; nenhum alvo WebGL foi implementado e o rastreador permanece intacto. A sonda também era executada a cada quadro e somava ~`33 ms` ao ciclo, contaminando `fps: 12,89` e `longTasks` p50 `70 ms` — esses números **não** representam o app sem a sonda. Desde a `v70`, `glReadback` só liga com `?gl=1` (sonda legada; perf removido no v94); `(perf removido no v94)` sozinho mede o app limpo (`sondaGl: false` no JSON). `salvamentoMs: null` e `eventos: {}` também nesta amostra.
 
 **Salvamento (v71):** a amostra seguinte (ainda com cache `v69`) trouxe `salvamentoMs: 11044,9 ms`, com `saveStart` `147992,2` e `saveEnd` `159037,1`. O intervalo inclui o seletor de arquivos do Android, então ele mede o fluxo completo — não só processamento. A `v71` passa a publicar `seletorMs` (diálogo), `escritaMs` (arquivo), `compartilhamentoMs` e `downloadMs` para separar espera do usuário de trabalho do app. `glReadback` p50 `24,3 ms` nessa amostra confirma novamente que o WebGL não é mais barato que o `readbackPixels` p50 `22,0 ms`.
 
@@ -113,7 +113,7 @@ A amostra da `v66` veio com `recordingState: recording`, canvas de gravação `3
 
 ### Fase 2 — matriz de ablação para o V1su4rt
 
-Rode cada linha no Realme C67 com `?perf=1` (sem `&gl=1`: a sonda WebGL foi descartada e só serve para medir a si mesma). Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.
+Rode cada linha no Realme C67 (sem `&gl=1`: a sonda WebGL foi descartada e só serve para medir a si mesma). Toque em **Diagnóstico** no canto do app, **Zerar**, espere ~30 s e **Copiar** (ou **Compartilhar**) — não é preciso PC, cabo USB nem `chrome://inspect`. Anote o p95 de cada etapa. O console com `copy(__blobtrackPerf.json())` continua disponível para quem preferir.
 
 | # | Cenário | O que mede | FPS | p95 da etapa-chave |
 |---|---|---|---|---|
@@ -141,4 +141,4 @@ Medição **local do núcleo** (`node scripts/bench-blobtrack.js`, 3 execuções
 
 **O que não mudou:** `src/domain/blobTrackerCore.js`, `trackingWidth`, `state.threshold`, estratégia de cache do `sw.js`, manifest, `android/` e a política de reatividade (`effectsPaused` segue `false`). Gravação continua só MP4, máx. 5 min. Nenhum `getImageData` extra, nenhum segundo rAF e nenhum fallback WebM entraram.
 
-**O que ainda falta para veredito de desempenho no aparelho:** amostra limpa com `?perf=1` (nunca `&gl=1`), confirmando `cacheVersion: blobtrack-celular-00-v75`, `sondaGl: false`, `glReadback.n: 0`, e comparando `estipple` p50/p95 com a linha de base `0,8 / 1,5 ms`. Sem isso, as linhas da tabela acima valem só como checagem local de não regressão — não como prova de FPS no Realme C67.
+**O que ainda falta para veredito de desempenho no aparelho:** amostra limpa, confirmando `cacheVersion: blobtrack-celular-00-v75`, `sondaGl: false`, `glReadback.n: 0`, e comparando `estipple` p50/p95 com a linha de base `0,8 / 1,5 ms`. Sem isso, as linhas da tabela acima valem só como checagem local de não regressão — não como prova de FPS no Realme C67.

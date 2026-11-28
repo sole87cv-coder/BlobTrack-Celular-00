@@ -99,20 +99,6 @@
         <div class="focus-hint" id="focusHint" hidden>Duplo toque para voltar</div>
         <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-        <!-- Só aparece com ?perf=1: coleta no próprio celular, sem chrome://inspect. -->
-        <details class="perf-diag" id="perfDiag" hidden>
-          <summary id="perfDiagSummary">Diagnóstico</summary>
-          <div class="perf-diag-body">
-            <p class="hint" id="perfDiagHint">Toque para medir e copiar o JSON.</p>
-            <div class="perf-diag-actions">
-              <button class="page-button" id="perfRefresh" type="button">Atualizar</button>
-              <button class="page-button" id="perfCopy" type="button">Copiar</button>
-              <button class="page-button" id="perfShare" type="button">Compartilhar</button>
-              <button class="page-button" id="perfReset" type="button">Zerar</button>
-            </div>
-            <pre id="perfDump" tabindex="0" aria-live="polite">—</pre>
-          </div>
-        </details>
       </section>
 
       <!-- Painel inferior deslizante: arraste a alça ou toque no botão ○ -->
@@ -233,7 +219,7 @@
                 <button type="button" class="pill small effect-toggle" id="meshEffectButton" aria-pressed="false">Grade</button>
                 <button type="button" class="pill small effect-toggle" id="blobNetworkButton" aria-pressed="false" aria-label="Ativar ou desativar a rede geométrica de blobs">Rede de blobs</button>
                 <button type="button" class="pill small effect-toggle" id="distanceTelemetryButton" aria-pressed="false">Distâncias</button>
-                <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Ligado: aplica o efeito na janela; desligado: vídeo cru dentro do blob">Vídeo original</button>
+                <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Ligado: mostra a câmera como base reconhecível; desligado: visual mais estilizado, sem vídeo cru">Vídeo original</button>
                 <button type="button" class="pill small effect-toggle" id="invertBlendButton" aria-pressed="false" title="Inverter o vídeo dentro dos retângulos dos blobs">Inverter vídeo</button>
                 <div class="dock-row slider-row">
                   <label for="videoBlend"><span>Mistura vídeo + efeito</span><b id="videoBlendValue">0%</b></label>

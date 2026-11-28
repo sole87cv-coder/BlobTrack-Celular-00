@@ -29,7 +29,7 @@ export const strings = {
     stage: 'Palco', install: 'Instalar', cameraWaiting: 'Câmera aguardando', deviceLimit: 'Aparelho no limite · efeitos mantidos',
     motionTitle: '@V1su4rt', startHint: 'Ligue a câmera para começar.', noMicrophone: 'Movimento vira imagem e som. Sem microfone.',
     startCamera: 'Iniciar câmera', retry: 'Tentar novamente', close: 'Fechar', quickSettings: 'Ajustes rápidos', mute: 'Mudo',
-    perfDiagnostic: 'Diagnóstico', perfDiagHint: 'Toque para medir e copiar o JSON.', perfRefresh: 'Atualizar', perfCopy: 'Copiar', perfShare: 'Compartilhar', perfReset: 'Zerar',
+
     controls: 'Controles', adjustments: 'Ajustes', recordVideo: 'Gravar vídeo', saveRecording: 'Salvar gravação', soundOn: 'Som · ligado', soundOff: 'Som · desligado', react: 'Reagir', switchCamera: 'Trocar câmera', end: 'Encerrar', moreActions: 'Mais ações →',
     effect: 'Efeito', sound: 'Som', tracking: 'Rastreio', measurements: 'Medições', moreOptions: 'Mais opções ↓', visualOnly: 'Só visual', visualOnlyHint: 'Quando ativo, os blobs continuam nos efeitos visuais e não controlam o áudio.',
     soundLevel: 'Nível do som', oscillation: 'Oscilação', pitchRange: 'Variação de altura', semitones: 'semitons', baseNote: 'Tom base',
@@ -54,6 +54,6 @@ export const strings = {
     cameraAlreadyActive: 'Inicie a câmera para trocar a lente.', cameraSecure: 'Conexão segura necessária', cameraBlockedTitle: 'Acesso à câmera bloqueado', cameraMissingTitle: 'Câmera não encontrada', cameraBusyTitle: 'Câmera indisponível', cameraFailedTitle: 'Não foi possível iniciar',
     maxDuration: 'Limite de 5 min · gravado {duration} · {size} MB', maxBytes: 'Limite de tamanho · gravado {duration} · {size} MB', memoryLimit: 'Memória alta · gravação encerrada em {duration}', recordingReady: 'Gravado · {duration} · {size} MB · use Salvar',
     recordingStart: 'Gravando {format} · {width}×{height} · sem áudio · até 5 min', duration: 'Duração: {duration}',
-    perfCopied: 'Diagnóstico copiado', perfSelectCopy: 'Selecione e copie o texto', perfShareUnavailable: 'Compartilhamento indisponível',
+
   },
 };

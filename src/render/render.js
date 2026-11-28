@@ -63,7 +63,7 @@ export function createRender({
   recordingContext,
   recordingCanvas,
   recordingSnapshot,
-  perfProbe = null,
+
   recordingCanvasSize,
   drawRecordingFrame,
   recordingWatermark = '',
@@ -457,9 +457,10 @@ export function createRender({
         : state.effect === 'threshold' ? 'grayscale(1) contrast(4)'
           : 'grayscale(1) contrast(2)';
     const invertPart = state.invertBlend ? ' invert(1)' : '';
-    // Botão ligado = efeito na janela. Desligado = vídeo cru dentro do blob, como Janela viva.
+    // Vídeo original ON = base da câmera reconhecível (com estilo). OFF = visual estilizado.
     // Inverter vídeo e a mistura continuam com prioridade quando acionados.
-    const enableEffect = state.originalVideoWindows || state.videoBlend > 0;
+    const showOriginal = state.showOriginalVideo;
+    const enableEffect = showOriginal || state.videoBlend > 0;
     const effectPart = enableEffect ? effectFilter : '';
     const filter = (effectPart + invertPart).trim() || 'none';
     // Os estilos Inverter e Preto e branco pintam o vídeo dentro dos blobs mesmo
@@ -544,6 +545,19 @@ export function createRender({
         c.restore();
       }
     };
+    const drawStylizedFill = () => {
+      // Visual estilizado sem vídeo cru reconhecível (Opção B).
+      c.save();
+      c.fillStyle = state.effect === 'invert' ? '#f4fff0' : state.effect === 'threshold' ? '#d8d8d8' : '#ffffff';
+      c.fillRect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
+      c.restore();
+    };
+    if (!showOriginal && state.videoBlend === 0) {
+      drawStylizedFill();
+      if (invertPart) { c.save(); c.filter = invertPart.trim(); drawStylizedFill(); c.restore(); }
+      c.restore();
+      return;
+    }
     if (forced) {
       c.save();
       c.filter = forced;
@@ -791,6 +805,7 @@ export function createRender({
         }
       }
       mean /= cols * rows;
+      const stylizedDither = state.effect === 'dither' && !state.showOriginalVideo;
       const cut = clamp(.14 + (state.threshold || 0) * .2 + (state.bias || 0) * .08, .08, .4);
       grid.error.fill(0);
       let count = 0;
@@ -806,9 +821,11 @@ export function createRender({
           // fica claro ou escuro. Misturar com a média dos 5 vizinhos mantém a forma.
           const localMean = (l + left + right + above + belowLuma) * .2;
           const reference = mean * .65 + localMean * .35;
-          const stretched = clamp(.5 + (l - reference) * 3, 0, 1);
+          const contrast = stylizedDither ? 4.2 : 3;
+          const stretched = clamp(.5 + (l - reference) * contrast, 0, 1);
           const value = 1 - stretched + grid.error[i];
-          const tone = Math.pow(clamp((value - cut) / (1 - cut), 0, 1), .75);
+          const toneBase = clamp((value - cut) / (1 - cut), 0, 1);
+          const tone = stylizedDither ? Math.pow(toneBase, .62) : Math.pow(toneBase, .75);
           const level = Math.round(tone * STIPPLE_LEVELS);
           const quantized = level / STIPPLE_LEVELS;
           const diffusion = (value - quantized) * .85;
@@ -918,15 +935,8 @@ export function createRender({
   }
 
   function drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample = null, clipRect = null, colors = null) {
-    if (!perfProbe) {
-      if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
-      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
-      return;
-    }
-    perfProbe.stage('estipple', () => {
-      if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
-      paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
-    });
+    if (!prepareStipple(source, viewWidth, viewHeight, sample)) return;
+    paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
   }
 
   // ---------- overlay e gravação ----------

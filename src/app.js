@@ -1,7 +1,6 @@
 import { BlobTracker } from './blob-tracker.js';
 import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
 import { updateQualityBudgets } from './core/qualityController.js';
-import { createPerfProbe } from './core/perfProbe.js';
 import { clamp, fmt, formatRecordingTime, recordingFileName, hasRecordingStorageHeadroom } from './core/utils.js';
 import { createSessionLock } from './session/sessionLock.js';
 import { createWakeLock } from './platform/wakeLock.js';
@@ -119,7 +118,7 @@ Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.widt
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
-  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, originalVideoWindows: true, extremeMode: false, videoBlend: 0, invertBlend: false,
+  videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, showOriginalVideo: true, extremeMode: false, videoBlend: 0, invertBlend: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
@@ -141,68 +140,6 @@ const recorder = createRecorder({
 });
 let recordingSnapshot = { state: 'idle', durationMs: 0, bytes: 0, result: null };
 let pendingRecording = null;
-const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search).get('perf') === '1' });
-// A sonda glReadback custa ~33 ms/quadro no Realme C67: fica só atrás de &gl=1.
-const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
-function perfProbeMeta() {
-  return {
-    cacheVersion: 'blobtrack-celular-00-v93',
-    perfil: deviceProfile.name,
-    fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
-    trackingWidth: state.trackingWidth,
-    pauseReason: state.performance.pauseReason,
-    pauseCount: state.performance.pauseCount,
-    effectsPaused: state.performance.effectsPaused,
-    deviceLimit: state.performance.limitShown,
-    sondaGl: glReadbackEnabled,
-    recordingState: recordingSnapshot.state,
-    canvases: {
-      visual: [canvas.width, canvas.height],
-      overlay: [overlayCanvas.width, overlayCanvas.height],
-      analysis: [analysisCanvas.width, analysisCanvas.height],
-      frame: [frameCanvas.width, frameCanvas.height],
-      recording: [recordingCanvas.width, recordingCanvas.height],
-      camera: [video.videoWidth || 0, video.videoHeight || 0],
-      dpr: window.devicePixelRatio || 1,
-    },
-    swScript: navigator.serviceWorker?.controller?.scriptURL || null,
-  };
-}
-if (perfProbe.active) {
-  perfProbe.observe();
-  window.__blobtrackPerf = {
-    report: () => perfProbe.report(perfProbeMeta()),
-    json: () => JSON.stringify(perfProbe.report(perfProbeMeta()), null, 2),
-    reset: () => perfProbe.reset(),
-  };
-  // Painel no celular: sem PC, sem chrome://inspect e sem abrir console.
-  const diag = $('perfDiag'), dump = $('perfDump');
-  const refreshPerfDump = () => { const text = window.__blobtrackPerf.json(); dump.textContent = text; return text; };
-  diag.hidden = false;
-  refreshPerfDump();
-  diag.addEventListener('toggle', () => { if (diag.open) refreshPerfDump(); });
-  $('perfRefresh').addEventListener('click', refreshPerfDump);
-  $('perfReset').addEventListener('click', () => { perfProbe.reset(); refreshPerfDump(); });
-  $('perfCopy').addEventListener('click', async () => {
-    const text = refreshPerfDump();
-    try {
-      await navigator.clipboard.writeText(text);
-      showToast('Diagnóstico copiado');
-    } catch {
-      const range = document.createRange();
-      range.selectNodeContents(dump);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      showToast('Selecione e copie o texto');
-    }
-  });
-  $('perfShare').addEventListener('click', async () => {
-    const text = refreshPerfDump();
-    if (!navigator.share) { showToast('Compartilhamento indisponível'); return; }
-    try { await navigator.share({ title: 'BlobTrack · diagnóstico', text }); } catch {}
-  });
-}
 let themeChoice = ['system','dark','light'].includes(saved.theme) ? saved.theme : 'system';
 let reduceMotion = saved.reduceMotion === true;
 let hapticsEnabled = saved.hapticsEnabled === true;
@@ -225,7 +162,10 @@ if (Number.isFinite(saved.maxConnectionDistance)) state.maxConnectionDistance = 
 if (typeof saved.visualOnly === 'boolean') state.visualOnly = saved.visualOnly;
 if (typeof saved.maxEffects === 'boolean') state.maxEffects = saved.maxEffects;
 if (typeof saved.minEffects === 'boolean') state.minEffects = saved.minEffects;
-if (typeof saved.originalVideoWindows === 'boolean') state.originalVideoWindows = saved.originalVideoWindows;
+// Migração B: "Vídeo original" passa a significar base reconhecível da câmera.
+// Pref antiga showOriginalVideo (true=efeito aplicado, false=vídeo cru) vira showOriginalVideo.
+if (typeof saved.showOriginalVideo === 'boolean') state.showOriginalVideo = saved.showOriginalVideo;
+else if (typeof saved.showOriginalVideo === 'boolean') state.showOriginalVideo = true;
 if (Number.isFinite(saved.videoBlend)) state.videoBlend = clamp(saved.videoBlend, 0, 1);
 if (typeof saved.invertBlend === 'boolean') state.invertBlend = saved.invertBlend;
 if (typeof saved.extremeMode === 'boolean') state.extremeMode = saved.extremeMode;
@@ -294,7 +234,7 @@ function showCameraIssue(error) {
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,originalVideoWindows:state.originalVideoWindows,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled,showRoiVeil:state.showRoiVeil})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,showOriginalVideo:state.showOriginalVideo,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled,showRoiVeil:state.showRoiVeil})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let preferencesSaveTimer = null;
 function scheduleSavePreferences(delay = 300) {
@@ -361,7 +301,7 @@ const render = createRender({
   recordingContext,
   recordingCanvas,
   recordingSnapshot,
-  perfProbe,
+
   recordingCanvasSize,
   drawRecordingFrame,
   recordingWatermark: RECORDING_WATERMARK,
@@ -401,7 +341,7 @@ toggle($('waveEffectButton'),state.waveEffect);
 toggle($('meshEffectButton'),state.meshEffect);
 toggle($('blobNetworkButton'),state.networkEffect);
 toggle($('distanceTelemetryButton'),state.distanceTelemetry);
-toggle($('originalVideoButton'),state.originalVideoWindows);
+toggle($('originalVideoButton'),state.showOriginalVideo);
 toggle($('maxEffectsButton'),state.maxEffects);
 toggle($('minEffectsButton'),state.minEffects);
 toggle($('extremeModeButton'),state.extremeMode);
@@ -631,15 +571,10 @@ function analyze(source = video) {
     analysisCanvas.width = width;
     analysisCanvas.height = height;
   }
-  const pixels = perfProbe.stage('readback', () => {
-    // FASE 2: separar a cópia GPU→CPU do getImageData para provar onde está o custo.
-    perfProbe.stage('readbackDraw', () => ctx.drawImage(source, 0, 0, width, height));
-    return perfProbe.stage('readbackPixels', () => {
-      const pixels = ctx.getImageData(0, 0, width, height).data;
-      return pixels;
-    });
-  });
-  const result = perfProbe.stage('analise', () => tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source)));
+  // Cópia GPU→CPU: drawImage + getImageData.
+  ctx.drawImage(source, 0, 0, width, height);
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const result = tracker.updatePixels(pixels, width, height, state.threshold, dt, getTrackingRoi(source));
   if (!result) return null;
   state.timing.tracking = performance.now() - t0;
   state.timing.analysis = state.timing.tracking;
@@ -752,6 +687,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
+    cacheVersion: 'blobtrack-celular-00-v94',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
@@ -765,7 +701,7 @@ function publishBlobTrackMetrics(now, result) {
     deviceLimit: state.performance.limitShown,
     pauseReason: state.performance.pauseReason,
     pauseCount: state.performance.pauseCount,
-    tPorEfeito: perfProbe.active ? perfProbe.etapas() : null,
+    tPorEfeito: null,
   };
 }
 let frameErrors = 0;
@@ -776,7 +712,7 @@ function frame(now) {
     if (video.readyState >= 2 && now - state.lastFrame >= interval) {
       state.lastFrame = now;
       try {
-        const source = perfProbe.stage('captura', captureVideoFrame);
+        const source = captureVideoFrame();
         const result = analyze(source);
         if (result) {
           if (result.raw.lowLight && !state.lowLightNoticeShown) {
@@ -787,18 +723,11 @@ function frame(now) {
           const rawBlobs = result.blobs;
           const applied = updateSignals(result.raw, result.dt, rawBlobs, now);
           result.blobs = smoothBlobsForDisplay(rawBlobs, result.dt);
-          perfProbe.push('audio', state.timing.bus);
-          perfProbe.memory();
           const renderStarted = performance.now();
-          perfProbe.stage('renderWebGL', () => render.renderFrame(applied, source));
+          render.renderFrame(applied, source);
           render.drawMaskOverlay(result, source, applied);
-          perfProbe.push('overlay', state.timing.overlay);
-          perfProbe.push('composicao', state.timing.composition);
-          perfProbe.push('janelas', state.timing.windows);
-          perfProbe.stage('gravacao', () => render.drawRecordingComposite());
+          render.drawRecordingComposite();
           state.timing.render = performance.now() - renderStarted;
-          // Diagnóstico opcional: só com &gl=1 para não poluir FPS/longTasks.
-          if (glReadbackEnabled) perfProbe.stage('glReadback', () => render.probeGlReadback());
           updateHud(result.raw, applied, result, source);
           const perf = state.performance;
           const next = updateQualityBudgets(perf, state.timing.analysis, state.timing.render, interval, state.trackingWidth, deviceProfile.maxWidth);
@@ -911,13 +840,11 @@ async function savePendingRecording() {
   if (!pendingRecording || recordingSnapshot.state === 'saving') return;
   const result = pendingRecording;
   const filename = recordingFileName(result);
-  perfProbe.event('saveStart');
   updateRecordingControls({ ...recordingSnapshot, state: 'saving', result: null });
   try {
     const method = await exportRecording(result, {
       filename,
       onError: (operation, error) => log(`Gravação: ${operation} falhou (${error.message}); tentando alternativa.`),
-      onPhase: name => perfProbe.event(name),
     });
     if (method === 'shared' || method === 'saved' || method === 'downloaded') {
       pendingRecording = null;
@@ -931,7 +858,6 @@ async function savePendingRecording() {
     log(`Gravação: falha ao salvar (${error.message})`);
     showToast('Não foi possível salvar a gravação');
   } finally {
-    perfProbe.event('saveEnd');
     updateRecordingControls({ ...recordingSnapshot, state: 'idle', result: null });
   }
 }
@@ -1077,7 +1003,7 @@ bindReactiveToggle('waveEffectButton', 'waveEffect');
 bindReactiveToggle('meshEffectButton', 'meshEffect');
 bindReactiveToggle('blobNetworkButton', 'networkEffect');
 bindReactiveToggle('distanceTelemetryButton', 'distanceTelemetry');
-bindReactiveToggle('originalVideoButton', 'originalVideoWindows');
+bindReactiveToggle('originalVideoButton', 'showOriginalVideo');
 bindReactiveToggle('invertBlendButton', 'invertBlend');
 $('videoBlend').addEventListener('input', event => {
   state.videoBlend = clamp(Number(event.target.value), 0, 1);
