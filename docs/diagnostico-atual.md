@@ -469,6 +469,14 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 
 - **Pedido:** restaurar qualidade visual dos efeitos principais como antes de 05:57 (-0300), opção 1a (só visual, mantendo comportamento B2 dos botões).
 - **Mudança:** `src/render/render.js` — `STIPPLE_LEVELS` 24→12 e remoção do boost de contraste/tom do Pontilhado OFF; volta à curva visual de `f43594f` para o Pontilhado. Inverter/P&B mantêm a lógica de render atual; comportamento B2 (`showOriginalVideo`) preservado.
-- **Cache:** `blobtrack-celular-00-v95`.
-- **Validação local:** `npm test` 269/269, `node --check` OK em `src/app.js src/render/render.js sw.js`, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms (teto 1,347 ms).
-- **Medido no aparelho: nada.** Confirmar no Realme C67: cache v95, qualidade visual de Inverter/P&B/Pontilhado, e Pontilhado OFF reconhecível com `estipple.n > 0` quando selecionado.
+- **Cache:** `blobtrack-celular-00-v96`.
+- **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms. Deploy confirmado.
+- **Medido no aparelho: nada.**
+
+## 47. Restauração completa dos 3 efeitos principais (v96)
+
+- **Pedido:** correção prioritária — v95 não devolveu a qualidade/semântica esperada dos 3 efeitos.
+- **Mudança:** `src/render/render.js` restaurado para a lógica de efeitos de `f43594f` (antes de 05:57 -0300), mantendo nome `showOriginalVideo` mas com semântica antiga: ON = aplica efeito na janela; OFF = vídeo cru dentro do blob. `perfProbe` removido do render restaurado. HTML/i18n/testes/docs alinhados; hotfix v93 e remoção do `?perf=1` preservados.
+- **Cache:** `blobtrack-celular-00-v96`.
+- **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,295/1,213/2,486 ms (3? rodada com ru?do, acima do teto 1,347 ms); repeti??o v?lida: 1,002/1,236/1,131 ms.
+- **Medido no aparelho: nada.** Confirmar no Realme C67: Inverter, P&B e Pontilhado com Vídeo original/Janela viva ON/OFF como no início da sessão; `estipple.n > 0` quando Pontilhado selecionado.

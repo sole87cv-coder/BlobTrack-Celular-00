@@ -1,6 +1,6 @@
 import { clamp } from '../core/utils.js';
 
-// Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
+// Pointillism: amostra pequena, difus├úo de erro e pontos pretos de tamanho vari├ível.
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 2;
 const STIPPLE_LEVELS = 12;
@@ -8,8 +8,8 @@ const STIPPLE_RADIUS_GAMMA = .68;
 const STIPPLE_GRAIN_RATIO = .2;
 const STIPPLE_TAU = Math.PI * 2;
 
-// Acomoda rótulos pequenos: tenta cada canto e escolhe o primeiro que não pisa
-// numa caixa já ocupada. Guias e Distância compartilham a mesma lista.
+// Acomoda r├│tulos pequenos: tenta cada canto e escolhe o primeiro que n├úo pisa
+// numa caixa j├í ocupada. Guias e Dist├óncia compartilham a mesma lista.
 export function placeOverlayLabel(context, text, candidates, occupied, padding = 3) {
   if (!candidates?.length) return null;
   const width = context.measureText(text).width + 8;
@@ -63,7 +63,6 @@ export function createRender({
   recordingContext,
   recordingCanvas,
   recordingSnapshot,
-
   recordingCanvasSize,
   drawRecordingFrame,
   recordingWatermark = '',
@@ -136,7 +135,7 @@ export function createRender({
     );
   }
 
-  // ---------- mapeamento de ponto de vídeo ----------
+  // ---------- mapeamento de ponto de v├¡deo ----------
 
   function mapVideoPoint(x, y, viewWidth, viewHeight, out) {
     const sourceAspect = video.videoWidth / video.videoHeight;
@@ -296,7 +295,7 @@ export function createRender({
       meshSteps = { width: viewWidth, height: viewHeight, spacing, x: xSteps, y: ySteps };
     }
     const xSteps = meshSteps.x, ySteps = meshSteps.y;
-    // Mesmo estilo em todas as linhas: um único path evita dezenas de strokes por olho.
+    // Mesmo estilo em todas as linhas: um ├║nico path evita dezenas de strokes por olho.
     c.beginPath();
     for (const y of ySteps) {
       for (let i = 0; i < xSteps.length; i++) {
@@ -457,14 +456,13 @@ export function createRender({
         : state.effect === 'threshold' ? 'grayscale(1) contrast(4)'
           : 'grayscale(1) contrast(2)';
     const invertPart = state.invertBlend ? ' invert(1)' : '';
-    // Vídeo original ON = base da câmera reconhecível (com estilo). OFF = visual estilizado.
-    // Inverter vídeo e a mistura continuam com prioridade quando acionados.
-    const showOriginal = state.showOriginalVideo;
-    const enableEffect = showOriginal || state.videoBlend > 0;
+    // Bot├úo ligado = efeito na janela. Desligado = v├¡deo cru dentro do blob, como Janela viva.
+    // Inverter v├¡deo e a mistura continuam com prioridade quando acionados.
+    const enableEffect = state.showOriginalVideo || state.videoBlend > 0;
     const effectPart = enableEffect ? effectFilter : '';
     const filter = (effectPart + invertPart).trim() || 'none';
-    // Os estilos Inverter e Preto e branco pintam o vídeo dentro dos blobs mesmo
-    // com "Janela viva" desligada; aí o filtro vem da composição, não da janela.
+    // Os estilos Inverter e Preto e branco pintam o v├¡deo dentro dos blobs mesmo
+    // com "Janela viva" desligada; a├¡ o filtro vem da composi├º├úo, n├úo da janela.
     const forced = forcedFilter ? `${forcedFilter}${invertPart}` : null;
     c.beginPath();
     let clipLeft = Infinity, clipTop = Infinity, clipRight = -Infinity, clipBottom = -Infinity;
@@ -499,7 +497,7 @@ export function createRender({
     }
     c.clip();
     const mirrorX = (state.camera === 'user') !== state.flip;
-    // Desenha só o pedaço da origem que os blobs ocupam; o clip continua desenhando as bordas.
+    // Desenha s├│ o peda├ºo da origem que os blobs ocupam; o clip continua desenhando as bordas.
     const drawSource = () => {
       const sourceWidth = source.videoWidth, sourceHeight = source.videoHeight;
       if (state.gearVr) {
@@ -545,19 +543,6 @@ export function createRender({
         c.restore();
       }
     };
-    const drawStylizedFill = () => {
-      // Visual estilizado sem vídeo cru reconhecível (Opção B).
-      c.save();
-      c.fillStyle = state.effect === 'invert' ? '#f4fff0' : state.effect === 'threshold' ? '#d8d8d8' : '#ffffff';
-      c.fillRect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
-      c.restore();
-    };
-    if (!showOriginal && state.videoBlend === 0) {
-      drawStylizedFill();
-      if (invertPart) { c.save(); c.filter = invertPart.trim(); drawStylizedFill(); c.restore(); }
-      c.restore();
-      return;
-    }
     if (forced) {
       c.save();
       c.filter = forced;
@@ -567,7 +552,7 @@ export function createRender({
       return;
     }
     c.save();
-    // Com videoBlend === 0 e filtro ativo, a segunda passada já desenha o quadro final.
+    // Com videoBlend === 0 e filtro ativo, a segunda passada j├í desenha o quadro final.
     if (!(filter !== 'none' && state.videoBlend === 0)) drawSource();
     c.restore();
     if (state.videoBlend > 0 && filter !== 'none') {
@@ -585,11 +570,12 @@ export function createRender({
     c.restore();
   }
 
-  // Retângulos de cada blob em coordenadas da tela. O Pontilhado recorta por blob:
-  // os pontos só aparecem onde há blob, não no espaço vazio entre eles.
+  // Uni├úo dos blobs em coordenadas da tela. O Pontilhado usa esta ├írea como recorte:
+  // os pontos substituem o v├¡deo dentro dela e n├úo aparecem fora.
   function blobsClipRect(blobs, viewWidth, viewHeight, offsetX) {
     if (!blobs?.length) return null;
-    const rects = [];
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    let visible = 0;
     for (const blob of blobs) {
       mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
       mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
@@ -598,12 +584,16 @@ export function createRender({
       const y1 = Math.min(mapPointA[1], mapPointB[1]) * viewHeight;
       const y2 = Math.max(mapPointA[1], mapPointB[1]) * viewHeight;
       if (x2 <= offsetX || x1 >= offsetX + viewWidth || y2 <= 0 || y1 >= viewHeight) continue;
-      rects.push([x1, y1, x2, y2]);
+      left = Math.min(left, x1);
+      top = Math.min(top, y1);
+      right = Math.max(right, x2);
+      bottom = Math.max(bottom, y2);
+      visible++;
     }
-    return rects.length ? rects : null;
+    return visible ? [left, top, right, bottom] : null;
   }
 
-  // ---------- renderização principal ----------
+  // ---------- renderiza├º├úo principal ----------
 
   function renderFrame(applied, source = video) {
     if (!source.videoWidth) return;
@@ -616,7 +606,7 @@ export function createRender({
     if (useFallback) {
       if (fallbackContext) {
         if (state.effect === 'dither' || state.effect === 'invert') {
-          // Fundo preto: Pontilhado e Inverter só pintam dentro dos blobs, no overlay.
+          // Fundo preto: Pontilhado e Inverter s├│ pintam dentro dos blobs, no overlay.
           fallbackContext.save();
           fallbackContext.filter = 'none';
           fallbackContext.fillStyle = '#000';
@@ -626,7 +616,7 @@ export function createRender({
           const frameWidth = source.videoWidth || source.width;
           const frameHeight = source.videoHeight || source.height;
           fallbackContext.save();
-          // Preto e branco: o fundo é o vídeo em cinza; o contraste alto vive no overlay.
+          // Preto e branco: o fundo ├® o v├¡deo em cinza; o contraste alto vive no overlay.
           fallbackContext.filter = state.effect === 'threshold' ? 'grayscale(1)' : 'none';
           const eyes = state.gearVr ? 2 : 1;
           const eyeWidth = canvas.width / eyes;
@@ -721,7 +711,7 @@ export function createRender({
     state.timing.cycle = performance.now() - t0;
   }
 
-  // ---------- pointillism (difusão de erro em CPU) ----------
+  // ---------- pointillism (difus├úo de erro em CPU) ----------
 
   function ensureStippleGrid(cols, rows) {
     if (stippleGrid.width === cols && stippleGrid.height === rows) return stippleGrid;
@@ -731,7 +721,7 @@ export function createRender({
       width: cols, height: rows, count: 0,
       luma: new Float32Array(n), error: new Float32Array(n),
       jitterX: new Float32Array(n), jitterY: new Float32Array(n),
-      // Um grão por célula e, quando há tom, um ponto de massa: 2n lugares.
+      // Um gr├úo por c├®lula e, quando h├í tom, um ponto de massa: 2n lugares.
       dotX: new Float32Array(n * 2), dotY: new Float32Array(n * 2), dotR: new Float32Array(n * 2),
       radii: new Float32Array(STIPPLE_LEVELS + 1),
     };
@@ -746,7 +736,7 @@ export function createRender({
     return grid;
   }
 
-  // A grade é calculada uma vez por quadro; pintar de novo nas janelas não repete a difusão.
+  // A grade ├® calculada uma vez por quadro; pintar de novo nas janelas n├úo repete a difus├úo.
   function prepareStipple(source, viewWidth, viewHeight, sample = null) {
     stippleReady = false;
     const srcWidth = source?.videoWidth || source?.width || 0;
@@ -756,7 +746,7 @@ export function createRender({
       const scale = Math.min(1, STIPPLE_MAX_WIDTH / srcWidth, STIPPLE_MAX_HEIGHT / srcHeight);
       const width = Math.max(STIPPLE_SPACING, Math.round(srcWidth * scale));
       const height = Math.max(STIPPLE_SPACING, Math.round(srcHeight * scale));
-      // Pacote 2: os pixels já lidos pelo tracker evitam um segundo drawImage + getImageData.
+      // Pacote 2: os pixels j├í lidos pelo tracker evitam um segundo drawImage + getImageData.
       const shared = sample?.data && sample.width > 0 && sample.height > 0
         && sample.data.length >= sample.width * sample.height * 4 ? sample : null;
       let data = null;
@@ -790,7 +780,7 @@ export function createRender({
       const grid = ensureStippleGrid(cols, rows);
       const cellW = width / cols, cellH = height / rows;
       const maxR = Math.min(cellW, cellH) * .48;
-      // Tabela de 12 raios: evita Math.pow por ponto e abre o volume entre grão e massa.
+      // Tabela de 12 raios: evita Math.pow por ponto e abre o volume entre gr├úo e massa.
       for (let level = 1; level <= STIPPLE_LEVELS; level++) {
         grid.radii[level] = maxR * Math.pow(level / STIPPLE_LEVELS, STIPPLE_RADIUS_GAMMA);
       }
@@ -816,8 +806,8 @@ export function createRender({
           const right = grid.luma[y * cols + (x + 1 < cols ? x + 1 : x)];
           const above = grid.luma[(y > 0 ? y - 1 : y) * cols + x];
           const belowLuma = grid.luma[(y + 1 < rows ? y + 1 : y) * cols + x];
-          // Contraste local: a média da cena sozinha achata a silhueta quando o fundo
-          // fica claro ou escuro. Misturar com a média dos 5 vizinhos mantém a forma.
+          // Contraste local: a m├®dia da cena sozinha achata a silhueta quando o fundo
+          // fica claro ou escuro. Misturar com a m├®dia dos 5 vizinhos mant├®m a forma.
           const localMean = (l + left + right + above + belowLuma) * .2;
           const reference = mean * .65 + localMean * .35;
           const stretched = clamp(.5 + (l - reference) * 3, 0, 1);
@@ -833,14 +823,14 @@ export function createRender({
             grid.error[below] += diffusion * 5 / 16;
             if (x + 1 < cols) grid.error[below + 1] += diffusion / 16;
           }
-          // C: um grão fino vive em toda célula, mesmo nos claros — é a textura do papel.
+          // C: um gr├úo fino vive em toda c├®lula, mesmo nos claros ÔÇö ├® a textura do papel.
           grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW;
           grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH;
           grid.dotR[count] = grainR;
           count++;
           if (quantized <= 0) continue;
           // B: onde o tom muda depressa o ponto chega ao centro; pontos grandes
-          // ficam ainda mais presos, e os pequenos vagueiam como pó.
+          // ficam ainda mais presos, e os pequenos vagueiam como p├│.
           const edge = clamp(
             (Math.abs(l - left) + Math.abs(l - right) + Math.abs(l - above) + Math.abs(l - belowLuma)) / .15,
             0, 1
@@ -848,8 +838,8 @@ export function createRender({
           const jitter = (1 - .75 * edge) * (1 - .3 * quantized);
           grid.dotX[count] = (x + .5) * cellW + grid.jitterX[i] * cellW * jitter;
           grid.dotY[count] = (y + .5) * cellH + grid.jitterY[i] * cellH * jitter;
-          // Volume: raio por potência .68. Raio pequeno encolhe e o grande cresce
-          // em relação à raiz, sem custo extra (os 12 valores vêm da tabela).
+          // Volume: raio por pot├¬ncia .68. Raio pequeno encolhe e o grande cresce
+          // em rela├º├úo ├á raiz, sem custo extra (os 12 valores v├¬m da tabela).
           grid.dotR[count] = grid.radii[level];
           count++;
         }
@@ -866,7 +856,7 @@ export function createRender({
       stippleReady = true;
       return true;
     } catch (e) {
-      if (!stippleWarned && typeof log === 'function') log(`Pointillism indisponível: ${e.message}`);
+      if (!stippleWarned && typeof log === 'function') log(`Pointillism indispon├¡vel: ${e.message}`);
       stippleWarned = true;
       return false;
     }
@@ -882,25 +872,15 @@ export function createRender({
     const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
     const paper = colors?.paper || '#fff';
     const dot = colors?.dot || '#000';
-    // clipRect pode ser um retângulo [l,t,r,b] ou vários retângulos de blobs.
-    const rects = clipRect ? (Array.isArray(clipRect[0]) ? clipRect : [clipRect]) : null;
-    let union = null;
-    if (rects) {
-      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-      for (const r of rects) {
-        if (r[0] < left) left = r[0]; if (r[1] < top) top = r[1];
-        if (r[2] > right) right = r[2]; if (r[3] > bottom) bottom = r[3];
-      }
-      union = [left, top, right, bottom];
-    }
     c.save();
-    if (rects) {
+    if (clipRect) {
+      const clipW = clipRect[2] - clipRect[0], clipH = clipRect[3] - clipRect[1];
       c.beginPath();
-      for (const r of rects) c.rect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+      c.rect(clipRect[0], clipRect[1], clipW, clipH);
       c.clip();
-      // O papel vive só dentro dos blobs; fora deles o fundo preto permanece.
+      // O papel vive s├│ dentro do blob; fora dele o fundo preto permanece.
       c.fillStyle = paper;
-      c.fillRect(union[0], union[1], union[2] - union[0], union[3] - union[1]);
+      c.fillRect(clipRect[0], clipRect[1], clipW, clipH);
     }
     c.save();
     c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
@@ -913,16 +893,10 @@ export function createRender({
       const y = baseY + stippleGrid.dotY[i] * scaleY;
       const r = Math.max(.35, stippleGrid.dotR[i] * dotScale);
       const screenX = offsetX + (mirrorX ? viewWidth - x : x);
-      // Poda o que está fora da tela e, quando há recorte, o que está fora dos blobs.
+      // Poda o que est├í fora da tela e, quando h├í recorte, o que est├í fora do blob.
       if (screenX + r < 0 || screenX - r > viewWidth || y + r < 0 || y - r > viewHeight) continue;
-      if (union && (screenX + r < union[0] || screenX - r > union[2] || y + r < union[1] || y - r > union[3])) continue;
-      if (rects && rects.length > 1) {
-        let inside = false;
-        for (const rect of rects) {
-          if (screenX + r >= rect[0] && screenX - r <= rect[2] && y + r >= rect[1] && y - r <= rect[3]) { inside = true; break; }
-        }
-        if (!inside) continue;
-      }
+      if (clipRect && (screenX + r < clipRect[0] || screenX - r > clipRect[2]
+        || y + r < clipRect[1] || y - r > clipRect[3])) continue;
       c.moveTo(x + r, y);
       c.arc(x, y, r, 0, STIPPLE_TAU);
     }
@@ -936,10 +910,10 @@ export function createRender({
     paintStipple(c, viewWidth, viewHeight, offsetX, mirrorX, clipRect, colors);
   }
 
-  // ---------- overlay e gravação ----------
+  // ---------- overlay e grava├º├úo ----------
 
-  // Véu do recorte vive num canvas separado: ajuda a ver a ROI, mas não entra
-  // na captura PNG nem no MP4 (que leem só visual + overlay).
+  // V├®u do recorte vive num canvas separado: ajuda a ver a ROI, mas n├úo entra
+  // na captura PNG nem no MP4 (que leem s├│ visual + overlay).
   function drawRoiVeil() {
     if (!roiVeilContext || !roiVeilCanvas) return;
     const c = roiVeilContext, width = roiVeilCanvas.width, height = roiVeilCanvas.height;
@@ -976,7 +950,7 @@ export function createRender({
     const started = performance.now();
     const c = overlayContext;
     if (!c) return;
-    // Nada a pintar: só limpa se o quadro anterior deixou algo no overlay.
+    // Nada a pintar: s├│ limpa se o quadro anterior deixou algo no overlay.
     const reactive = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
     const dotted = state.effect === 'dither';
     const styled = (state.effect === 'invert' || state.effect === 'threshold') && result.blobs?.length > 0;
@@ -1005,9 +979,7 @@ export function createRender({
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
-    const canMaskClip = !!(maskCanvas && maskContext);
-    const wantsMaskClip = canMaskClip && (dotted || styled || (state.videoWindows && result.blobs?.length > 0));
-    if (canMaskClip && (state.showMask || wantsMaskClip)) {
+    if (state.showMask) {
       const resized = maskCanvas.width !== result.width || maskCanvas.height !== result.height;
       if (resized) {
         maskCanvas.width = result.width;
@@ -1018,8 +990,7 @@ export function createRender({
       const image = maskImage;
       const mask = result.mask;
       const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
-      // Alfa real: permite recortar o Pontilhado por destination-in sem vazar no retângulo.
-      const ON = 0xFFFFFFFF, OFF = 0x00000000;
+      const ON = 0xFFFFFFFF, OFF = 0xFF000000;
       let changed = resized;
       for (let i = 0, n = mask.length; i < n; i++) {
         const value = mask[i] ? ON : OFF;
@@ -1028,7 +999,7 @@ export function createRender({
           changed = true;
         }
       }
-      // Pacote 2: só publica no canvas quando a binarizada realmente mudou.
+      // Pacote 2: s├│ publica no canvas quando a binarizada realmente mudou.
       if (changed) maskContext.putImageData(image, 0, 0);
     }
     let windowCost = 0, overlayCost = 0;
@@ -1045,51 +1016,29 @@ export function createRender({
         c.clip();
       }
       const mirrorX = (state.camera === 'user') !== state.flip;
-      const applyBlobMaskClip = () => {
-        if (!canMaskClip || !maskCanvas.width || !maskCanvas.height) return;
-        if (state.gearVr) {
-          calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-        } else {
-          calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-        }
-        c.save();
-        c.globalCompositeOperation = 'destination-in';
-        c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
-        c.scale(mirrorX ? -1 : 1, 1);
-        if (state.gearVr) {
-          c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-        } else {
-          c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
-        }
-        c.restore();
-      };
       if (dotted) {
         const sample = result.pixels && result.pixelWidth && result.pixelHeight
           ? { data: result.pixels, width: result.pixelWidth, height: result.pixelHeight }
           : null;
         const clip = blobsClipRect(result.blobs, viewWidth, viewHeight, offsetX);
         if (clip) {
-          // Inverter vídeo passa a ser o negativo do Pontilhado: pontos brancos em papel preto.
+          // Inverter v├¡deo passa a ser o negativo do Pontilhado: pontos brancos em papel preto.
           const colors = state.invertBlend
             ? { paper: '#000', dot: '#fff' }
             : { paper: '#fff', dot: '#000' };
           drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
-          // Recorta o Pontilhado pela máscara real dos blobs para não vazar no retângulo.
-          applyBlobMaskClip();
         }
       }
-      // Inverter e Preto e branco pintam o vídeo só dentro dos blobs, por cima do fundo.
+      // Inverter e Preto e branco pintam o v├¡deo s├│ dentro dos blobs, por cima do fundo.
       if (styled) {
         const filter = state.effect === 'invert' ? 'invert(1)' : 'grayscale(1) contrast(6)';
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied, filter);
-        applyBlobMaskClip();
       }
-      // Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.
+      // Com Pontilhado ligado o v├¡deo n├úo entra na composi├º├úo: os pontos s├úo a imagem gravada.
       if (state.videoWindows && !dotted && !styled) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
-        applyBlobMaskClip();
       }
       if (state.showMask) {
         if (state.gearVr) {
@@ -1110,8 +1059,8 @@ export function createRender({
       }
       const wantsViewPoints = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
       const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
-      // Quando os dois efeitos ligam juntos, Guias e Distância dividem esta lista
-      // para nenhum rótulo pisar no outro. Com um efeito só, o desenho é o de sempre.
+      // Quando os dois efeitos ligam juntos, Guias e Dist├óncia dividem esta lista
+      // para nenhum r├│tulo pisar no outro. Com um efeito s├│, o desenho ├® o de sempre.
       const labelOccupied = state.overlay && state.distanceTelemetry ? [] : null;
       const overlayStarted = performance.now();
       if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
@@ -1138,7 +1087,7 @@ export function createRender({
             c.fillText(label, x + 10, y + 18);
             continue;
           }
-          // Com Distância ligada, as guias ficam no canto oposto (inferior direito).
+          // Com Dist├óncia ligada, as guias ficam no canto oposto (inferior direito).
           const left = x + 4, top = y + 4, right = x + cellW - 4, bottom = y + cellH - 4;
           const half = (c.measureText(label).width + 8) / 2;
           const candidates = [
@@ -1206,8 +1155,8 @@ export function createRender({
     drawRecordingFrame(recordingContext, canvas, overlayCanvas, recordingCanvas.width, recordingCanvas.height, includeShade, recordingWatermark);
   }
 
-  // Só diagnóstico (?perf=1): mede o custo de uma leitura pequena via WebGL,
-  // sem alterar o caminho de pixels do rastreador nem o conteúdo da tela.
+  // S├│ diagn├│stico (?perf=1): mede o custo de uma leitura pequena via WebGL,
+  // sem alterar o caminho de pixels do rastreador nem o conte├║do da tela.
   let glReadbackBuffer = null;
   function probeGlReadback() {
     if (!gl) return;

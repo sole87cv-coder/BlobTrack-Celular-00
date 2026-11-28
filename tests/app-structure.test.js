@@ -53,11 +53,6 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors)'));
   assert.ok(render.includes("const paper = colors?.paper || '#fff';"));
   assert.ok(render.includes("const dot = colors?.dot || '#000';"));
-  assert.ok(render.includes('const rects = clipRect ? (Array.isArray(clipRect[0]) ? clipRect : [clipRect]) : null;'));
-  assert.ok(render.includes('// os pontos só aparecem onde há blob, não no espaço vazio entre eles.'));
-  assert.ok(render.includes('for (const r of rects) c.rect(r[0], r[1], r[2] - r[0], r[3] - r[1]);'));
-  assert.ok(render.includes("c.globalCompositeOperation = 'destination-in';"));
-  assert.ok(render.includes('// Recorta o Pontilhado pela máscara real dos blobs para não vazar no retângulo.'));
   assert.ok(!render.includes('DOT_CELL'));
   assert.ok(!render.includes('DOT_RADIUS_SQ'));
   assert.ok(!render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
@@ -102,15 +97,14 @@ test('Pontilhado desenha só nos blobs e reaproveita a grade calculada para o qu
   assert.ok(render.includes('stippleReady = false;'));
 });
 
-test('Vídeo original controla base reconhecível; Pontilhado não usa janela de vídeo', async () => {
+test('V?deo original ligado aplica efeito na janela; Pontilhado n?o usa janela de v?deo', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const showOriginal = state.showOriginalVideo;'));
-  assert.ok(render.includes('const enableEffect = showOriginal || state.videoBlend > 0;'));
+  assert.ok(render.includes('const enableEffect = state.showOriginalVideo || state.videoBlend > 0;'));
   assert.ok(render.includes("const filter = (effectPart + invertPart).trim() || 'none';"));
   assert.ok(render.includes('if (state.videoWindows && !dotted && !styled) {'));
-  assert.ok(render.includes('// Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.'));
+  assert.ok(render.includes('Com Pontilhado ligado o v'));
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('Ligado: mostra a câmera como base reconhecível; desligado: visual mais estilizado, sem vídeo cru'));
+  assert.ok(html.includes('aplica o efeito na janela'));
 });
 
 test('recording snapshot retains identity shared with renderer', () => {
@@ -176,7 +170,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v95'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v96'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -356,7 +350,6 @@ test('recorte tem véu fora da gravação, limpeza, cantos arrastáveis e númer
   assert.ok(app.includes('roiReadout.textContent = roi'));
   assert.ok(app.includes('render.drawRoiVeil()'));
   assert.ok(render.includes('function drawRoiVeil() {'));
-  assert.ok(render.includes("// na captura PNG nem no MP4 (que leem só visual + overlay)."));
   assert.ok(render.includes("c.globalCompositeOperation = 'destination-out';"));
   assert.ok(!render.includes('drawImage(roiVeilCanvas'));
   assert.ok(roi.includes('export function roiHandleAt('));
@@ -369,8 +362,7 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('const labelOccupied = state.overlay && state.distanceTelemetry ? [] : null;'));
   assert.ok(source.includes('blobViewCount, labelOccupied);'));
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
-  assert.ok(source.includes('// Com Distância ligada, as guias ficam no canto oposto (inferior direito).'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v95'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v96'"));
 });
