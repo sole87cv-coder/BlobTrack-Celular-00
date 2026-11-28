@@ -309,7 +309,7 @@ Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é an
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
 
-#### BlobTrack cirúrgico: silhueta, absorção, ROI, suavização e IDs (cache v92)
+#### BlobTrack cirúrgico: silhueta, absorção, ROI, suavização e IDs (cache v93)
 
 Rodada cirúrgica no rastreamento e nos efeitos dos blobs, sem mexer nos contratos congelados.
 
@@ -320,6 +320,7 @@ Rodada cirúrgica no rastreamento e nos efeitos dos blobs, sem mexer nos contrat
 - **Associação ótima (P6):** a associação blob↔trilha passou de greedy global para Hungarian nas trilhas elegíveis, mantendo o gate, o custo e os contratos S3.
 - **Estacionaridade normalizada (P8):** deslocamento medido em pixels reais (`hypot(dx*width, dy*height)`), com histerese leve; `>=1 px/quadro` reinicia a contagem (S9).
 - **P5 (feather):** testado e removido por risco de halo/vazamento; máscara dura mantida.
+- **Hotfix v93:** corrigido travamento total no celular causado por degeneração do Hungarian quando trilhas elegíveis não tinham blob no gate; filtro de trilhas viáveis + guarda segura.
 
 **Contratos preservados:** núcleo puro, `minAreaRatio=0.00025` (piso 6 px), `maxAreaRatio=0.72`, S3, S9, reatividade intocável, Pontilhado = pontos pretos formando a imagem.
 
@@ -543,7 +544,7 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v92`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v93`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
 #### Kit de medição — diagnóstico cirúrgico (cache v77)
 
@@ -552,7 +553,7 @@ O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e
 **Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
 
 1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v92"` e `sondaGl: false`.
+2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v93"` e `sondaGl: false`.
 3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
 4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
 
@@ -621,7 +622,7 @@ O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máx
 
 ## Documentação
 
-- [Diagnóstico atual (v85–v92)](docs/diagnostico-atual.md)
+- [Diagnóstico atual (v85–v93)](docs/diagnostico-atual.md)
 - [Diagnóstico cirúrgico e prioridades](docs/diagnostico-cirurgico.md)
 - [Benchmark e baseline](docs/blobtrack-benchmark.md)
 - [Medições antes/depois e decisões rejeitadas](docs/perf-antes-depois.md)

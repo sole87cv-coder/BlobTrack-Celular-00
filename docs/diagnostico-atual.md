@@ -435,7 +435,7 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Não muda:** rastreador, reatividade, composição do MP4, Gear VR, Inverter como negativo, difusão Floyd–Steinberg, 24 níveis, grão, potência `.68`, recorte por bbox como poda rápida e a estratégia de cache do `sw.js` (só o número sobe para `v91`).
 - **Validação:** `npm test` **280/280**, `node --check` limpo em `src/render/render.js`, `src/app.js`, `sw.js`, `git diff --check` limpo, bench 3× com p95 `1,276 / 1,275 / 1,270 ms` (teto `1,347 ms`; uma rodada inicial deu `3,715 ms` por ruído da máquina e foi repetida). Publicado no commit `09fca33`, deploy confirmado no oficial. **Medido no aparelho: nada** — conferir no Realme C67 com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`): selecionar Pontilhado, confirmar `estipple.n > 0`, verificar ausência de vazamento no contorno/cantos dos blobs, salvar MP4.
 
-## 43. BlobTrack cirúrgico: silhueta, absorção por componente, ROI cache, suavização e associação (v92, preparado em local; sem commit/push/deploy)
+## 43. BlobTrack cirúrgico: silhueta, absorção por componente, ROI cache, suavização e associação (v92, publicado no commit `e49bcc6`)
 
 - **Pedido do V1su4rt:** executar o plano cirúrgico completo de aprimoramento/otimização do BlobTrack (rastreamento e efeitos dos blobs).
 - **P1 — Janelas por silhueta real:** `src/render/render.js` agora aplica `destination-in` com `maskCanvas` também em janelas estilizadas (Inverter/Preto e branco) e Janela viva, além do Pontilhado. A poda rápida por bbox continua antes do recorte. O `maskCanvas` só é atualizado quando `showMask` ou algum efeito precisa de clip por máscara.
@@ -446,4 +446,11 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **P8 — Estacionaridade normalizada:** deslocamento por pixels reais `hypot(dx*width, dy*height)` com histerese leve; `>=1 px` reinicia contagem (S9).
 - **P5:** feather/blur de máscara foi testado e **removido** por risco de halo/vazamento; máscara dura mantida.
 - **Contratos preservados:** núcleo puro, `minAreaRatio=0.00025` (piso 6 px), `maxAreaRatio=0.72`, S3, S9, reatividade intocável, Pontilhado = pontos pretos formando a imagem.
-- **Validação local:** pendente de fechamento nesta execução (testes, check, diff, bench 3×). **Nada publicado** até autorização Y/N. **Medido no aparelho: nada** — validar no Realme C67 com `?perf=1` (`sondaGl: false`, `glReadback.n: 0`): vazamento visual nos contornos de Janela viva/Inverter/P&B, jitter, troca de ID, FPS e MP4; no Pontilhado confirmar `estipple.n > 0`.
+- **Validação local:** `npm test` **282/282**, `node --check` OK, `git diff --check` limpo, bench 3× válidas p95 `1,042 / 1,299 / 1,094 ms` (teto `1,347 ms`; outlier `1,481 ms` repetido e descartado). Publicado no commit `e49bcc6`, deploy confirmado no oficial. **Medido no aparelho: nada** no momento da publicação.
+
+## 44. Hotfix de travamento no rastreio (v93, preparado em local; sem commit/push/deploy)
+
+- **Sintoma reportado pelo V1su4rt:** teste físico no celular após v92 — melhorias visuais ok, mas o app trava totalmente.
+- **Causa provável corrigida:** o Hungarian (P6) podia degenerar em loop/corrupção de potenciais quando trilhas elegíveis não tinham nenhum blob dentro do gate (linha toda `INF`). Em rastreio real isso é comum.
+- **Correção:** `src/domain/blobTrackerCore.js` filtra apenas trilhas viáveis (com pelo menos um candidato no gate) antes do Hungarian; adiciona guarda `delta >= INF/2` com saída segura; mantém fast path 1×1 e fallback greedy só para casos >12. Contratos S3/S9 preservados.
+- **Validação local:** `npm test` **282/282**, `node --check` OK, `git diff --check` limpo. **Nada publicado** até autorização Y/N. **Medido no Realme C67: nada** — confirmar no aparelho se o travamento total sumiu com `?perf=1` e `cacheVersion: blobtrack-celular-00-v93`.

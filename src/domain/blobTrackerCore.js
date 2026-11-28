@@ -516,6 +516,7 @@ export class BlobTrackerCore {
           if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
           if (minv[j] < delta) { delta = minv[j]; j1 = j; }
         }
+        if (delta >= INF / 2) { p[0] = 0; break; }
         for (let j = 0; j <= size; j++) {
           if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
           else minv[j] -= delta;
@@ -549,26 +550,23 @@ export class BlobTrackerCore {
     const gateSquared = 0.18 * 0.18;
 
     // P6: atribuição ótima (Hungarian) entre trilhas elegíveis e blobs, preservando gate/custo S3.
-    const eligible = [];
-    for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
-      const track = this.tracks[trackIndex];
-      if (track.alive && track.miss <= 3) eligible.push(trackIndex);
-    }
-    const nEligible = eligible.length;
-    if (nEligible > 0 && blobCount > 0) {
+    if (blobCount > 0) {
       const INF = 1e12;
-      const cost = new Float64Array(nEligible * blobCount);
-      cost.fill(INF);
-      for (let ei = 0; ei < nEligible; ei++) {
-        const track = this.tracks[eligible[ei]];
+      const viable = [];
+      const viableCost = [];
+      for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
+        const track = this.tracks[trackIndex];
+        if (!track.alive || track.miss > 3) continue;
         const predictedX = track.x + track.vx * (track.miss + 1);
         const predictedY = track.y + track.vy * (track.miss + 1);
+        let row = null;
         for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
           const blob = blobs[blobIndex];
           const dx = blob.x - predictedX;
           const dy = blob.y - predictedY;
           const distanceSquared = dx * dx + dy * dy;
           if (distanceSquared > gateSquared) continue;
+          if (!row) { row = new Float64Array(blobCount); row.fill(INF); }
           const predictedLeft = track.left + predictedX - track.x;
           const predictedTop = track.top + predictedY - track.y;
           const predictedRight = track.right + predictedX - track.x;
@@ -582,18 +580,47 @@ export class BlobTrackerCore {
           const union = blob.width * blob.height + trackBoxArea - intersection;
           const iou = union > 0 ? intersection / union : 0;
           const areaDelta = Math.abs(blob.area - track.area) / Math.max(blob.area, track.area, 1e-6);
-          cost[ei * blobCount + blobIndex] = 0.55 * distanceSquared / gateSquared + 0.25 * (1 - iou) + 0.20 * areaDelta;
+          row[blobIndex] = 0.55 * distanceSquared / gateSquared + 0.25 * (1 - iou) + 0.20 * areaDelta;
         }
+        if (row) { viable.push(trackIndex); viableCost.push(row); }
       }
-      const colAssign = this._hungarian(cost, nEligible, blobCount);
-      for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
-        const ei = colAssign[blobIndex];
-        if (ei < 0) continue;
-        if (cost[ei * blobCount + blobIndex] >= INF) continue;
-        const trackIndex = eligible[ei];
-        this.matchedBlobs[blobIndex] = 1;
-        this.matchedTracks[trackIndex] = 1;
-        this.trackForBlob[blobIndex] = trackIndex;
+      const nViable = viable.length;
+      if (nViable > 0) {
+        if (nViable === 1 && blobCount === 1) {
+          // Fast path comum: 1x1.
+          const c = viableCost[0][0];
+          if (c < INF) { this.matchedBlobs[0] = 1; this.matchedTracks[viable[0]] = 1; this.trackForBlob[0] = viable[0]; }
+        } else if (nViable <= 12 && blobCount <= 12) {
+          const cost = new Float64Array(nViable * blobCount);
+          for (let r = 0; r < nViable; r++) cost.set(viableCost[r], r * blobCount);
+          const colAssign = this._hungarian(cost, nViable, blobCount);
+          for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
+            const ri = colAssign[blobIndex];
+            if (ri < 0) continue;
+            if (cost[ri * blobCount + blobIndex] >= INF) continue;
+            const trackIndex = viable[ri];
+            this.matchedBlobs[blobIndex] = 1;
+            this.matchedTracks[trackIndex] = 1;
+            this.trackForBlob[blobIndex] = trackIndex;
+          }
+        } else {
+          // Fallback seguro: greedy global (sem alocações grandes).
+          for (let assignment = 0; assignment < Math.min(blobCount, nViable); assignment++) {
+            let bestBlob = -1, bestRow = -1, bestCost = Infinity;
+            for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
+              if (this.matchedBlobs[blobIndex]) continue;
+              for (let r = 0; r < nViable; r++) {
+                if (this.matchedTracks[viable[r]]) continue;
+                const c = viableCost[r][blobIndex];
+                if (c < bestCost) { bestCost = c; bestBlob = blobIndex; bestRow = r; }
+              }
+            }
+            if (bestBlob < 0 || bestCost >= INF) break;
+            this.matchedBlobs[bestBlob] = 1;
+            this.matchedTracks[viable[bestRow]] = 1;
+            this.trackForBlob[bestBlob] = viable[bestRow];
+          }
+        }
       }
     }
 

@@ -146,7 +146,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v92',
+    cacheVersion: 'blobtrack-celular-00-v93',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
