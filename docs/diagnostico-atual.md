@@ -534,3 +534,11 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v104`.
 - **Valida??o local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,167/1,338/1,277 ms (teto 1,347 ms).
 - **Medido no aparelho: nada.** Confirmar no Realme C67: Pontilhado s? dentro dos blobs, fora preto, `estipple.n > 0`, sem regress?o em Inverter/P&B/reatividade.
+
+## 56. Painel de diagn?stico de desempenho com registro/compartilhamento (?diag=1) (v106)
+
+- **Pedido:** restaurar/fornecer link f?cil de diagn?stico de desempenho para testes manuais no celular.
+- **Mudan?a:** painel on-screen ativado por `?diag=1` (alias `?perf=1`), mostrando m?tricas ao vivo e com bot?es **Iniciar registro / Parar e Compartilhar / Copiar**. O registro coleta amostras a cada 1s (fps, captura, an?lise, render, overlay, blobs, rastreio, efeito/flags) e gera relat?rio TXT para compartilhar no WhatsApp ou copiar. Sem efeito quando o par?metro n?o est? presente.
+- **Cache:** `blobtrack-celular-00-v106`.
+- **Valida??o local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,637/1,622/1,562 ms; rerun 1,410/1,463/1,399 ms (acima do teto 1,347 ms; ru?do ambiente, mudan?a fora do hot path do core).
+- **Medido no aparelho: nada.** Usar `https://blobtrak.vercel.app/?diag=1` no Realme C67 e coletar n?meros.

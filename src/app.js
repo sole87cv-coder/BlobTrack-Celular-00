@@ -134,6 +134,124 @@ const state = {
 const idEventSeconds = new Int32Array(61).fill(-1);
 const idEventCounts = new Uint16Array(61);
 let lastIssuedBlobId = 0, lastMetricsPublishedAt = 0;
+const diagParams = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+const diagEnabled = diagParams.get('diag') === '1' || diagParams.get('perf') === '1';
+let diagPanel = null, diagText = null, diagStatus = null;
+const diagLog = { recording: false, startedAt: 0, lastSampleAt: 0, samples: [], events: [] };
+function diagNow() { return (performance.now() - (diagLog.startedAt || performance.now())) / 1000; }
+function diagSnapshot(m) {
+  return {
+    t: Number(diagNow().toFixed(1)),
+    fps: Number.isFinite(m.fps) ? Number(m.fps.toFixed(1)) : null,
+    blobs: m.blobsAtivos ?? null,
+    captura: Number.isFinite(m.tCapture) ? Number(m.tCapture.toFixed(1)) : null,
+    analise: Number.isFinite(m.tAnalysis) ? Number(m.tAnalysis.toFixed(1)) : null,
+    render: Number.isFinite(m.tRender) ? Number(m.tRender.toFixed(1)) : null,
+    overlay: Number.isFinite(m.tOverlay) ? Number(m.tOverlay.toFixed(1)) : null,
+    rastreio: state.trackingWidth,
+    efeito: state.effect,
+    janela: !!state.videoWindows,
+    rastro: !!state.trailEffect,
+    ondas: !!state.waveEffect,
+    grade: !!state.meshEffect,
+    rede: !!state.networkEffect,
+    dist: !!state.distanceTelemetry,
+    limite: !!m.deviceLimit,
+  };
+}
+function diagBuildReport() {
+  const m = window.__blobtrackMetrics || {};
+  const samples = diagLog.samples;
+  const avg = (k) => { const v = samples.map(s => s[k]).filter(Number.isFinite); return v.length ? (v.reduce((a,b)=>a+b,0)/v.length).toFixed(1) : '-'; };
+  const max = (k) => { const v = samples.map(s => s[k]).filter(Number.isFinite); return v.length ? Math.max(...v).toFixed(1) : '-'; };
+  const min = (k) => { const v = samples.map(s => s[k]).filter(Number.isFinite); return v.length ? Math.min(...v).toFixed(1) : '-'; };
+  const lines = [
+    'BLOBTRACK DIAG REPORT',
+    `data: ${new Date().toISOString()}`,
+    `cache: ${m.cacheVersion || '-'}`,
+    `ua: ${typeof navigator !== 'undefined' ? navigator.userAgent : '-'}`,
+    `tela: ${typeof screen !== 'undefined' ? screen.width + 'x' + screen.height : '-'} dpr:${typeof devicePixelRatio !== 'undefined' ? devicePixelRatio : '-'}`,
+    `perfil: ${deviceProfile?.name || '-'} fpsAlvo:${deviceProfile?.fps || '-'}`,
+    `amostras: ${samples.length}`,
+    `resumo: fps avg ${avg('fps')} min ${min('fps')} max ${max('fps')} | analise avg ${avg('analise')} max ${max('analise')} | render avg ${avg('render')} max ${max('render')} | overlay avg ${avg('overlay')} max ${max('overlay')} | captura avg ${avg('captura')} max ${max('captura')}`,
+    '--- AMOSTRAS ---',
+    't,fps,blobs,captura,analise,render,overlay,rastreio,efeito,janela,rastro,ondas,grade,rede,dist,limite',
+    ...samples.map(s => [s.t,s.fps,s.blobs,s.captura,s.analise,s.render,s.overlay,s.rastreio,s.efeito,s.janela?1:0,s.rastro?1:0,s.ondas?1:0,s.grade?1:0,s.rede?1:0,s.dist?1:0,s.limite?1:0].join(',')),
+  ];
+  return lines.join('\n');
+}
+async function diagShareReport() {
+  const text = diagBuildReport();
+  const file = typeof File !== 'undefined' ? new File([text], `blobtrack-diag-${Date.now()}.txt`, { type: 'text/plain' }) : null;
+  try {
+    if (navigator.share && (!file || !navigator.canShare || navigator.canShare({ files: [file] }))) {
+      await navigator.share(file ? { files: [file], title: 'BlobTrack diag', text: 'Diagn?stico BlobTrack' } : { title: 'BlobTrack diag', text });
+      return 'compartilhado';
+    }
+  } catch (_) {}
+  try { await navigator.clipboard.writeText(text); return 'copiado'; } catch (_) {}
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    a.download = `blobtrack-diag-${Date.now()}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    return 'baixado';
+  } catch (_) { return 'falhou'; }
+}
+function ensureDiagPanel() {
+  if (!diagEnabled || diagPanel || typeof document === 'undefined') return diagPanel;
+  diagPanel = document.createElement('div');
+  diagPanel.id = 'diagPanel';
+  diagPanel.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;margin:0;padding:8px 10px;background:rgba(0,0,0,.82);color:#7CFFB2;font:11px/1.35 monospace;border:1px solid rgba(124,255,178,.35);border-radius:8px;max-width:calc(100vw - 16px);';
+  diagText = document.createElement('pre');
+  diagText.style.cssText = 'margin:0;white-space:pre;pointer-events:none;';
+  const row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;';
+  const mkBtn = (label) => { const b=document.createElement('button'); b.textContent=label; b.style.cssText='font:11px monospace;padding:4px 6px;border-radius:6px;border:1px solid #7CFFB2;background:#111;color:#7CFFB2;'; return b; };
+  const recBtn = mkBtn('Iniciar registro');
+  const shareBtn = mkBtn('Parar/Compartilhar');
+  const copyBtn = mkBtn('Copiar');
+  diagStatus = document.createElement('div');
+  diagStatus.style.cssText = 'margin-top:4px;color:#fff;opacity:.85;';
+  recBtn.onclick = () => { diagLog.recording = true; diagLog.startedAt = performance.now(); diagLog.lastSampleAt = 0; diagLog.samples = []; diagStatus.textContent = 'gravando... use o app normalmente'; };
+  shareBtn.onclick = async () => { diagLog.recording = false; diagStatus.textContent = 'gerando...'; diagStatus.textContent = await diagShareReport(); };
+  copyBtn.onclick = async () => { try { await navigator.clipboard.writeText(diagBuildReport()); diagStatus.textContent='copiado'; } catch { diagStatus.textContent='falhou copiar'; } };
+  row.append(recBtn, shareBtn, copyBtn);
+  diagPanel.append(diagText, row, diagStatus);
+  document.body.appendChild(diagPanel);
+  return diagPanel;
+}
+function updateDiagPanel(metrics) {
+  if (!diagEnabled) return;
+  const panel = ensureDiagPanel();
+  if (!panel || !diagText) return;
+  const m = metrics || window.__blobtrackMetrics || {};
+  const fps = Number.isFinite(m.fps) ? m.fps.toFixed(1) : '-';
+  const tA = Number.isFinite(m.tAnalysis) ? m.tAnalysis.toFixed(1) : '-';
+  const tR = Number.isFinite(m.tRender) ? m.tRender.toFixed(1) : '-';
+  const tC = Number.isFinite(m.tCapture) ? m.tCapture.toFixed(1) : '-';
+  const tO = Number.isFinite(m.tOverlay) ? m.tOverlay.toFixed(1) : '-';
+  diagText.textContent = [
+    'DIAG BlobTrack',
+    `cache: ${m.cacheVersion || '-'}`,
+    `fps: ${fps} | blobs: ${m.blobsAtivos ?? '-'}`,
+    `captura: ${tC} ms`,
+    `analise: ${tA} ms`,
+    `render: ${tR} ms`,
+    `overlay: ${tO} ms`,
+    `rastreio: ${state.trackingWidth}px | limite: ${m.deviceLimit ? 'sim' : 'nao'}`,
+    `registro: ${diagLog.recording ? 'GRAVANDO' : 'parado'} (${diagLog.samples.length} amostras)`,
+  ].join('\n');
+  if (diagLog.recording) {
+    const now = performance.now();
+    if (now - diagLog.lastSampleAt >= 1000) {
+      diagLog.lastSampleAt = now;
+      diagLog.samples.push(diagSnapshot(m));
+      if (diagLog.samples.length > 300) diagLog.samples.shift();
+    }
+  }
+}
 const recorder = createRecorder({
   canvas: recordingCanvas,
   fps: deviceProfile.fps,
@@ -709,7 +827,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v104',
+    cacheVersion: 'blobtrack-celular-00-v106',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
@@ -725,6 +843,7 @@ function publishBlobTrackMetrics(now, result) {
     pauseCount: state.performance.pauseCount,
     tPorEfeito: null,
   };
+  updateDiagPanel(window.__blobtrackMetrics);
 }
 let frameErrors = 0;
 function frame(now) {
