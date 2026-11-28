@@ -252,6 +252,10 @@ function updateDiagPanel(metrics) {
     }
   }
 }
+if (diagEnabled && typeof document !== 'undefined') {
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { ensureDiagPanel(); updateDiagPanel(window.__blobtrackMetrics); }, { once: true });
+  else { ensureDiagPanel(); updateDiagPanel(window.__blobtrackMetrics); }
+}
 const recorder = createRecorder({
   canvas: recordingCanvas,
   fps: deviceProfile.fps,
@@ -827,7 +831,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v106',
+    cacheVersion: 'blobtrack-celular-00-v107',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
