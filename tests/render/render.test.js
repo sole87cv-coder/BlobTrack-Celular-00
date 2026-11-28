@@ -129,7 +129,7 @@ test('createRender mapVideoPoint with flip mirrors X and preserves Y', (t) => {
   assert.ok(out1[1] < out2[1]);
 });
 
-test('Janela Viva com V?deo original ON usa c?mera com efeito; OFF devolve v?deo cru', () => {
+test('Janela Viva com V?deo original ON usa c?mera com efeito; OFF fica estilizado sem v?deo cru', () => {
   const video = { videoWidth: 640, videoHeight: 360 };
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   function run(showOriginalVideo) {
@@ -140,22 +140,22 @@ test('Janela Viva com V?deo original ON usa c?mera com efeito; OFF devolve v?deo
       mapPointA: new Float32Array(2),
       mapPointB: new Float32Array(2),
     });
-    let images = 0;
+    let images = 0; let fills = 0;
     const filters = [];
     const c = {
       save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
-      translate() {}, scale() {}, drawImage() { images++; },
+      translate() {}, scale() {}, drawImage() { images++; }, fillRect() { fills++; },
     };
     Object.defineProperty(c, 'filter', { get() { return 'none'; }, set(value) { filters.push(value); } });
     render.drawRawVideoWindows(c, blobs, 320, 240, 0, video);
-    return { images, filters };
+    return { images, fills, filters };
   }
   const enhanced = run(true);
   assert.equal(enhanced.images, 1);
   assert.deepEqual(enhanced.filters, ['grayscale(1) contrast(2)']);
-  const raw = run(false);
-  assert.equal(raw.images, 1);
-  assert.deepEqual(raw.filters, []);
+  const stylized = run(false);
+  assert.equal(stylized.images, 0);
+  assert.ok(stylized.fills >= 1);
 });
 
 test('Vídeo original ON aplica o efeito nos três; OFF fica estilizado (sem vídeo cru)', () => {

@@ -117,7 +117,7 @@ const recordingContext = recordingCanvas.getContext('2d', { alpha: false });
 Object.defineProperties(frameCanvas, { videoWidth: { get: () => frameCanvas.width }, videoHeight: { get: () => frameCanvas.height } });
 const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
-  effect: 'invert', flip: false, overlay: false, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
+  effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, showOriginalVideo: true, extremeMode: false, videoBlend: 0, invertBlend: false,
   threshold: .18, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
@@ -147,7 +147,7 @@ if (typeof saved.reacting === 'boolean') state.reacting = saved.reacting;
 if (typeof saved.effect === 'string' && ['invert','threshold','dither'].includes(saved.effect)) state.effect = saved.effect;
 if (Number.isFinite(saved.master)) state.master = clamp(saved.master,0,2);
 if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
-if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0,1);
+if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0.02,0.60);
 if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
 if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
 if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
@@ -348,8 +348,8 @@ toggle($('extremeModeButton'),state.extremeMode);
 $('maxConnectionDistance').value=String(state.maxConnectionDistance);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;
 toggle($('visualOnlyButton'),state.visualOnly);
 toggle($('roiVeilButton'),state.showRoiVeil);
-$('motionThreshold').value=String(state.threshold);$('motionValue').textContent=fmt(state.threshold);
-$('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);$('trackingValue').textContent=`${state.trackingWidth} px`;$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';
+$('motionThreshold').value=String(state.threshold);
+$('trackingWidth').max=String(deviceProfile.maxWidth);$('trackingWidth').value=String(state.trackingWidth);syncTrackingUi();syncWindowControlCoherence();
 $('master').value=String(state.master);$('masterValue').textContent=fmt(state.master);
 $('bias').value=String(state.bias);$('biasValue').textContent=fmt(state.bias);
 document.querySelectorAll('[data-effect]').forEach(b=>toggle(b,b.dataset.effect===state.effect));
@@ -529,7 +529,7 @@ function getTrackingRoi(source) {
   return mask;
 }
 
-const DISPLAY_SMOOTH_TAU = 0.06;
+const DISPLAY_SMOOTH_TAU = 0.08; // suavização de apresentação: estável sem atrasar áudio/sinais
 function resetDisplayTracks() { state.displayTracks.clear(); }
 function smoothBlobsForDisplay(blobs, dt) {
   if (!blobs.length) { state.displayTracks.clear(); return blobs; }
@@ -687,7 +687,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v96',
+    cacheVersion: 'blobtrack-celular-00-v97',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
@@ -985,7 +985,7 @@ function setGearVr(on, persist=true){
   $('gearVrButton').classList.toggle('active',on);
   $('gearVrButton').setAttribute('aria-pressed',String(on));
   $('gearVrExit').hidden=!on;
-  if(on){state.overlay=false;state.showMask=false;toggle($('overlayButton'),false);toggle($('maskButton'),false);if(persist)enterFullscreen('landscape');showToast('Gear VR ativo · imagem lado a lado');}
+  if(on){state.showMask=false;toggle($('maskButton'),false);if(persist)enterFullscreen('landscape');showToast('Gear VR ativo · imagem lado a lado');}
   else {if(persist&&isFullscreen())exitFullscreen();showToast('Visualização normal');}
   if(persist)savePreferences();
 }
@@ -994,8 +994,16 @@ $('gearVrExit').addEventListener('click',()=>setGearVr(false));
 if(state.gearVr)setGearVr(true,false);
 
 document.querySelectorAll('[data-effect]').forEach(b=>b.addEventListener('click',()=>{if(state.effect===b.dataset.effect)return;state.effect=b.dataset.effect;document.querySelectorAll('[data-effect]').forEach(x=>toggle(x,x===b));savePreferences();}));
+function syncWindowControlCoherence(){
+  const on = !!state.videoWindows;
+  for (const id of ['originalVideoButton','invertBlendButton','videoBlend']) {
+    const el = $(id); if(!el) continue;
+    el.disabled = !on;
+    el.style.opacity = on ? '' : '.45';
+  }
+}
 function bindReactiveToggle(id, key) {
-  $(id).addEventListener('click', event => { state[key] = !state[key]; toggle(event.currentTarget, state[key]); savePreferences(); });
+  $(id).addEventListener('click', event => { state[key] = !state[key]; toggle(event.currentTarget, state[key]); syncWindowControlCoherence(); savePreferences(); });
 }
 bindReactiveToggle('blobWindowButton', 'videoWindows');
 bindReactiveToggle('trailEffectButton', 'trailEffect');
@@ -1005,6 +1013,7 @@ bindReactiveToggle('blobNetworkButton', 'networkEffect');
 bindReactiveToggle('distanceTelemetryButton', 'distanceTelemetry');
 bindReactiveToggle('originalVideoButton', 'showOriginalVideo');
 bindReactiveToggle('invertBlendButton', 'invertBlend');
+syncWindowControlCoherence();
 $('videoBlend').addEventListener('input', event => {
   state.videoBlend = clamp(Number(event.target.value), 0, 1);
   $('videoBlendValue').textContent = `${Math.round(state.videoBlend * 100)}%`;
@@ -1064,9 +1073,30 @@ $('extremeModeButton').addEventListener('click', () => {
 });
 $('maxConnectionDistance').addEventListener('input',event=>{state.maxConnectionDistance=clamp(Number(event.target.value),0.08,0.5);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;scheduleSavePreferences();});
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
-$('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();resetDisplayTracks();scheduleSavePreferences();});
-$('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
-$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
+function motionSensitivityLabel(v){
+  if(v<=0.1) return 'Muito alta';
+  if(v<=0.2) return 'Alta';
+  if(v<=0.35) return 'Média';
+  if(v<=0.55) return 'Baixa';
+  return 'Muito baixa';
+}
+function trackingDetailLabel(w){
+  if(w<=160) return 'Rápido';
+  if(w<=240) return 'Equilibrado';
+  if(w<=320) return 'Detalhado';
+  if(w<=480) return 'Fino';
+  return 'Máximo';
+}
+function syncTrackingUi(){
+  $('motionValue').textContent=`${fmt(state.threshold)} · ${motionSensitivityLabel(state.threshold)}`;
+  $('trackingValue').textContent=`${state.trackingWidth} px · ${trackingDetailLabel(state.trackingWidth)}`;
+  $('autoQualityButton').classList.toggle('active',state.autoQuality);
+  $('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));
+  $('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';
+}
+$('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);syncTrackingUi();tracker.reset();resetDisplayTracks();scheduleSavePreferences();});
+$('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;setTrackingWidth(Number(e.target.value));syncTrackingUi();});
+$('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);syncTrackingUi();savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);scheduleSavePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);scheduleSavePreferences();});
 
@@ -1130,7 +1160,7 @@ function bindAudioEffect(id, key) {
 bindAudioEffect('audioEchoButton','echo');
 bindAudioEffect('audioSpaceButton','space');
 bindAudioEffect('audioChorusButton','chorus');
-$('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
+$('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
 $('backgroundButton').addEventListener('click',()=>{tracker.reset();resetDisplayTracks();showToast('Fundo refeito');});
 $('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();resetDisplayTracks();showToast('Rastreio reiniciado');});
 $('rectangleButton').addEventListener('click',e=>{
@@ -1154,9 +1184,9 @@ $('roiVeilButton').addEventListener('click',event=>{
   render.drawRoiVeil();
   scheduleSavePreferences();
 });
-function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();resetDisplayTracks();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;scheduleSavePreferences();}
-function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(state.trackingWidth+delta);}
-$('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
+function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/40)*40;if(next===state.trackingWidth){syncTrackingUi();return;}state.trackingWidth=next;tracker.reset();resetDisplayTracks();$('trackingWidth').value=String(next);syncTrackingUi();scheduleSavePreferences();}
+function adjustTracking(delta){state.autoQuality=false;setTrackingWidth(state.trackingWidth+delta);syncTrackingUi();}
+$('trackDown').addEventListener('click',()=>adjustTracking(-40));$('trackUp').addEventListener('click',()=>adjustTracking(40));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});
 
 /* ===== Tela cheia: entrar e SAIR de qualquer jeito ===== */
@@ -1212,9 +1242,9 @@ $('shareButton').addEventListener('click',shareStage);
 /* Um único controle liga/desliga o modo palco; duplo toque no palco também alterna. */
 let focusMode=false;
 let recordingOwnsFocusMode=false;
-let overlayBeforeFocusMode=state.overlay;
 function setFocusMode(on){
   focusMode=on;
+  state.overlay=true;
   document.body.classList.toggle('focus-mode',on);
   $('focusModeButton').classList.toggle('active',on);
   $('focusModeButton').setAttribute('aria-pressed',String(on));
@@ -1222,18 +1252,8 @@ function setFocusMode(on){
   $('focusModeLabel').textContent=on?'Voltar':'Palco';
   $('focusHint').hidden=!on;
   $('focusHint').textContent=on?'Duplo toque para voltar':'Duplo toque para o modo palco';
-  if(on){
-    overlayBeforeFocusMode=state.overlay;
-    if(!isFullscreen())enterFullscreen().catch(()=>{});
-    if (!recordingOwnsFocusMode) {
-      state.overlay=false;$('overlayButton')?.classList.remove('active');$('overlayButton')?.setAttribute('aria-pressed','false');
-    }
-  } else {
-    if(isFullscreen())exitFullscreen().catch(()=>{});
-    state.overlay=overlayBeforeFocusMode;
-    $('overlayButton')?.classList.toggle('active',state.overlay);
-    $('overlayButton')?.setAttribute('aria-pressed',String(state.overlay));
-  }
+  if(on){ if(!isFullscreen())enterFullscreen().catch(()=>{}); }
+  else { if(isFullscreen())exitFullscreen().catch(()=>{}); }
   savePreferences();
 }
 $('focusModeButton').addEventListener('click',()=>setFocusMode(!focusMode));

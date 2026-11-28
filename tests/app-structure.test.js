@@ -97,14 +97,14 @@ test('Pontilhado desenha só nos blobs e reaproveita a grade calculada para o qu
   assert.ok(render.includes('stippleReady = false;'));
 });
 
-test('V?deo original ligado aplica efeito na janela; Pontilhado n?o usa janela de v?deo', async () => {
+test('Coer?ncia Janela viva/V?deo original/Inverter v?deo; Pontilhado n?o usa janela de v?deo', async () => {
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
-  assert.ok(render.includes('const enableEffect = state.showOriginalVideo || state.videoBlend > 0;'));
-  assert.ok(render.includes("const filter = (effectPart + invertPart).trim() || 'none';"));
+  assert.ok(render.includes('const showOriginal = state.showOriginalVideo;'));
+  assert.ok(render.includes('const enableEffect = showOriginal || state.videoBlend > 0;'));
   assert.ok(render.includes('if (state.videoWindows && !dotted && !styled) {'));
   assert.ok(render.includes('Com Pontilhado ligado o v'));
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
-  assert.ok(html.includes('aplica o efeito na janela'));
+  assert.ok(html.includes('Janela viva ligada: ON mostra a c?mera reconhec?vel'));
 });
 
 test('recording snapshot retains identity shared with renderer', () => {
@@ -170,7 +170,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v96'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v97'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -364,5 +364,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v96'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v97'"));
 });

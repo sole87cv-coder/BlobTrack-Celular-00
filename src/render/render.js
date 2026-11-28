@@ -458,7 +458,9 @@ export function createRender({
     const invertPart = state.invertBlend ? ' invert(1)' : '';
     // Bot├úo ligado = efeito na janela. Desligado = v├¡deo cru dentro do blob, como Janela viva.
     // Inverter v├¡deo e a mistura continuam com prioridade quando acionados.
-    const enableEffect = state.showOriginalVideo || state.videoBlend > 0;
+    // Coer?ncia A: V?deo original ON = c?mera reconhec?vel; OFF = estilizado sem v?deo cru.
+    const showOriginal = state.showOriginalVideo;
+    const enableEffect = showOriginal || state.videoBlend > 0;
     const effectPart = enableEffect ? effectFilter : '';
     const filter = (effectPart + invertPart).trim() || 'none';
     // Os estilos Inverter e Preto e branco pintam o v├¡deo dentro dos blobs mesmo
@@ -551,8 +553,17 @@ export function createRender({
       c.restore();
       return;
     }
+    if (!showOriginal && state.videoBlend === 0) {
+      c.save();
+      c.fillStyle = state.effect === 'invert' ? '#e8f2ff' : state.effect === 'threshold' ? '#dcdcdc' : 'rgba(255,255,255,.12)';
+      c.fillRect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop);
+      c.restore();
+      if (invertPart) { c.save(); c.filter = invertPart.trim(); c.fillStyle = '#ffffff'; c.fillRect(clipLeft, clipTop, clipRight - clipLeft, clipBottom - clipTop); c.restore(); }
+      c.restore();
+      return;
+    }
     c.save();
-    // Com videoBlend === 0 e filtro ativo, a segunda passada j├í desenha o quadro final.
+    // Com videoBlend === 0 e filtro ativo, a segunda passada j? desenha o quadro final.
     if (!(filter !== 'none' && state.videoBlend === 0)) drawSource();
     c.restore();
     if (state.videoBlend > 0 && filter !== 'none') {

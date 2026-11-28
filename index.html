@@ -219,7 +219,7 @@
                 <button type="button" class="pill small effect-toggle" id="meshEffectButton" aria-pressed="false">Grade</button>
                 <button type="button" class="pill small effect-toggle" id="blobNetworkButton" aria-pressed="false" aria-label="Ativar ou desativar a rede geométrica de blobs">Rede de blobs</button>
                 <button type="button" class="pill small effect-toggle" id="distanceTelemetryButton" aria-pressed="false">Distâncias</button>
-                <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Ligado: aplica o efeito na janela; desligado: v?deo cru dentro do blob">Vídeo original</button>
+                <button type="button" class="pill small effect-toggle" id="originalVideoButton" aria-pressed="false" title="Janela viva ligada: ON mostra a c?mera reconhec?vel; OFF mostra janela estilizada sem v?deo cru">Vídeo original</button>
                 <button type="button" class="pill small effect-toggle" id="invertBlendButton" aria-pressed="false" title="Inverter o vídeo dentro dos retângulos dos blobs">Inverter vídeo</button>
                 <div class="dock-row slider-row">
                   <label for="videoBlend"><span>Mistura vídeo + efeito</span><b id="videoBlendValue">0%</b></label>
@@ -241,7 +241,6 @@
             </div>
             <div class="dock-row wrap">
               <button class="pill small" id="flipButton" type="button" aria-pressed="false">Espelhar</button>
-            <button class="pill small" id="overlayButton" type="button" aria-pressed="false">Guias</button>
               <button class="pill small" id="maskButton" type="button" aria-pressed="false">Ver binarizada</button>
               <button class="pill small" id="captureButton" type="button">Capturar</button>
               <button class="pill small" id="gearVrButton" type="button" aria-pressed="false">Gear VR · SM‑R323</button>
@@ -253,10 +252,10 @@
 
           <div class="dock-panel" id="panelTracking" role="tabpanel" aria-labelledby="tabTracking" tabindex="0">
             <div class="dock-row slider-row">
-              <label for="motionThreshold"><span>Sensibilidade ao movimento</span><b id="motionValue">0,18</b></label>
-              <input id="motionThreshold" type="range" min="0" max="1" step="0.01" value="0.18">
-              <label for="trackingWidth"><span>Detalhe do rastreio</span><b id="trackingValue">320 px</b></label>
-              <input id="trackingWidth" type="range" min="160" max="640" step="80" value="320">
+              <label for="motionThreshold"><span>Sensibilidade ao movimento</span><b id="motionValue">0,18 · Alta</b></label>
+              <input id="motionThreshold" type="range" min="0.02" max="0.60" step="0.01" value="0.18">
+              <label for="trackingWidth"><span>Detalhe do rastreio</span><b id="trackingValue">320 px · Detalhado</b></label>
+              <input id="trackingWidth" type="range" min="160" max="640" step="40" value="320">
             </div>
             <div class="dock-row wrap">
               <button class="pill small auto-quality active" id="autoQualityButton" type="button"
