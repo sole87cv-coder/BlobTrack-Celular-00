@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v89`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v90`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -215,12 +215,12 @@ O Pontilhado transforma a **imagem** em pontos: fundo claro fica vazio, e a pess
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 2;
-const STIPPLE_LEVELS = 12;
+const STIPPLE_LEVELS = 24;
 const STIPPLE_RADIUS_GAMMA = .68;
 const STIPPLE_GRAIN_RATIO = .2;
 ```
 
-O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **12 níveis de tom**. `STIPPLE_SPACING` é a distância entre os pontos: **menor = mais detalhe**. `STIPPLE_LEVELS` define quantos degraus existem entre o pó e o ponto cheio. Desde a `v85` o raio vem de uma tabela com potência `.68` (mais volume entre grão e massa), cada célula ganha um grão fino e a referência de contraste mistura `65%` da média da cena com `35%` da média dos 5 vizinhos — a silhueta não some num fundo claro. Para pontos menores, diminua o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
+O quadro é reduzido até `200×120`, a luma é lida uma vez, e a escuridão passa por difusão de erro (Floyd–Steinberg) com **24 níveis de tom**. `STIPPLE_SPACING` é a distância entre os pontos: **menor = mais detalhe**. `STIPPLE_LEVELS` define quantos degraus existem entre o pó e o ponto cheio. Desde a `v85` o raio vem de uma tabela com potência `.68` (mais volume entre grão e massa), cada célula ganha um grão fino e a referência de contraste mistura `65%` da média da cena com `35%` da média dos 5 vizinhos. Na `v90`, os níveis subiram de 12 para 24 para suavizar o degradê entre pontos, e o recorte passou a ser **por blob** (cada retângulo de blob), não pela união grande — assim o vão entre dois blobs não ganha papel nem pontos. Para pontos menores, diminua o espaçamento; para transições mais suaves, aumente os níveis. Não mude sem medir e sem conferir no celular. Depois: suba o cache, rode os testes e veja o efeito no navegador.
 
 #### Manual dos três efeitos — explicado para um jovem de 16 anos
 
@@ -235,7 +235,7 @@ Os três botões só escolhem qual “filtro” entra nessa montagem. O nome int
 |---|---|---|---|
 | Inverter / Invertir | `invert` | negativo de filme no **quadro todo** e também nas janelas (`v72`) | ramo `uEffect==0` do shader + fallback em `src/render/render.js` |
 | Preto e branco | `threshold` | cinza com transição suave no **quadro todo** e nas janelas (`v72`/`v73`) | ramo `uEffect==1` do shader + fallback em `src/render/render.js` |
-| Pontilhado | `dither` | fundo preto fora dos blobs; dentro deles, pontos formando a imagem — o próprio vídeo gravado (`v77`) | `drawStipple` + `blobsClipRect` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
+| Pontilhado | `dither` | fundo preto fora dos blobs; dentro de cada blob, pontos formando a imagem — o próprio vídeo gravado (`v77`/`v90`) | `drawStipple` + `blobsClipRect` em `src/render/render.js` + trecho `uEffect==2` do shader em `src/app.js` |
 
 **Inverter e Preto e branco, passo a passo.** Antes da `v72` os dois viviam só nas janelas. Hoje o botão escolhe um número que o shader entende; o fallback 2D usa o mesmo número:
 
@@ -254,12 +254,12 @@ state.effect === 'invert' ? 0 : state.effect === 'threshold' ? 1 : state.effect 
 ```js
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 2;
-const STIPPLE_LEVELS = 12;
+const STIPPLE_LEVELS = 24;
 const STIPPLE_RADIUS_GAMMA = .68;
 const STIPPLE_GRAIN_RATIO = .2;
 ```
 
-Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (**menos distância = mais detalhe e ponto menor**), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v85`, o ponto grande vem da potência `.68` e o grão fino aparece até nos claros — é o volume da imagem. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Isso usa só os números já calculados, sem nova leitura da imagem. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; `blobsClipRect` recorta a união dos blobs e `paintStipple` pinta o papel lá dentro e desenha os pontos no overlay. **Inverter vídeo** virou a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
+Pense numa caneta: `STIPPLE_SPACING` é a distância entre os pontos (**menos distância = mais detalhe e ponto menor**), `STIPPLE_LEVELS` é quantos tamanhos de ponto existem (mais níveis = transição mais suave), e `MAX_WIDTH/HEIGHT` limita o trabalho da CPU. Desde a `v85`, o ponto grande vem da potência `.68` e o grão fino aparece até nos claros — é o volume da imagem. Desde a `v74`, onde o tom muda depressa (borda), o ponto fica mais perto do centro da célula — é como segurar a caneta com mais firmeza para desenhar o contorno. Na `v90`, `STIPPLE_LEVELS` subiu para `24` (degradê mais suave entre claro e escuro) e `blobsClipRect`/`paintStipple` passaram a recortar **por blob** — o vão entre dois blobs fica preto, sem papel nem pontos. Na `v77`, o shader (`uEffect==2`) e o fallback pintam o **fundo preto**; **Inverter vídeo** vira a polaridade do Pontilhado: ligado = pontos brancos em papel preto; desligado = pontos pretos em papel branco. Fora dos blobs não entra vídeo, nem no palco, nem no MP4. Se você pintar papel e pontos da mesma cor, os pontos desaparecem — já aconteceu na `v56`.
 
 **Regras do jogo, para os três efeitos:**
 
@@ -308,6 +308,17 @@ São três pares de vozes: `0/1 = Low`, `2/3 = Mid`, `4/5 = Hi`. Dentro de cada 
 Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é analisada, em vez de esperar um `requestAnimationFrame` extra, e carrega `capturedAt` e `audioTime` (relógio do `AudioContext`). O worklet usa esse relógio para alinhar o agendamento e expõe a idade do sinal como `lag` no medidor. Os controles de sliders e do Tom base mantêm o debounce de `80 ms` — só o canal de sinal é liberado na hora.
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
+
+#### Pontilhado com degradê suave e recorte só nos blobs (cache v90)
+
+Dois ajustes pedidos pelo V1su4rt no Pontilhado:
+
+- **Degradê entre os pontos (mais níveis de cinza):** `STIPPLE_LEVELS` subiu de `12` para `24`. Pense numa escada: antes eram 12 degraus entre o claro e o escuro; agora são 24. A passagem de tom fica mais suave, mas a imagem continua sendo feita por **pontos pretos formando a imagem** — não vira foto lisa nem máscara.
+- **Efeito só nos blobs:** antes, o Pontilhado recortava pela **união** de todos os blobs (um retângulo grande cobrindo todo mundo). Se dois blobs estavam separados, o vão entre eles também recebia papel e pontos. Agora `blobsClipRect` devolve um retângulo por blob e `paintStipple` recorta/poda por blob: o vão entre blobs fica preto, sem papel e sem pontos. O MP4 e o Gear VR usam o mesmo caminho de desenho.
+
+**Não muda:** o rastreador, a reatividade, a composição do MP4, a estratégia de cache do `sw.js` (só o número muda), o Inverter como negativo, a difusão Floyd–Steinberg, o grão, a potência `.68` e a regra de que o Pontilhado não vira pontos só na máscara.
+
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,271 / 1,218 / 1,195 ms` (teto `1,347 ms`). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se o degradê ficou mais suave e se o vão entre dois blobs separados fica preto, salve um MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
 
 #### Guias e Distâncias em cantos opostos (cache v89)
 
@@ -487,7 +498,7 @@ git diff --check
 git status --short
 ```
 
-- `npm test`: são 279 testes sem câmera física. Se algum falhar, **pare**.
+- `npm test`: são 280 testes sem câmera física. Se algum falhar, **pare**.
 - `node --check`: confere se o JavaScript não tem erro de escrita.
 - `git diff --check`: procura espaços e quebras de linha problemáticos.
 - `git status --short`: mostra exatamente quais arquivos você mexeu.
@@ -506,7 +517,7 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v89`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v90`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
 #### Kit de medição — diagnóstico cirúrgico (cache v77)
 
@@ -515,7 +526,7 @@ O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e
 **Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
 
 1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v77"` e `sondaGl: false`.
+2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v90"` e `sondaGl: false`.
 3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
 4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
 
@@ -578,13 +589,13 @@ Se uma mudança quebrar os testes ou exceder o orçamento, desfaça o commit com
 
 ## Desempenho e limites
 
-O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções (lote v89): p95 `1,214`, `1,148` e `0,929 ms`, todas abaixo do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 279 testes aprovados.
+O orçamento comparativo do núcleo é p95 ≤ `8 ms` e ≤ `1,15 × baseline` (`1,347 ms`), além de pico ≤ `16 ms`. O benchmark mede apenas `updatePixels` em Node, 320×180, duas formas sintéticas, 30 quadros de aquecimento e 300 medidos. As últimas execuções (lote v90): p95 `1,271`, `1,218` e `1,195 ms`, todas abaixo do teto. Isso não prevê câmera, bateria nem FPS num celular. A contagem atual é 280 testes aprovados.
 
 O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máximo é `maxAreaRatio=0,72`; no quadro 320×180, o arredondamento observado requer cerca de 14 pixels. Para ajudar, enquadre o objeto maior ou reduza o zoom/distância conforme o caso, ou desenhe ROI. A gravação é sem áudio e para em cinco minutos. O suporte a câmera, segundo plano e exportação varia por navegador. Dispositivos físicos: **não medidos**.
 
 ## Documentação
 
-- [Diagnóstico atual (v85–v89)](docs/diagnostico-atual.md)
+- [Diagnóstico atual (v85–v90)](docs/diagnostico-atual.md)
 - [Diagnóstico cirúrgico e prioridades](docs/diagnostico-cirurgico.md)
 - [Benchmark e baseline](docs/blobtrack-benchmark.md)
 - [Medições antes/depois e decisões rejeitadas](docs/perf-antes-depois.md)

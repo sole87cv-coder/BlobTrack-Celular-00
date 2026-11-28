@@ -7,7 +7,7 @@ Comece aqui para encontrar explicações sem precisar abrir todo o repositório.
 | Documento | Quando ler |
 |---|---|
 | [`../README.md`](../README.md) | Instalar, rodar em `http://localhost:8000`, entender o mapa do projeto e o semáforo de manutenção. |
-| [`diagnostico-atual.md`](diagnostico-atual.md) | Estado atual de erros, permissões, desempenho e organização, com as rodadas v85–v89 (27/11/2026). |
+| [`diagnostico-atual.md`](diagnostico-atual.md) | Estado atual de erros, permissões, desempenho e organização, com as rodadas v85–v90 (27/11/2026). |
 | [`faxina-inventario.md`](faxina-inventario.md) | Inventário de arquivos e por que `teste.*`, caches e artefatos foram mantidos. |
 
 ## Diagnóstico e decisões

@@ -274,6 +274,29 @@ test('Pontilhado tem grão nos claros, massa nos escuros e poda fora da tela', (
   assert.ok(tiny.arcs < dark.arcs * .3, 'os pontos fora do recorte não entram no caminho');
 });
 
+test('Pontilhado recorta por blob e não pinta o vão entre blobs', () => {
+  const state = makeState({ effect: 'dither', timing: {} });
+  const render = createRender({
+    state, cropRect: new Float32Array(4),
+    mapPointA: new Float32Array(2), mapPointB: new Float32Array(2),
+  });
+  const width = 80, height = 40;
+  const data = new Uint8ClampedArray(width * height * 4).fill(30);
+  for (let i = 3; i < data.length; i += 4) data[i] = 255;
+  const sample = { data, width, height };
+  const arcs = [];
+  const c = {
+    fillStyle: '', save() {}, restore() {}, beginPath() {}, rect() {}, clip() {},
+    translate() {}, scale() {}, drawImage() {}, fillRect() {}, moveTo() {},
+    arc(x, _y, r) { arcs.push(x); }, fill() {},
+  };
+  // Dois blobs com um vão no meio: [20..90] e [230..300], vão ~90..230.
+  const rects = [[20, 20, 90, 220], [230, 20, 300, 220]];
+  render.drawStipple(c, { width, height }, 320, 240, 0, false, sample, rects, { paper: '#fff', dot: '#000' });
+  assert.ok(arcs.length > 20, 'desenhou pontos nos blobs');
+  assert.ok(arcs.every(x => x < 95 || x > 225), 'nenhum ponto caiu no vão entre blobs');
+});
+
 test('janelas com videoBlend zero desenham o filtro uma única vez', () => {
   const blobs = [{ left: 0.1, top: 0.1, right: 0.3, bottom: 0.3 }];
   const video = { videoWidth: 640, videoHeight: 360 };

@@ -3,7 +3,7 @@ import { clamp } from '../core/utils.js';
 // Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 2;
-const STIPPLE_LEVELS = 12;
+const STIPPLE_LEVELS = 24;
 const STIPPLE_RADIUS_GAMMA = .68;
 const STIPPLE_GRAIN_RATIO = .2;
 const STIPPLE_TAU = Math.PI * 2;
@@ -571,12 +571,11 @@ export function createRender({
     c.restore();
   }
 
-  // União dos blobs em coordenadas da tela. O Pontilhado usa esta área como recorte:
-  // os pontos substituem o vídeo dentro dela e não aparecem fora.
+  // Retângulos de cada blob em coordenadas da tela. O Pontilhado recorta por blob:
+  // os pontos só aparecem onde há blob, não no espaço vazio entre eles.
   function blobsClipRect(blobs, viewWidth, viewHeight, offsetX) {
     if (!blobs?.length) return null;
-    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-    let visible = 0;
+    const rects = [];
     for (const blob of blobs) {
       mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
       mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
@@ -585,13 +584,9 @@ export function createRender({
       const y1 = Math.min(mapPointA[1], mapPointB[1]) * viewHeight;
       const y2 = Math.max(mapPointA[1], mapPointB[1]) * viewHeight;
       if (x2 <= offsetX || x1 >= offsetX + viewWidth || y2 <= 0 || y1 >= viewHeight) continue;
-      left = Math.min(left, x1);
-      top = Math.min(top, y1);
-      right = Math.max(right, x2);
-      bottom = Math.max(bottom, y2);
-      visible++;
+      rects.push([x1, y1, x2, y2]);
     }
-    return visible ? [left, top, right, bottom] : null;
+    return rects.length ? rects : null;
   }
 
   // ---------- renderização principal ----------
@@ -873,15 +868,25 @@ export function createRender({
     const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
     const paper = colors?.paper || '#fff';
     const dot = colors?.dot || '#000';
+    // clipRect pode ser um retângulo [l,t,r,b] ou vários retângulos de blobs.
+    const rects = clipRect ? (Array.isArray(clipRect[0]) ? clipRect : [clipRect]) : null;
+    let union = null;
+    if (rects) {
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (const r of rects) {
+        if (r[0] < left) left = r[0]; if (r[1] < top) top = r[1];
+        if (r[2] > right) right = r[2]; if (r[3] > bottom) bottom = r[3];
+      }
+      union = [left, top, right, bottom];
+    }
     c.save();
-    if (clipRect) {
-      const clipW = clipRect[2] - clipRect[0], clipH = clipRect[3] - clipRect[1];
+    if (rects) {
       c.beginPath();
-      c.rect(clipRect[0], clipRect[1], clipW, clipH);
+      for (const r of rects) c.rect(r[0], r[1], r[2] - r[0], r[3] - r[1]);
       c.clip();
-      // O papel vive só dentro do blob; fora dele o fundo preto permanece.
+      // O papel vive só dentro dos blobs; fora deles o fundo preto permanece.
       c.fillStyle = paper;
-      c.fillRect(clipRect[0], clipRect[1], clipW, clipH);
+      c.fillRect(union[0], union[1], union[2] - union[0], union[3] - union[1]);
     }
     c.save();
     c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
@@ -894,10 +899,16 @@ export function createRender({
       const y = baseY + stippleGrid.dotY[i] * scaleY;
       const r = Math.max(.35, stippleGrid.dotR[i] * dotScale);
       const screenX = offsetX + (mirrorX ? viewWidth - x : x);
-      // Poda o que está fora da tela e, quando há recorte, o que está fora do blob.
+      // Poda o que está fora da tela e, quando há recorte, o que está fora dos blobs.
       if (screenX + r < 0 || screenX - r > viewWidth || y + r < 0 || y - r > viewHeight) continue;
-      if (clipRect && (screenX + r < clipRect[0] || screenX - r > clipRect[2]
-        || y + r < clipRect[1] || y - r > clipRect[3])) continue;
+      if (union && (screenX + r < union[0] || screenX - r > union[2] || y + r < union[1] || y - r > union[3])) continue;
+      if (rects && rects.length > 1) {
+        let inside = false;
+        for (const rect of rects) {
+          if (screenX + r >= rect[0] && screenX - r <= rect[2] && y + r >= rect[1] && y - r <= rect[3]) { inside = true; break; }
+        }
+        if (!inside) continue;
+      }
       c.moveTo(x + r, y);
       c.arc(x, y, r, 0, STIPPLE_TAU);
     }
