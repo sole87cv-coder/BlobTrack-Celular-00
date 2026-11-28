@@ -469,7 +469,7 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 
 - **Pedido:** restaurar qualidade visual dos efeitos principais como antes de 05:57 (-0300), opção 1a (só visual, mantendo comportamento B2 dos botões).
 - **Mudança:** `src/render/render.js` — `STIPPLE_LEVELS` 24→12 e remoção do boost de contraste/tom do Pontilhado OFF; volta à curva visual de `f43594f` para o Pontilhado. Inverter/P&B mantêm a lógica de render atual; comportamento B2 (`showOriginalVideo`) preservado.
-- **Cache:** `blobtrack-celular-00-v99`.
+- **Cache:** `blobtrack-celular-00-v100`.
 - **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms. Deploy confirmado.
 - **Medido no aparelho: nada.**
 
@@ -500,11 +500,18 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v98`. Deploy confirmado.
 - **Medido no aparelho: nada.**
 
-## 50. Blobs grandes menos invasivos (v99)
+## 50. Blobs grandes menos invasivos (v99, publicado em `ca44369`)
 
 - **Pedido:** blob sempre muito grande/invasivo; melhorar distribuição sem ser invasivo, preservando o que está no blob e o que não.
-- **Mudança:** blobs com área > `0.45` do frame são filtrados apenas da **janela viva** e dos **overlays reativos** (ondas/grade/rede/distâncias), evitando janela cobrindo quase toda a tela. Detecção, sinais e os 3 efeitos de imagem (Inverter/P&B/Pontilhado) não foram alterados. Contratos S3/S9/maxAreaRatio preservados.
-- **Limite:** se o blob gigante for fundo detectado, a causa raiz pode ser cena/iluminação; usar Reaprender fundo/Sensibilidade/Tamanho mínimo no aparelho.
-- **Cache:** `blobtrack-celular-00-v99`.
-- **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,144/1,212/1,362 ms (3ª com ruído; repetição 1,280 ms; teto 1,347 ms).
-- **Medido no aparelho: nada.** Confirmar no Realme C67: blob grande menos invasivo, distribuição melhor, sem regressão nos 3 efeitos de imagem e sem perda de detecção útil.
+- **Mudança:** blobs com área > `0.45` do frame são filtrados apenas da **janela viva** e dos **overlays reativos** (ondas/grade/rede/distâncias), evitando janela cobrindo quase toda a tela. Detecção, sinais e os 3 efeitos de imagem não foram alterados. Contratos S3/S9/maxAreaRatio preservados.
+- **Cache:** `blobtrack-celular-00-v99`. Deploy confirmado.
+- **Medido no aparelho: nada.**
+
+## 51. Controle de tamanho máximo do blob (v100)
+
+- **Pedido:** ainda há um blob muito invasivo que ocupa toda a tela, independentemente do tamanho mínimo escolhido.
+- **Mudança:** novo controle `Tamanho máximo do blob` (Muito pequeno…Máximo, padrão `0.72`), persistido em `maxBlobAreaRatio`, aplicado ao `tracker.maxAreaRatio` em runtime; clamp `0.05..0.72`. Teto do contrato `maxAreaRatio=0.72` preservado.
+- **Uso:** aba Rastreamento → baixar Tamanho máximo do blob até o blob invasivo sumir; combinar com Reaprender fundo/Sensibilidade se for fundo detectado.
+- **Cache:** `blobtrack-celular-00-v100`.
+- **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo.
+- **Medido no aparelho: nada.** Confirmar no Realme C67: controle de tamanho máximo remove blob invasivo sem regressão nos 3 efeitos de imagem.

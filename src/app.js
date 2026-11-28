@@ -119,7 +119,7 @@ const state = {
   active: false, starting: false, claiming: false, sessionReserved: false, switching: false, camera: 'environment', cameraIds: { user: null, environment: null }, stream: null, audio: null, audioHandlersRegistered: false, worklet: null, audioGain: null,
   effect: 'invert', flip: false, overlay: true, showMask: false, gearVr: false, reacting: true, muted: false, cameraRecovering: false,
   videoWindows: true, trailEffect: false, waveEffect: false, meshEffect: false, networkEffect: false, distanceTelemetry: false, maxConnectionDistance: 0.22, visualOnly: false, maxEffects: false, minEffects: false, showOriginalVideo: true, extremeMode: false, videoBlend: 0, invertBlend: false,
-  threshold: .18, minBlobAreaRatio: 0.00025, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
+  threshold: .18, minBlobAreaRatio: 0.00025, maxBlobAreaRatio: 0.72, trackingWidth: deviceProfile.startWidth, autoQuality: true, master: 1, bias: 0, background: null, priorCentroid: null,
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null, resizeRect: null, showRoiVeil: true,
@@ -149,6 +149,7 @@ if (Number.isFinite(saved.master)) state.master = clamp(saved.master,0,2);
 if (Number.isFinite(saved.bias)) state.bias = clamp(saved.bias,-1,1);
 if (Number.isFinite(saved.threshold)) state.threshold = clamp(saved.threshold,0.02,0.60);
 if (Number.isFinite(saved.minBlobAreaRatio)) state.minBlobAreaRatio = clamp(saved.minBlobAreaRatio, 0.00025, 0.006);
+if (Number.isFinite(saved.maxBlobAreaRatio)) state.maxBlobAreaRatio = clamp(saved.maxBlobAreaRatio, 0.05, 0.72);
 if (Number.isFinite(saved.trackingWidth)) state.trackingWidth = clamp(saved.trackingWidth,160,deviceProfile.maxWidth);
 if (typeof saved.audioEnabled === 'boolean') state.audioEnabled = saved.audioEnabled;
 if (Number.isFinite(saved.audioSensitivity)) state.audioSensitivity = clamp(saved.audioSensitivity,0,3);
@@ -194,6 +195,7 @@ const maskContext = maskCanvas.getContext('2d');
 let maskImage = null, maskView = null;
 const tracker = new BlobTracker({ calibrateFrames: 8, stationaryAbsorbFrames: 8 });
 tracker.minAreaRatio = Math.max(0.00025, state.minBlobAreaRatio || 0.00025);
+tracker.maxAreaRatio = clamp(state.maxBlobAreaRatio || 0.72, 0.05, 0.72);
 
 const TRAIL_SLOTS = 12, TRAIL_POINTS = 18;
 const trailIds = new Int32Array(TRAIL_SLOTS).fill(-1);
@@ -236,7 +238,7 @@ function showCameraIssue(error) {
   $('cameraIssueText').textContent = message; if(!$('permissionDialog').open)$('permissionDialog').showModal(); announceStatus(message);
 }
 function toggle(button, on) { button.classList.toggle('active', on); button.setAttribute('aria-pressed', String(on)); }
-function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,minBlobAreaRatio:state.minBlobAreaRatio,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,showOriginalVideo:state.showOriginalVideo,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled,showRoiVeil:state.showRoiVeil})); } catch {} }
+function savePreferences() { try { localStorage.setItem('blobtrack-celular-00-preferences',JSON.stringify({locale,reacting:state.reacting,effect:state.effect,master:state.master,bias:state.bias,threshold:state.threshold,minBlobAreaRatio:state.minBlobAreaRatio,maxBlobAreaRatio:state.maxBlobAreaRatio,trackingWidth:state.trackingWidth,autoQuality:state.autoQuality,focusMode:document.body.classList.contains('focus-mode'),audioEnabled:state.audioEnabled,audioSensitivity:state.audioSensitivity,gearVr:state.gearVr,audioOscillation:state.audioOscillation,audioPitchRange:state.audioPitchRange,audioKey:state.audioKey,audioTimbre:state.audioTimbre,rhythmEnabled:state.rhythmEnabled,audioEffects:state.audioEffects,videoWindows:state.videoWindows,trailEffect:state.trailEffect,waveEffect:state.waveEffect,meshEffect:state.meshEffect,networkEffect:state.networkEffect,distanceTelemetry:state.distanceTelemetry,maxConnectionDistance:state.maxConnectionDistance,visualOnly:state.visualOnly,maxEffects:state.maxEffects,minEffects:state.minEffects,showOriginalVideo:state.showOriginalVideo,videoBlend:state.videoBlend,invertBlend:state.invertBlend,theme:themeChoice,reduceMotion,hapticsEnabled,showRoiVeil:state.showRoiVeil})); } catch {} }
 const audioBus = createAudioBus({ getPort: () => state.worklet?.port });
 let preferencesSaveTimer = null;
 function scheduleSavePreferences(delay = 300) {
@@ -689,7 +691,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v99',
+    cacheVersion: 'blobtrack-celular-00-v100',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,
@@ -1096,6 +1098,13 @@ function minBlobSizeLabel(v){
   if(v<=0.004) return 'Grande';
   return 'Muito grande';
 }
+function maxBlobSizeLabel(v){
+  if(v<=0.10) return 'Muito pequeno';
+  if(v<=0.20) return 'Pequeno';
+  if(v<=0.35) return 'Médio';
+  if(v<=0.55) return 'Grande';
+  return 'Máximo';
+}
 function syncTrackingUi(){
   $('motionValue').textContent=`${fmt(state.threshold)} · ${motionSensitivityLabel(state.threshold)}`;
   $('trackingValue').textContent=`${state.trackingWidth} px · ${trackingDetailLabel(state.trackingWidth)}`;
@@ -1106,10 +1115,15 @@ function syncTrackingUi(){
     $('minBlobSize').value = String(state.minBlobAreaRatio);
     $('minBlobSizeValue').textContent = minBlobSizeLabel(state.minBlobAreaRatio);
   }
+  if ($('maxBlobSize')) {
+    $('maxBlobSize').value = String(state.maxBlobAreaRatio);
+    $('maxBlobSizeValue').textContent = maxBlobSizeLabel(state.maxBlobAreaRatio);
+  }
 }
 $('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);syncTrackingUi();tracker.reset();resetDisplayTracks();scheduleSavePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;setTrackingWidth(Number(e.target.value));syncTrackingUi();});
 $('minBlobSize').addEventListener('input',e=>{state.minBlobAreaRatio=clamp(Number(e.target.value),0.00025,0.006);tracker.minAreaRatio=state.minBlobAreaRatio;syncTrackingUi();scheduleSavePreferences();});
+$('maxBlobSize').addEventListener('input',e=>{state.maxBlobAreaRatio=clamp(Number(e.target.value),0.05,0.72);tracker.maxAreaRatio=state.maxBlobAreaRatio;syncTrackingUi();tracker.reset();resetDisplayTracks();scheduleSavePreferences();});
 $('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);syncTrackingUi();savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);scheduleSavePreferences();});
 $('bias').addEventListener('input',e=>{state.bias=Number(e.target.value);$('biasValue').textContent=fmt(state.bias);scheduleSavePreferences();});
