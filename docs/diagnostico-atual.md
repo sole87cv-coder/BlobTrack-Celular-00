@@ -469,7 +469,7 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 
 - **Pedido:** restaurar qualidade visual dos efeitos principais como antes de 05:57 (-0300), opção 1a (só visual, mantendo comportamento B2 dos botões).
 - **Mudança:** `src/render/render.js` — `STIPPLE_LEVELS` 24→12 e remoção do boost de contraste/tom do Pontilhado OFF; volta à curva visual de `f43594f` para o Pontilhado. Inverter/P&B mantêm a lógica de render atual; comportamento B2 (`showOriginalVideo`) preservado.
-- **Cache:** `blobtrack-celular-00-v97`.
+- **Cache:** `blobtrack-celular-00-v98`.
 - **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms. Deploy confirmado.
 - **Medido no aparelho: nada.**
 
@@ -481,7 +481,7 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,295/1,213/2,486 ms (3ª com ruído; repetição válida 1,002/1,236/1,131 ms). Deploy confirmado.
 - **Medido no aparelho: nada.**
 
-## 48. Guias permanentes, rastreio/sensibilidade e coerência de janelas (v97)
+## 48. Guias permanentes, rastreio/sensibilidade e coerência de janelas (v97, publicado em `b117e8d`)
 
 - **Guias:** sempre ligadas; botão `Guias` removido. `state.overlay` permanece ativo.
 - **Detalhe do rastreio:** rótulos Rápido/Equilibrado/Detalhado/Fino/Máximo, passo 40 px, UI sincronizada.
@@ -489,5 +489,14 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Blobs:** suavização de apresentação `DISPLAY_SMOOTH_TAU` 0,06→0,08 (estabilidade visual; sem tocar S3/S9).
 - **Coerência A:** Janela viva liga/desliga janela; Vídeo original ON = câmera reconhecível, OFF = janela estilizada sem vídeo cru; Inverter vídeo inverte conteúdo da janela. Controles desativados quando Janela viva OFF. Efeitos de imagem Inverter/P&B/Pontilhado preservados.
 - **Cache:** `blobtrack-celular-00-v97`.
-- **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,233/1,107/3,561 ms (3ª com ruído; repetição válida 1,319/1,085/0,999 ms, teto 1,347 ms).
-- **Medido no aparelho: nada.** Confirmar no Realme C67: guias permanentes, rastreio/sensibilidade, estabilidade dos blobs e coerência Janela viva/Vídeo original/Inverter vídeo.
+- **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,233/1,107/3,561 ms (3ª com ruído; repetição válida 1,319/1,085/0,999 ms). Deploy confirmado.
+- **Medido no aparelho: nada.**
+
+## 49. Tamanhos mínimos e sobreposição visual de blobs (v98)
+
+- **Pedido:** aprimorar/perfeiçoar/otimizar sobreposições e tamanhos dos blobs.
+- **Tamanho mínimo:** novo controle `Tamanho mínimo do blob` (Mínimo/Pequeno/Médio/Grande/Muito grande), persistido em `minBlobAreaRatio`, aplicado ao tracker em runtime; clamp seguro `0.00025..0.006` respeitando piso do contrato.
+- **Sobreposição:** supressão **visual** da caixa de guia quando um blob maior cobre >80% do menor (apenas render/overlay; não toca efeitos de imagem, S3, S9, nem dados do tracker). NMS por bbox foi testado e revertido no núcleo por ser inseguro em componentes côncavos (caso de cavidade no teste de diagnóstico).
+- **Cache:** `blobtrack-celular-00-v98`.
+- **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,181/1,044/1,024 ms (teto 1,347 ms).
+- **Medido no aparelho: nada.** Confirmar no Realme C67: controle de tamanho mínimo, redução de sobreposições visuais incômodas, estabilidade de rastreio e ausência de regressão nos 3 efeitos de imagem.

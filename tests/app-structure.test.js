@@ -170,7 +170,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v97'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v98'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -364,5 +364,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v97'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v98'"));
 });
