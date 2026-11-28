@@ -687,7 +687,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v94',
+    cacheVersion: 'blobtrack-celular-00-v95',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,

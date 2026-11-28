@@ -32,7 +32,7 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(app.includes('else if(uEffect==2){rgb=vec3(0.0);}'));
   const render = await readFile(new URL('../src/render/render.js', import.meta.url), 'utf8');
   assert.ok(render.includes('const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;'));
-  assert.ok(render.includes('const STIPPLE_LEVELS = 24;'));
+  assert.ok(render.includes('const STIPPLE_LEVELS = 12;'));
   assert.ok(render.includes('const STIPPLE_SPACING = 2;'));
   assert.ok(render.includes('const STIPPLE_RADIUS_GAMMA = .68;'));
   assert.ok(render.includes('const STIPPLE_GRAIN_RATIO = .2;'));
@@ -42,8 +42,7 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes('const level = Math.round(tone * STIPPLE_LEVELS);'));
   assert.ok(render.includes('const quantized = level / STIPPLE_LEVELS;'));
   assert.ok(render.includes('const reference = mean * .65 + localMean * .35;'));
-  assert.ok(render.includes('const contrast = stylizedDither ? 4.2 : 3;'));
-  assert.ok(render.includes('const stretched = clamp(.5 + (l - reference) * contrast, 0, 1);'));
+  assert.ok(render.includes('const stretched = clamp(.5 + (l - reference) * 3, 0, 1);'));
   assert.ok(render.includes('grid.dotR[count] = grainR;'));
   assert.ok(render.includes('grid.dotR[count] = grid.radii[level];'));
   assert.ok(render.includes('grid.jitterX[i] * cellW * jitter'));
@@ -177,7 +176,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v94'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v95'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -373,5 +372,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('// Com Distância ligada, as guias ficam no canto oposto (inferior direito).'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v94'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v95'"));
 });

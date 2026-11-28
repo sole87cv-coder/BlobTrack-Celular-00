@@ -3,7 +3,7 @@ import { clamp } from '../core/utils.js';
 // Pointillism: amostra pequena, difusão de erro e pontos pretos de tamanho variável.
 const STIPPLE_MAX_WIDTH = 200, STIPPLE_MAX_HEIGHT = 120;
 const STIPPLE_SPACING = 2;
-const STIPPLE_LEVELS = 24;
+const STIPPLE_LEVELS = 12;
 const STIPPLE_RADIUS_GAMMA = .68;
 const STIPPLE_GRAIN_RATIO = .2;
 const STIPPLE_TAU = Math.PI * 2;
@@ -805,7 +805,6 @@ export function createRender({
         }
       }
       mean /= cols * rows;
-      const stylizedDither = state.effect === 'dither' && !state.showOriginalVideo;
       const cut = clamp(.14 + (state.threshold || 0) * .2 + (state.bias || 0) * .08, .08, .4);
       grid.error.fill(0);
       let count = 0;
@@ -821,11 +820,9 @@ export function createRender({
           // fica claro ou escuro. Misturar com a média dos 5 vizinhos mantém a forma.
           const localMean = (l + left + right + above + belowLuma) * .2;
           const reference = mean * .65 + localMean * .35;
-          const contrast = stylizedDither ? 4.2 : 3;
-          const stretched = clamp(.5 + (l - reference) * contrast, 0, 1);
+          const stretched = clamp(.5 + (l - reference) * 3, 0, 1);
           const value = 1 - stretched + grid.error[i];
-          const toneBase = clamp((value - cut) / (1 - cut), 0, 1);
-          const tone = stylizedDither ? Math.pow(toneBase, .62) : Math.pow(toneBase, .75);
+          const tone = Math.pow(clamp((value - cut) / (1 - cut), 0, 1), .75);
           const level = Math.round(tone * STIPPLE_LEVELS);
           const quantized = level / STIPPLE_LEVELS;
           const diffusion = (value - quantized) * .85;

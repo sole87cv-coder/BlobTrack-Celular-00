@@ -448,17 +448,27 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Contratos preservados:** núcleo puro, `minAreaRatio=0.00025` (piso 6 px), `maxAreaRatio=0.72`, S3, S9, reatividade intocável, Pontilhado = pontos pretos formando a imagem.
 - **Validação local:** `npm test` **282/282**, `node --check` OK, `git diff --check` limpo, bench 3× válidas p95 `1,042 / 1,299 / 1,094 ms` (teto `1,347 ms`; outlier `1,481 ms` repetido e descartado). Publicado no commit `e49bcc6`, deploy confirmado no oficial. **Medido no aparelho: nada** no momento da publicação.
 
-## 44. Hotfix de travamento no rastreio (v93, preparado em local; sem commit/push/deploy)
+## 44. Hotfix de travamento no rastreio (v93, publicado em `0861271`)
 
-- **Sintoma reportado pelo V1su4rt:** teste físico no celular após v92 — melhorias visuais ok, mas o app trava totalmente.
-- **Causa provável corrigida:** o Hungarian (P6) podia degenerar em loop/corrupção de potenciais quando trilhas elegíveis não tinham nenhum blob dentro do gate (linha toda `INF`). Em rastreio real isso é comum.
-- **Correção:** `src/domain/blobTrackerCore.js` filtra apenas trilhas viáveis (com pelo menos um candidato no gate) antes do Hungarian; adiciona guarda `delta >= INF/2` com saída segura; mantém fast path 1×1 e fallback greedy só para casos >12. Contratos S3/S9 preservados.
-- **Validação local:** `npm test` **282/282**, `node --check` OK, `git diff --check` limpo. **Nada publicado** até autorização Y/N. **Medido no Realme C67: nada** — confirmar no aparelho se o travamento total sumiu e `cacheVersion: blobtrack-celular-00-v94`.
+- **Sintoma:** teste físico no Realme C67 após v92 — melhorias visuais ok, mas app travava totalmente.
+- **Causa provável:** Hungarian (P6) podia degenerar quando trilhas elegíveis não tinham blob no gate (linha toda `INF`).
+- **Correção:** filtra só trilhas viáveis antes do Hungarian; guarda `delta >= INF/2` com saída segura; mantém fast path 1x1 e fallback greedy só para casos >12. Contratos S3/S9 preservados.
+- **Validação local:** `npm test` 282/282, `node --check` OK, `git diff --check` limpo. Deploy confirmado no oficial.
+- **Medido no aparelho:** sem nova medição pós-hotfix nesta rodada.
 
-## 45. Remoção do modo diagnóstico `?perf=1` (v94, preparado localmente; sem commit/push/deploy)
+## 45. Remoção do `?perf=1` e coerência Vídeo original/Janela viva (v94, publicado em `cb06d15`)
 
-- **O que saiu:** painel `perfDiag`/`perfDump`, `window.__blobtrackPerf`, `src/core/perfProbe.js`, testes `tests/core/perf-probe.test.js` e `tests/perf-diag.test.js`, chaves i18n de diagnóstico e instrumentação por etapa em `src/app.js`/`src/render/render.js`.
-- **O que ficou:** `window.__blobtrackMetrics` (leitura básica), contratos congelados do rastreador/render/áudio/gravação/SW strategy (só número do cache muda).
+- **Saiu:** painel `perfDiag`/`perfDump`, `window.__blobtrackPerf`, `src/core/perfProbe.js`, testes perf, chaves i18n de diagnóstico e instrumentação por etapa.
+- **Ficou:** `window.__blobtrackMetrics` (leitura básica). Estratégia do SW inalterada, só cache sobe.
+- **B2:** `showOriginalVideo` — ON = câmera como base reconhecível; OFF = visual mais estilizado sem vídeo cru. Migração: pref antiga `originalVideoWindows` vira `showOriginalVideo=true`.
 - **Cache:** `blobtrack-celular-00-v94`.
-- **Validação local:** pendente nesta rodada (rodar `npm test`, `node --check`, `git diff --check`, bench 3× p95 ≤ `1,347 ms` antes de publicar).
-- **Medido no aparelho: nada.** Confirmar no Realme C67 que o app abre normal sem `?perf=1` e que o cache atualiza para v94.
+- **Validação local:** `npm test` 269/269, `node --check` OK, `git diff --check` limpo, bench 3x p95 1,373/1,232/1,103 ms (1ª acima por ruído; 2ª/3ª abaixo do teto 1,347 ms). Deploy confirmado no oficial.
+- **Medido no aparelho: nada.**
+
+## 46. Restauração visual dos efeitos principais (v95, 1a)
+
+- **Pedido:** restaurar qualidade visual dos efeitos principais como antes de 05:57 (-0300), opção 1a (só visual, mantendo comportamento B2 dos botões).
+- **Mudança:** `src/render/render.js` — `STIPPLE_LEVELS` 24→12 e remoção do boost de contraste/tom do Pontilhado OFF; volta à curva visual de `f43594f` para o Pontilhado. Inverter/P&B mantêm a lógica de render atual; comportamento B2 (`showOriginalVideo`) preservado.
+- **Cache:** `blobtrack-celular-00-v95`.
+- **Validação local:** `npm test` 269/269, `node --check` OK em `src/app.js src/render/render.js sw.js`, `git diff --check` limpo, bench 3x p95 1,235/1,121/1,243 ms (teto 1,347 ms).
+- **Medido no aparelho: nada.** Confirmar no Realme C67: cache v95, qualidade visual de Inverter/P&B/Pontilhado, e Pontilhado OFF reconhecível com `estipple.n > 0` quando selecionado.
