@@ -1045,15 +1045,10 @@ export function createRender({
         const filter = state.effect === 'invert' ? 'invert(1)' : 'grayscale(1) contrast(6)';
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied, filter);
       }
-      // Blobs muito grandes (quase tela inteira) ficam invasivos: mant?m detec??o/sinais, mas
-      // evita janela/overlays reativos gigantes. N?o filtra os 3 efeitos de imagem (styled/dither).
-      const INVASIVE_BLOB_AREA = 0.45;
-      const displayBlobs = result.blobs.filter(b => (b.area || 0) <= INVASIVE_BLOB_AREA);
-      const overlayBlobs = displayBlobs; // blobs gigantes n?o viram janela/overlay invasivo
-      // Com Pontilhado ligado o v?deo n?o entra na composi??o: os pontos s?o a imagem gravada.
+      // Com Pontilhado ligado o v├¡deo n├úo entra na composi├º├úo: os pontos s├úo a imagem gravada.
       if (state.videoWindows && !dotted && !styled) {
         const windowStarted = performance.now();
-        drawRawVideoWindows(c, overlayBlobs, viewWidth, viewHeight, offsetX, source, applied);
+        drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
       }
       if (state.showMask) {
@@ -1074,16 +1069,16 @@ export function createRender({
         c.restore();
       }
       const wantsViewPoints = state.waveEffect || state.meshEffect || state.networkEffect || state.distanceTelemetry;
-      const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(overlayBlobs, viewWidth, viewHeight) : 0;
-      // Quando os dois efeitos ligam juntos, Guias e Dist?ncia dividem esta lista
-      // para nenhum r?tulo pisar no outro. Com um efeito s?, o desenho ? o de sempre.
+      const blobViewCount = wantsViewPoints ? prepareBlobViewPoints(result.blobs, viewWidth, viewHeight) : 0;
+      // Quando os dois efeitos ligam juntos, Guias e Dist├óncia dividem esta lista
+      // para nenhum r├│tulo pisar no outro. Com um efeito s├│, o desenho ├® o de sempre.
       const labelOccupied = state.overlay && state.distanceTelemetry ? [] : null;
       const overlayStarted = performance.now();
       if (state.trailEffect) drawTrails(c, viewWidth, viewHeight, offsetX);
-      if (state.waveEffect) drawWaves(c, overlayBlobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
-      if (state.meshEffect) drawMesh(c, overlayBlobs, viewWidth, viewHeight, offsetX, blobViewCount);
-      if (state.networkEffect) drawBlobNetwork(c, overlayBlobs, viewWidth, viewHeight, offsetX, blobViewCount);
-      if (state.distanceTelemetry) drawDistanceTelemetry(c, overlayBlobs, viewWidth, viewHeight, offsetX, blobViewCount, labelOccupied);
+      if (state.waveEffect) drawWaves(c, result.blobs, viewWidth, viewHeight, offsetX, performance.now(), blobViewCount);
+      if (state.meshEffect) drawMesh(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
+      if (state.networkEffect) drawBlobNetwork(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount);
+      if (state.distanceTelemetry) drawDistanceTelemetry(c, result.blobs, viewWidth, viewHeight, offsetX, blobViewCount, labelOccupied);
       overlayCost += performance.now() - overlayStarted;
       if (state.overlay && state.lastSignal) {
         const cellW = viewWidth / 3;
