@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
@@ -50,7 +50,9 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes('grid.error[below] += diffusion * 5 / 16'));
   assert.ok(render.includes('const dotScale = Math.min(scaleX, scaleY);'));
   assert.ok(render.includes('if (screenX + r < 0 || screenX - r > viewWidth || y + r < 0 || y - r > viewHeight) continue;'));
-  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors)'));
+  assert.ok(render.includes('drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, { blobs: result.blobs }, colors)'));
+  assert.ok(render.includes('const blobRects = clipRect?.blobs'));
+  assert.ok(render.includes('for (const [l, t, r, b] of blobRects) c.rect(l, t, r - l, b - t);'));
   assert.ok(render.includes("const paper = colors?.paper || '#fff';"));
   assert.ok(render.includes("const dot = colors?.dot || '#000';"));
   assert.ok(!render.includes('DOT_CELL'));
@@ -170,7 +172,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v103'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v104'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -364,5 +366,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v103'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v104'"));
 });

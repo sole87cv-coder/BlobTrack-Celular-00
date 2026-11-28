@@ -1,4 +1,4 @@
-import { BlobTracker } from './blob-tracker.js';
+﻿import { BlobTracker } from './blob-tracker.js';
 import { deviceProfile as createDeviceProfile } from './core/deviceProfile.js';
 import { updateQualityBudgets } from './core/qualityController.js';
 import { clamp, fmt, formatRecordingTime, recordingFileName, hasRecordingStorageHeadroom } from './core/utils.js';
@@ -709,7 +709,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v103',
+    cacheVersion: 'blobtrack-celular-00-v104',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,

@@ -660,7 +660,7 @@ test('binarizada só publica no canvas quando a máscara muda', () => {
   assert.equal(puts, 2, 'nova máscara igual não repinta');
 });
 
-test('WebGL mantém uEffect 2 com fundo preto no Pontilhado', () => {
+test('WebGL mant?m fundo preto no Pontilhado (pontos s? nos blobs no overlay)', () => {
   const uniforms = Object.fromEntries([
     'uTexture', 'uEffect', 'uThreshold', 'uBias', 'uExposure', 'uGrowth', 'uSpeed', 'uTime',
     'uImageAspect', 'uViewportAspect', 'uMirror', 'uFlip', 'uFit',
@@ -668,7 +668,7 @@ test('WebGL mantém uEffect 2 com fundo preto no Pontilhado', () => {
   const program = {}, texture = {};
   const calls = [];
   const gl = {
-    TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TRIANGLE_STRIP: 4,
+    TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TRIANGLE_STRIP: 4, COLOR_BUFFER_BIT: 16384,
     useProgram(value) { calls.push(['useProgram', value]); },
     bindTexture(target, value) { calls.push(['bindTexture', target, value]); },
     texImage2D(...args) { calls.push(['texImage2D', ...args]); },
@@ -677,6 +677,8 @@ test('WebGL mantém uEffect 2 com fundo preto no Pontilhado', () => {
     uniform1f(name, value) { calls.push([name, value]); },
     viewport() {},
     drawArrays() { calls.push(['drawArrays']); },
+    clearColor(...args) { calls.push(['clearColor', ...args]); },
+    clear(value) { calls.push(['clear', value]); },
   };
   const state = makeState({ effect: 'dither', timing: {} });
   const video = { videoWidth: 640, videoHeight: 360 };
@@ -694,14 +696,9 @@ test('WebGL mantém uEffect 2 com fundo preto no Pontilhado', () => {
 
   assert.ok(calls.some(([name, value]) => name === 'useProgram' && value === program));
   assert.ok(calls.some(([name, target, value]) => name === 'bindTexture' && target === gl.TEXTURE_2D && value === texture));
-  assert.ok(calls.some(([name, , , , , , source]) => name === 'texImage2D' && source === video));
-  assert.equal(calls.filter(([name]) => name === 'texImage2D').length, 1);
-  assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === 2));
-  assert.ok(calls.some(([name]) => name === 'drawArrays'));
-
-  render.renderFrame({ threshold: 0.1 }, video);
-  assert.equal(calls.filter(([name]) => name === 'texImage2D').length, 1, 'textura não é realocada');
-  assert.ok(calls.some(([name, , , , , , , source]) => name === 'texSubImage2D' && source === video));
+  assert.ok(calls.some(([name]) => name === 'clearColor'));
+  assert.ok(calls.some(([name]) => name === 'clear'));
+  assert.ok(!calls.some(([name]) => name === 'drawArrays'), 'Pontilhado GL n?o desenha frame inteiro; pontos ficam no overlay');
 });
 
 test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
@@ -714,10 +711,12 @@ test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
   for (const [effect, expected] of [['invert', 0], ['threshold', 1], ['dither', 2], ['plain', 3]]) {
     const calls = [];
     const gl = {
-      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TRIANGLE_STRIP: 4,
+      TEXTURE_2D: 1, RGBA: 2, UNSIGNED_BYTE: 3, TRIANGLE_STRIP: 4, COLOR_BUFFER_BIT: 16384,
       useProgram() {}, bindTexture() {}, texImage2D() {}, texSubImage2D() {},
       uniform1i(name, value) { calls.push([name, value]); },
-      uniform1f() {}, viewport() {}, drawArrays() {},
+      uniform1f() {}, viewport() {}, drawArrays() { calls.push(['drawArrays']); },
+      clearColor(...args) { calls.push(['clearColor', ...args]); },
+      clear(value) { calls.push(['clear', value]); },
     };
     const render = createRender({
       state: makeState({ effect, timing: {} }), video, gl,
@@ -729,7 +728,12 @@ test('WebGL liga Inverter e Preto e branco no quadro todo', () => {
       gridPoint: new Float32Array(2),
     });
     render.renderFrame({}, video);
-    assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === expected), effect);
+    if (effect === 'dither') {
+      assert.ok(calls.some(([name]) => name === 'clearColor'), 'dither limpa fundo preto');
+      assert.ok(!calls.some(([name]) => name === 'drawArrays'), 'dither n?o desenha frame inteiro no GL');
+    } else {
+      assert.ok(calls.some(([name, value]) => name === 'uEffect' && value === expected), effect);
+    }
   }
 });
 

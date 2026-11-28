@@ -1,4 +1,4 @@
-# @V1su4rt
+﻿# @V1su4rt
 
 O BlobTrack transforma movimento visto pela câmera em manchas chamadas blobs. Os centros e as trajetórias dos blobs movem efeitos visuais e instrumentos de áudio reativo. É um instrumento audiovisual para navegador móvel; não identifica pessoas nem mede profundidade.
 
@@ -544,7 +544,7 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/` e confirme que o app carregou o cache `blobtrack-celular-00-v103` (recarregue duas vezes ou limpe dados do site se aparecer vers?o antiga). Depois ligue os efeitos desejados, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/` e confirme que o app carregou o cache `blobtrack-celular-00-v104` (recarregue duas vezes ou limpe dados do site se aparecer vers?o antiga). Depois ligue os efeitos desejados, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
 #### Diagn?stico removido (cache v94)
 

@@ -525,3 +525,12 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v103`.
 - **Validação local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,186/0,968/1,241 ms (teto 1,347 ms).
 - **Medido no aparelho: nada.** Confirmar no Realme C67 fluidez, ausência de flicker e ausência de regressão em sinais/áudio/3 efeitos.
+
+## 55. Pontilhado s? dentro dos blobs, fora preto (v104)
+
+- **Pedido:** Pontilhado deve ficar s? dentro dos blobs; fora dos blobs fundo preto.
+- **Mudan?a:** `paintStipple` recorta por ret?ngulos dos blobs (clip + paper/dots s? dentro); overlay de Pontilhado desenha apenas quando h? blobs, passando `{ blobs }`. Caminho GL do dither limpa o canvas principal para preto e delega pontos ao overlay. Sem blobs, resultado preto. Contrato preservado: Pontilhado = pontos pretos formando a imagem.
+- **Risco:** recorte por bbox do blob (n?o m?scara pixel a pixel) pode incluir cantos fora do contorno real do blob; aceit?vel para estabilidade/custo.
+- **Cache:** `blobtrack-celular-00-v104`.
+- **Valida??o local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,167/1,338/1,277 ms (teto 1,347 ms).
+- **Medido no aparelho: nada.** Confirmar no Realme C67: Pontilhado s? dentro dos blobs, fora preto, `estipple.n > 0`, sem regress?o em Inverter/P&B/reatividade.

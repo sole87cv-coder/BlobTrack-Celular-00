@@ -690,6 +690,13 @@ export function createRender({
       }
     }
     state.timing.camera = performance.now() - t0;
+    if (state.effect === 'dither') {
+      // Pontilhado: fundo preto no canvas principal; pontos s? dentro dos blobs no overlay.
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      state.timing.cycle = performance.now() - t0;
+      return;
+    }
     gl.uniform1i(uniforms.uTexture, 0);
     gl.uniform1i(
       uniforms.uEffect,
@@ -883,13 +890,27 @@ export function createRender({
     const baseY = state.gearVr ? cr[1] : -cr[1] * scaleY;
     const paper = colors?.paper || '#fff';
     const dot = colors?.dot || '#000';
+    const blobRects = clipRect?.blobs ? clipRect.blobs.map(blob => {
+      mapVideoPoint(blob.left, blob.top, viewWidth, viewHeight, mapPointA);
+      mapVideoPoint(blob.right, blob.bottom, viewWidth, viewHeight, mapPointB);
+      const l = offsetX + Math.min(mapPointA[0], mapPointB[0]) * viewWidth;
+      const t = Math.min(mapPointA[1], mapPointB[1]) * viewHeight;
+      const r = offsetX + Math.max(mapPointA[0], mapPointB[0]) * viewWidth;
+      const b = Math.max(mapPointA[1], mapPointB[1]) * viewHeight;
+      return [l, t, r, b];
+    }).filter(r => r[2] > r[0] && r[3] > r[1]) : null;
     c.save();
-    if (clipRect) {
+    if (blobRects) {
+      c.beginPath();
+      for (const [l, t, r, b] of blobRects) c.rect(l, t, r - l, b - t);
+      c.clip();
+      c.fillStyle = paper;
+      for (const [l, t, r, b] of blobRects) c.fillRect(l, t, r - l, b - t);
+    } else if (clipRect) {
       const clipW = clipRect[2] - clipRect[0], clipH = clipRect[3] - clipRect[1];
       c.beginPath();
       c.rect(clipRect[0], clipRect[1], clipW, clipH);
       c.clip();
-      // O papel vive s├│ dentro do blob; fora dele o fundo preto permanece.
       c.fillStyle = paper;
       c.fillRect(clipRect[0], clipRect[1], clipW, clipH);
     }
@@ -904,10 +925,12 @@ export function createRender({
       const y = baseY + stippleGrid.dotY[i] * scaleY;
       const r = Math.max(.35, stippleGrid.dotR[i] * dotScale);
       const screenX = offsetX + (mirrorX ? viewWidth - x : x);
-      // Poda o que est├í fora da tela e, quando h├í recorte, o que est├í fora do blob.
       if (screenX + r < 0 || screenX - r > viewWidth || y + r < 0 || y - r > viewHeight) continue;
-      if (clipRect && (screenX + r < clipRect[0] || screenX - r > clipRect[2]
-        || y + r < clipRect[1] || y - r > clipRect[3])) continue;
+      if (blobRects) {
+        let inside = false;
+        for (const [l, t, rr, b] of blobRects) { if (screenX + r >= l && screenX - r <= rr && y + r >= t && y - r <= b) { inside = true; break; } }
+        if (!inside) continue;
+      } else if (clipRect && (screenX + r < clipRect[0] || screenX - r > clipRect[2] || y + r < clipRect[1] || y - r > clipRect[3])) continue;
       c.moveTo(x + r, y);
       c.arc(x, y, r, 0, STIPPLE_TAU);
     }
@@ -1031,13 +1054,12 @@ export function createRender({
         const sample = result.pixels && result.pixelWidth && result.pixelHeight
           ? { data: result.pixels, width: result.pixelWidth, height: result.pixelHeight }
           : null;
-        const clip = blobsClipRect(result.blobs, viewWidth, viewHeight, offsetX);
-        if (clip) {
-          // Inverter v├¡deo passa a ser o negativo do Pontilhado: pontos brancos em papel preto.
+        if (result.blobs.length) {
+          // Pontilhado s? dentro dos blobs; fora dos blobs fica fundo preto.
           const colors = state.invertBlend
             ? { paper: '#000', dot: '#fff' }
             : { paper: '#fff', dot: '#000' };
-          drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
+          drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, { blobs: result.blobs }, colors);
         }
       }
       // Inverter e Preto e branco pintam o v├¡deo s├│ dentro dos blobs, por cima do fundo.
