@@ -998,7 +998,7 @@ export function createRender({
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
-    if (state.showMask) {
+    if (state.showMask || dotted) {
       const resized = maskCanvas.width !== result.width || maskCanvas.height !== result.height;
       if (resized) {
         maskCanvas.width = result.width;
@@ -1009,7 +1009,8 @@ export function createRender({
       const image = maskImage;
       const mask = result.mask;
       const packed = maskView || (maskView = new Uint32Array(image.data.buffer));
-      const ON = 0xFFFFFFFF, OFF = 0xFF000000;
+      // Alfa real: permite recortar o Pontilhado por destination-in sem vazar no retângulo.
+      const ON = 0xFFFFFFFF, OFF = 0x00000000;
       let changed = resized;
       for (let i = 0, n = mask.length; i < n; i++) {
         const value = mask[i] ? ON : OFF;
@@ -1046,6 +1047,24 @@ export function createRender({
             ? { paper: '#000', dot: '#fff' }
             : { paper: '#fff', dot: '#000' };
           drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
+          // Recorta o Pontilhado pela máscara real dos blobs para não vazar no retângulo.
+          if (maskCanvas.width && maskCanvas.height) {
+            if (state.gearVr) {
+              calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+            } else {
+              calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+            }
+            c.save();
+            c.globalCompositeOperation = 'destination-in';
+            c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+            c.scale(mirrorX ? -1 : 1, 1);
+            if (state.gearVr) {
+              c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+            } else {
+              c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+            }
+            c.restore();
+          }
         }
       }
       // Inverter e Preto e branco pintam o vídeo só dentro dos blobs, por cima do fundo.

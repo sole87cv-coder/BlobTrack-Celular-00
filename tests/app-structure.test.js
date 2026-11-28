@@ -56,6 +56,8 @@ test('Pontilhado é pointillism: fundo preto, papel só no blob e pontos pretos'
   assert.ok(render.includes('const rects = clipRect ? (Array.isArray(clipRect[0]) ? clipRect : [clipRect]) : null;'));
   assert.ok(render.includes('// os pontos só aparecem onde há blob, não no espaço vazio entre eles.'));
   assert.ok(render.includes('for (const r of rects) c.rect(r[0], r[1], r[2] - r[0], r[3] - r[1]);'));
+  assert.ok(render.includes("c.globalCompositeOperation = 'destination-in';"));
+  assert.ok(render.includes('// Recorta o Pontilhado pela máscara real dos blobs para não vazar no retângulo.'));
   assert.ok(!render.includes('DOT_CELL'));
   assert.ok(!render.includes('DOT_RADIUS_SQ'));
   assert.ok(!render.includes('if (!mask[i]) { packed[i] = 0; continue; }'));
@@ -173,7 +175,7 @@ test('blob signals are delivered in the same frame with the AudioContext clock',
   assert.ok(flushIndex > queueIndex);
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v90'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v91'"));
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -369,5 +371,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('// Com Distância ligada, as guias ficam no canto oposto (inferior direito).'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v90'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v91'"));
 });

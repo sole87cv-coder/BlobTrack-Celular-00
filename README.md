@@ -28,7 +28,7 @@ Requisitos: Node.js 20 ou mais recente para testes e Python instalado para servi
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v90`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
+Abra `http://localhost:8000` no navegador e toque em **Iniciar câmera**. Os atalhos `start-local.bat` (Windows) e `start-local.sh` (macOS/Linux) fazem o mesmo e já usam a porta 8000. Permissão de câmera exige HTTPS ou `localhost`; `file://` não funciona. O app não usa microfone. **Link oficial: `https://blobtrak.vercel.app/`.** Cache offline `v91`; o painel no celular entrou em `v64`, o kit começou em `v62` e o P0 anterior foi `v61`. Não use espelhos nem sufixos de prova (`?v=...final`); `?perf=1` continua servindo só para medir, quando você pedir.
 
 Se a página local parecer desatualizada, o servidor não é o culpado: o service worker pode estar servindo arquivos antigos. Abra DevTools → Application → Service Workers → **Unregister** e recarregue (ou apenas recarregue duas vezes). Para instalar no celular, publique num endereço HTTPS; no iPhone, abra no Safari e escolha **Compartilhar → Adicionar à Tela de Início**.
 
@@ -309,6 +309,16 @@ Na sincronia (P0), o pacote de som sai **no mesmo quadro** em que a imagem é an
 
 🟢 Pode mexer: os arquivos são `src/audio-processor.js`, `src/audio/audio.js` e a montagem do payload em `src/app.js`; o rastreador, a assinatura de `src/blob-tracker.js`, a reatividade e a estratégia de cache do `sw.js` continuam intactos. 🟡 Meça e teste: rode `npm test`, `node --check` nos arquivos de runtime, `git diff --check` e o bench 3× (teto p95 ≤ `1,347 ms`). 🔴 Contrato congelado: `baseFrequency` e a suíte de ritmo antiga continuam iguais; o modo de faixas é uma camada separada, ligada pelo app. Nada de latência foi medido no Realme C67 — `lag` no celular e a preferência por faixa ainda precisam de validação no aparelho.
 
+#### Pontilhado recortado pela máscara real do blob (cache v91)
+
+O v90 tirou o vão entre blobs, mas o recorte ainda era por **retângulo** de cada blob. Nos cantos do retângulo, fora da silhueta real, o papel/pontos podiam vazar. Agora o Pontilhado é recortado pela **máscara real** dos blobs (`result.mask`): depois de desenhar os pontos, o render aplica `destination-in` com a máscara na mesma transformação (espelho/crop/Gear VR). O que está fora da forma do blob fica transparente.
+
+**O que mudou, em linguagem simples:** antes era como colar um adesivo quadrado em volta da pessoa; agora é como recortar no contorno dela.
+
+**Não muda:** rastreador, reatividade, composição do MP4, Gear VR, Inverter como negativo, difusão Floyd–Steinberg, 24 níveis, grão, potência `.68` e a regra de que o Pontilhado não vira pontos só na máscara.
+
+🟢 Pode mexer: `src/render/render.js`, as travas em `tests/` e o número do cache. 🟡 Meça e teste: `npm test` **280/280**, `node --check` limpo no runtime alterado, `git diff --check` limpo e bench 3× com p95 `1,276 / 1,275 / 1,270 ms` (teto `1,347 ms`; uma rodada inicial deu `3,715 ms` por ruído da máquina e foi repetida). **Medido no aparelho: nada.** A conferência no Realme C67 segue pendente: escolha **Pontilhado**, confirme `estipple.n > 0`, veja se não há vazamento nos cantos/contorno dos blobs, salve um MP4 e use `?perf=1` (`sondaGl: false`, `glReadback.n: 0`). 🔴 Contrato congelado: pointillism continua sendo pontos pretos formando a imagem; rastreador, reatividade, gravação e estratégia do `sw.js` (só o número muda) continuam iguais.
+
 #### Pontilhado com degradê suave e recorte só nos blobs (cache v90)
 
 Dois ajustes pedidos pelo V1su4rt no Pontilhado:
@@ -517,7 +527,7 @@ O V1su4rt relatou travamento ao gravar e, sobretudo, ao salvar no Realme C67. Qu
 
 **Publicado em 27/11/2026:** o site oficial (`blobtrak.vercel.app`) respondeu `sw.js` com `blobtrack-celular-00-v61` e HTTP 200. Antes do deploy, `npm test` passou 232/232, `node --check` e `git diff --check` ficaram limpos, e o bench deu p95 de `1,086 / 0,966 / 1,153 ms` nas 3 rodadas (teto `1,347 ms`). O ganho no Realme C67 ainda é **não medido**: o teste manual no link da Vercel é quem vai confirmar.
 
-Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v90`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
+Para conferir no celular: abra `https://blobtrak.vercel.app/?perf=1`, toque em **Diagnóstico** no canto superior direito e confirme no JSON o campo `cacheVersion` (`blobtrack-celular-00-v91`). Se aparecer versão antiga, feche o app, reabra e recarregue duas vezes. Depois ligue **Todos os efeitos** por 2 min, grave 1 min, pare e **salve** o MP4; anote se travou em algum passo.
 
 #### Kit de medição — diagnóstico cirúrgico (cache v77)
 
@@ -526,7 +536,7 @@ O app ganhou um medidor **desligado por padrão**. Ele não muda nenhum efeito e
 **Como usar no próprio celular — sem computador, sem `chrome://inspect`:**
 
 1. Abra `https://blobtrak.vercel.app/?perf=1` no Chrome do Realme C67. Sem o `?perf=1`, o custo é zero e nada aparece.
-2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v90"` e `sondaGl: false`.
+2. Toque em **Diagnóstico** no canto superior direito. Confira `cacheVersion: "blobtrack-celular-00-v91"` e `sondaGl: false`.
 3. Toque em **Zerar**, rode o cenário (ex.: todos os efeitos por 30 s) e toque em **Atualizar**.
 4. Toque em **Copiar** e cole o texto aqui na conversa. Se o Chrome não der permissão de área de transferência, toque em **Compartilhar** e envie para o WhatsApp, ou segure o texto no painel e selecione tudo.
 
@@ -595,7 +605,7 @@ O limite mínimo de área é `minAreaRatio=0,00025` (piso de 6 pixels), e o máx
 
 ## Documentação
 
-- [Diagnóstico atual (v85–v90)](docs/diagnostico-atual.md)
+- [Diagnóstico atual (v85–v91)](docs/diagnostico-atual.md)
 - [Diagnóstico cirúrgico e prioridades](docs/diagnostico-cirurgico.md)
 - [Benchmark e baseline](docs/blobtrack-benchmark.md)
 - [Medições antes/depois e decisões rejeitadas](docs/perf-antes-depois.md)
