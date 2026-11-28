@@ -560,3 +560,13 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v109`.
 - **Valida??o local:** `npm test` 270/270 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,082/1,259/1,162 ms (teto 1,347 ms).
 - **Medido no aparelho: nada.** Repetir `?diag=1` no Realme C67 e enviar `.txt`.
+
+## 59. Auditoria emulador + hot path de ?udio imediato (v110)
+
+- **Base:** diagn?stico cir?rgico pedido pelo V1su4rt (?rf?os/bugs, TOM, blob, coer?ncia ?udio?blob) + auditoria no emulador Android `BlobTrackEmulator`.
+- **Emulador (medido, pr?-checagem):** `android/start-emulador.ps1 -SemApk`, CDP `9222`, `node scripts/qa-emulador.mjs`. P?gina oficial carregou com WebGL2, efeitos `invert/threshold/dither`, 4 abas, toggles OK, `consoleErrors: []`, SW `https://blobtrak.vercel.app/sw.js`. Sess?o de c?mera n?o iniciada pelo script (`camera aguardando`, blobs/fps nulos). Grava??o reportada como n?o suportada no Chrome do emulador (observa??o de ambiente, **n?o medida no Realme C67**).
+- **Mudan?a segura (c?digo):** `src/app.js` envia sinal de ?udio com `audioBus.send(...)` imediato no quadro de captura, removendo `queueSignals+flushSignals` redundante (cancelamento de rAF). `src/audio-processor.js` ganhou coment?rio marcando `PRESETS/SpawnPolicy` como caminho legado/testado, n?o usado pelo app principal. Sem tocar S3/S9, reatividade ou visual dos 3 efeitos.
+- **Risco:** baixo; comportamento funcional esperado igual/melhor (menos churn de rAF). Caminho preset continua testado, apenas documentado.
+- **Cache:** `blobtrack-celular-00-v110`.
+- **Valida??o local:** `npm test` 270/270 pass, `node --check src/app.js src/audio-processor.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,498/1,515/5,968 ms (ru?do ambiental, 3? acima do teto) e rerun 1,235/1,238/1,319 ms (abaixo do teto 1,347 ms); mudan?a fora do hot path do core.
+- **Medido no aparelho por mim: nada.** Pendente reteste `?diag=1` no Realme C67 sem mexer no detalhe do rastreio.

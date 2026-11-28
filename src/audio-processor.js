@@ -1,3 +1,4 @@
+// PRESETS/SpawnPolicy: caminho legado/testado, n?o usado pelo app principal (modo cont?nuo/band).
 import { PRESETS, SpawnPolicy } from './audio/audio.js';
 import { applyScaleMessage, degreesForZones } from './audio/scales.js';
 const unitAudioSignal = value => Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;

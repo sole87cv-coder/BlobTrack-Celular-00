@@ -737,8 +737,8 @@ function updateSignals(raw, dt, blobs = [], now = performance.now()) {
   // Sem porta, com som desligado, mudo ou no modo "Só visual", não há por que montar o payload.
   if (state.audioEnabled && !state.muted && !state.visualOnly && typeof state.worklet?.port?.postMessage === 'function') {
     const audioTime = Number.isFinite(state.audio?.currentTime) ? state.audio.currentTime : null;
-    audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, capturedAt:now, audioTime, frameTime: now });
-    audioBus.flushSignals();
+      // P0: envio imediato no mesmo quadro da captura (sem agendar/cancelar rAF).
+      audioBus.send({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map(blob=>({id:blob.id,x:blob.x,y:blob.y,size:blob.area,speed:blob.speed}))}, master:m, muted:state.muted, sensitivity:state.audioSensitivity, audioEnabled:state.audioEnabled&&!state.visualOnly, capturedAt:now, audioTime, frameTime: now });
   }
   state.timing.bus = performance.now() - t0;
   return applied;
@@ -831,7 +831,7 @@ function publishBlobTrackMetrics(now, result) {
     if (age >= 0 && age < 60) idsNewLast60s += idEventCounts[slot];
   }
   window.__blobtrackMetrics = {
-    cacheVersion: 'blobtrack-celular-00-v109',
+    cacheVersion: 'blobtrack-celular-00-v110',
     fps: state.performance.fpsAverage,
     tAnalysis: state.performance.analysisAverage,
     tRender: state.performance.renderAverage,

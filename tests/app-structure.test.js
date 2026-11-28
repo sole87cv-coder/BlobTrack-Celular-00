@@ -166,13 +166,12 @@ test('efeitos have a real room, stereo chorus, fades and pruned buffers', async 
 });
 
 test('blob signals are delivered in the same frame with the AudioContext clock', () => {
-  const queueIndex = app.indexOf('audioBus.queueSignals({ type:\'signals\'');
-  const flushIndex = app.indexOf('audioBus.flushSignals();');
-  assert.ok(queueIndex > 0);
-  assert.ok(flushIndex > queueIndex);
+  const sendIndex = app.indexOf("audioBus.send({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map");
+  assert.ok(sendIndex > 0, 'signal send is immediate in capture frame');
   assert.ok(app.includes('capturedAt:now, audioTime'));
   assert.ok(app.includes('bandMode:true'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v109'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v110'"));
+  assert.ok(!app.includes("audioBus.queueSignals({ type:'signals', signals:{...e,zones:[...e.zones],blobs:blobs.map"), 'hot path should not queue+flush signal rAF');
 });
 
 test('camera loop initializes the device profile factory before using its FPS', () => {
@@ -367,5 +366,5 @@ test('guias e distâncias se acomodam em cantos opostos sem mudar o efeito isola
   assert.ok(source.includes('placeOverlayLabel(c, label, candidates, occupied)'));
   assert.equal(source.split('placeOverlayLabel(c, label, candidates, labelOccupied)').length - 1, 2);
   assert.ok(source.includes('if (labelOccupied) c.restore();'));
-  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v109'"));
+  assert.ok(app.includes("cacheVersion: 'blobtrack-celular-00-v110'"));
 });
