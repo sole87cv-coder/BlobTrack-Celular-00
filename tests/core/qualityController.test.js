@@ -6,24 +6,24 @@ function state(overrides = {}) {
   return { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, ...overrides };
 }
 
-test('quality controller reduces width after 12 analysis frames above half interval', () => {
+test('quality controller reduces width after 8 frames above total budget', () => {
   let perf = state();
   let result;
-  for (let frame = 0; frame < 12; frame++) {
+  for (let frame = 0; frame < 8; frame++) {
     result = updateQualityBudgets(perf, 30, 2, 40, 320, 480);
     perf = result;
   }
-  assert.equal(result.trackingWidth, 240);
+  assert.equal(result.trackingWidth, 280);
 });
 
-test('quality controller recovers width after 180 frames under 29.4 percent interval', () => {
+test('quality controller recovers width after 180 frames under total budget', () => {
   let perf = state();
   let result;
   for (let frame = 0; frame < 180; frame++) {
     result = updateQualityBudgets(perf, 2, 2, 40, 320, 480);
     perf = result;
   }
-  assert.equal(result.trackingWidth, 400);
+  assert.equal(result.trackingWidth, 360);
 });
 
 test('render cost never pauses reactive effects', () => {
@@ -35,6 +35,16 @@ test('render cost never pauses reactive effects', () => {
   }
   assert.equal(result.renderPause, undefined);
   assert.equal(result.renderSlowFrames, undefined);
-  assert.ok(result.renderAverage > 15, 'média de render continua medidas');
-  assert.equal(result.trackingWidth, 320, 'render caro não muda o rastreio');
+  assert.ok(result.renderAverage > 15, 'm?dia de render continua medida');
+  assert.equal(result.trackingWidth, 320, 'render caro sozinho n?o reduz rastreio');
+});
+
+test('quality controller allows extreme low floor at 120px', () => {
+  let perf = state();
+  let result;
+  for (let frame = 0; frame < 40; frame++) {
+    result = updateQualityBudgets(perf, 30, 10, 40, result?.trackingWidth ?? 320, 480);
+    perf = result;
+  }
+  assert.equal(result.trackingWidth, 120);
 });

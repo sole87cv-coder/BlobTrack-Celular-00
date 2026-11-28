@@ -542,3 +542,12 @@ _Atualizado: a `v65` separou `readbackDraw`/`readbackPixels` e acrescentou `fps`
 - **Cache:** `blobtrack-celular-00-v107`.
 - **Valida??o local:** `npm test` 269/269 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,637/1,622/1,562 ms; rerun 1,410/1,463/1,399 ms (acima do teto 1,347 ms; ru?do ambiente, mudan?a fora do hot path do core).
 - **Medido no aparelho: nada.** Usar `https://blobtrak.vercel.app/?diag=1` no Realme C67 e coletar n?meros.
+
+## 57. AutoQuality mais agressivo para fluidez no celular (v108)
+
+- **Base:** diag v107 no Realme C67 mostrou `fps avg 7.6`, `analise avg 103.4 ms`, rastreio preso em 160 px, `limite: 1`.
+- **Mudan?a segura:** `qualityController` agora considera custo total (an?lise + render), reage mais r?pido (4 frames em sobrecarga extrema, 8 normal), degraus de 40 px e piso m?nimo 120 px. App/slider aceitam 120 px (`Muito r?pido`). Sem tocar S3/S9, reatividade ou visual dos 3 efeitos.
+- **Risco:** rastreio em 120 px pode perder blobs pequenos/detalhe; troca por fluidez em aparelho fraco.
+- **Cache:** `blobtrack-celular-00-v108`.
+- **Valida??o local:** `npm test` 270/270 pass, `node --check src/app.js src/render/render.js src/domain/blobTrackerCore.js sw.js` OK, `git diff --check` limpo, bench 3x p95 1,270/1,372/1,289 ms (1 com ru?do) e rerun 1,277/1,070/1,254 ms (abaixo do teto 1,347 ms); mudan?a fora do hot path do core.
+- **Medido no aparelho: nada.** Repetir `?diag=1` no Realme C67 e comparar fps/analise/rastreio.
