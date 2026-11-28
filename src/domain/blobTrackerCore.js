@@ -18,6 +18,8 @@ export class BlobTrackerCore {
     this.calibrationFrameCount = 0;
     this.visited = null;
     this.queue = null;
+    this.absorbStamp = null;
+    this.absorbStampId = 0;
     this.nextId = 1;
     this.idsNew = 0;
     this.tracks = Array.from({ length: maxBlobs }, () => ({
@@ -30,6 +32,7 @@ export class BlobTrackerCore {
     this.matchedBlobs = new Uint8Array(maxBlobs);
     this.zonePixels = new Uint32Array(6);
     this.roiZonePixels = new Uint32Array(6);
+    this.roiSampleCount = 0;
     this.zoneHits = new Uint32Array(6);
     this.zoneCoverage = new Float64Array(6);
     this.zoneValues = new Array(6).fill(0);
@@ -75,11 +78,15 @@ export class BlobTrackerCore {
     this.calibrationFrameCount = 0;
     this.visited = new Uint8Array(count);
     this.queue = new Int32Array(count);
+    this.absorbStamp = new Uint16Array(count);
+    this.absorbStampId = 0;
     this.zoneColumns = new Uint8Array(width);
     this.zoneRows = new Uint8Array(height);
     this.tileColumns = new Uint8Array(width);
     this.tileRows = new Uint8Array(height);
     this.zonePixels.fill(0);
+    this.roiZonePixels.fill(0);
+    this.roiSampleCount = 0;
     for (let x = 0; x < width; x++) {
       this.zoneColumns[x] = Math.min(2, Math.floor(x * 3 / width));
       this.tileColumns[x] = Math.min(15, Math.floor(x * 16 / width));
@@ -102,7 +109,6 @@ export class BlobTrackerCore {
     const safeThreshold = Math.min(1, Math.max(0, Number.isFinite(threshold) ? threshold : 0.18));
     this.resize(width, height);
     const count = width * height;
-    const sampleCount = roiMask ? roiMask.reduce((sum, included) => sum + (included ? 1 : 0), 0) : count;
     if (this.lastThreshold !== safeThreshold) {
       this.lastThreshold = safeThreshold;
       this.gridThresholds.fill(safeThreshold);
@@ -110,14 +116,42 @@ export class BlobTrackerCore {
     if (this.lastRoiMask !== roiMask) {
       this.lastRoiMask = roiMask;
       this.gridThresholds.fill(safeThreshold);
+      this.roiZonePixels.fill(0);
+      this.roiSampleCount = 0;
+      if (roiMask) {
+        for (let y = 0; y < height; y++) {
+          const zoneRow = this.zoneRows[y] * 3;
+          const rowStart = y * width;
+          for (let x = 0; x < width; x++) {
+            if (roiMask[rowStart + x]) {
+              this.roiZonePixels[zoneRow + this.zoneColumns[x]]++;
+              this.roiSampleCount++;
+            }
+          }
+        }
+      }
     }
+    if (roiMask && this.roiSampleCount === 0 && this.lastRoiMask === roiMask) {
+      // Segurança: resize/cache limpo com mesma referência de ROI.
+      this.roiZonePixels.fill(0);
+      for (let y = 0; y < height; y++) {
+        const zoneRow = this.zoneRows[y] * 3;
+        const rowStart = y * width;
+        for (let x = 0; x < width; x++) {
+          if (roiMask[rowStart + x]) {
+            this.roiZonePixels[zoneRow + this.zoneColumns[x]]++;
+            this.roiSampleCount++;
+          }
+        }
+      }
+    }
+    const sampleCount = roiMask ? this.roiSampleCount : count;
     let lumaSum = 0;
     let changed = 0;
     let sceneDifferenceSum = 0;
     let sceneSampleCount = 0;
     const calibrating = !!this.calibrationSum && this.calibrationFrameCount < this.calibrateFrames;
     this.zoneHits.fill(0);
-    if (roiMask) this.roiZonePixels.fill(0);
 
     if (!this.background) {
       for (let i = 0, p = 0; i < count; i++, p += 4) {
@@ -223,7 +257,6 @@ export class BlobTrackerCore {
             this.luma[i] = value;
             lumaSum += value;
             if (!roiMask[i]) { this.mask[i] = 0; continue; }
-            this.roiZonePixels[zoneRow + this.zoneColumns[x]]++;
             const difference = Math.abs(value - this.background[i]);
             const tileColumn = this.tileColumns[x];
             const tile = tileRow + tileColumn;
@@ -402,21 +435,103 @@ export class BlobTrackerCore {
       const top = Math.max(0, Math.floor(blob.top * height));
       const right = Math.min(width, Math.ceil(blob.right * width));
       const bottom = Math.min(height, Math.ceil(blob.bottom * height));
-      for (let y = top; y < bottom; y++) {
-        const rowStart = y * width;
-        for (let x = left; x < right; x++) {
-          const index = rowStart + x;
-          if (!this.mask[index] || (roiMask && !roiMask[index])) continue;
-          this.background[index] += (this.luma[index] - this.background[index]) * STATIONARY_BACKGROUND_RATE;
-          this.mask[index] = 0;
-          const zone = this.zoneRows[y] * 3 + this.zoneColumns[x];
-          if (this.zoneHits[zone]) this.zoneHits[zone]--;
-          changed--;
+
+      // Semente: pixel de máscara mais próximo do centroide dentro do bbox.
+      let seed = -1;
+      const cx = Math.min(right - 1, Math.max(left, Math.round(blob.x * width)));
+      const cy = Math.min(bottom - 1, Math.max(top, Math.round(blob.y * height)));
+      for (let radius = 0, maxRadius = Math.max(right - left, bottom - top); radius <= maxRadius && seed < 0; radius++) {
+        const y0 = Math.max(top, cy - radius), y1 = Math.min(bottom - 1, cy + radius);
+        const x0 = Math.max(left, cx - radius), x1 = Math.min(right - 1, cx + radius);
+        for (let y = y0; y <= y1 && seed < 0; y++) {
+          for (let x = x0; x <= x1; x++) {
+            if (radius > 0 && y > y0 && y < y1 && x > x0 && x < x1) continue;
+            const index = y * width + x;
+            if (this.mask[index] && !(roiMask && !roiMask[index])) { seed = index; break; }
+          }
+        }
+      }
+      if (seed < 0) { blobs.splice(blobIndex, 1); continue; }
+
+      this.absorbStampId = (this.absorbStampId + 1) & 0xffff;
+      if (this.absorbStampId === 0) { this.absorbStamp.fill(0); this.absorbStampId = 1; }
+      const stamp = this.absorbStampId;
+      const stampBuf = this.absorbStamp;
+      const queue = this.queue;
+      let head = 0, tail = 0;
+      stampBuf[seed] = stamp;
+      queue[tail++] = seed;
+      while (head < tail) {
+        const index = queue[head++];
+        const x = index % width;
+        const y = (index / width) | 0;
+        this.background[index] += (this.luma[index] - this.background[index]) * STATIONARY_BACKGROUND_RATE;
+        this.mask[index] = 0;
+        const zone = this.zoneRows[y] * 3 + this.zoneColumns[x];
+        if (this.zoneHits[zone]) this.zoneHits[zone]--;
+        changed--;
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = y + dy;
+          if (ny < top || ny >= bottom) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            if (nx < left || nx >= right) continue;
+            const next = ny * width + nx;
+            if (stampBuf[next] === stamp || !this.mask[next] || (roiMask && !roiMask[next])) continue;
+            stampBuf[next] = stamp;
+            queue[tail++] = next;
+          }
         }
       }
       blobs.splice(blobIndex, 1);
     }
     return Math.max(0, changed);
+  }
+
+  // P6: atribuição ótima para n pequeno (Hungarian), preservando gate/custo S3.
+  _hungarian(cost, nRows, nCols) {
+    // cost é matriz achatada nRows*nCols; retorna array colAssign[nCols] = row ou -1.
+    const size = Math.max(nRows, nCols);
+    const INF = 1e12;
+    const a = new Float64Array(size * size);
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+      a[r * size + c] = (r < nRows && c < nCols) ? cost[r * nCols + c] : INF;
+    }
+    const u = new Float64Array(size + 1), v = new Float64Array(size + 1);
+    const p = new Int16Array(size + 1), way = new Int16Array(size + 1);
+    for (let i = 1; i <= size; i++) {
+      p[0] = i;
+      let j0 = 0;
+      const minv = new Float64Array(size + 1);
+      const used = new Uint8Array(size + 1);
+      for (let j = 0; j <= size; j++) minv[j] = INF;
+      do {
+        used[j0] = 1;
+        const i0 = p[j0];
+        let delta = INF, j1 = 0;
+        for (let j = 1; j <= size; j++) {
+          if (used[j]) continue;
+          const cur = a[(i0 - 1) * size + (j - 1)] - u[i0] - v[j];
+          if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
+          if (minv[j] < delta) { delta = minv[j]; j1 = j; }
+        }
+        for (let j = 0; j <= size; j++) {
+          if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
+          else minv[j] -= delta;
+        }
+        j0 = j1;
+      } while (p[j0] !== 0);
+      do { const j1 = way[j0]; p[j0] = p[j1]; j0 = j1; } while (j0);
+    }
+    const colAssign = new Int16Array(nCols);
+    colAssign.fill(-1);
+    for (let j = 1; j <= size; j++) {
+      const row = p[j] - 1;
+      const col = j - 1;
+      if (row < nRows && col < nCols && cost[row * nCols + col] < INF) colAssign[col] = row;
+    }
+    return colAssign;
   }
 
   assignTracks(blobs, width, height, dt) {
@@ -433,18 +548,23 @@ export class BlobTrackerCore {
     this.trackForBlob.fill(-1);
     const gateSquared = 0.18 * 0.18;
 
-    // Greedy global assignment: select the cheapest remaining blob/track pair.
-    for (let assignment = 0; assignment < Math.min(blobCount, trackCount); assignment++) {
-      let bestBlob = -1, bestTrack = -1, bestCost = Infinity;
-      for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
-        if (this.matchedBlobs[blobIndex]) continue;
-        const blob = blobs[blobIndex];
-        for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
-          if (this.matchedTracks[trackIndex]) continue;
-          const track = this.tracks[trackIndex];
-          if (!track.alive || track.miss > 3) continue;
-          const predictedX = track.x + track.vx * (track.miss + 1);
-          const predictedY = track.y + track.vy * (track.miss + 1);
+    // P6: atribuição ótima (Hungarian) entre trilhas elegíveis e blobs, preservando gate/custo S3.
+    const eligible = [];
+    for (let trackIndex = 0; trackIndex < trackCount; trackIndex++) {
+      const track = this.tracks[trackIndex];
+      if (track.alive && track.miss <= 3) eligible.push(trackIndex);
+    }
+    const nEligible = eligible.length;
+    if (nEligible > 0 && blobCount > 0) {
+      const INF = 1e12;
+      const cost = new Float64Array(nEligible * blobCount);
+      cost.fill(INF);
+      for (let ei = 0; ei < nEligible; ei++) {
+        const track = this.tracks[eligible[ei]];
+        const predictedX = track.x + track.vx * (track.miss + 1);
+        const predictedY = track.y + track.vy * (track.miss + 1);
+        for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
+          const blob = blobs[blobIndex];
           const dx = blob.x - predictedX;
           const dy = blob.y - predictedY;
           const distanceSquared = dx * dx + dy * dy;
@@ -462,18 +582,19 @@ export class BlobTrackerCore {
           const union = blob.width * blob.height + trackBoxArea - intersection;
           const iou = union > 0 ? intersection / union : 0;
           const areaDelta = Math.abs(blob.area - track.area) / Math.max(blob.area, track.area, 1e-6);
-          const cost = 0.55 * distanceSquared / gateSquared + 0.25 * (1 - iou) + 0.20 * areaDelta;
-          if (cost < bestCost) {
-            bestCost = cost;
-            bestBlob = blobIndex;
-            bestTrack = trackIndex;
-          }
+          cost[ei * blobCount + blobIndex] = 0.55 * distanceSquared / gateSquared + 0.25 * (1 - iou) + 0.20 * areaDelta;
         }
       }
-      if (bestBlob < 0) break;
-      this.matchedBlobs[bestBlob] = 1;
-      this.matchedTracks[bestTrack] = 1;
-      this.trackForBlob[bestBlob] = bestTrack;
+      const colAssign = this._hungarian(cost, nEligible, blobCount);
+      for (let blobIndex = 0; blobIndex < blobCount; blobIndex++) {
+        const ei = colAssign[blobIndex];
+        if (ei < 0) continue;
+        if (cost[ei * blobCount + blobIndex] >= INF) continue;
+        const trackIndex = eligible[ei];
+        this.matchedBlobs[blobIndex] = 1;
+        this.matchedTracks[trackIndex] = 1;
+        this.trackForBlob[blobIndex] = trackIndex;
+      }
     }
 
     for (let i = 0; i < trackCount; i++) {
@@ -508,9 +629,11 @@ export class BlobTrackerCore {
         const dx = blob.x - track.x;
         const dy = blob.y - track.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const pixelDisplacement = Math.abs(dx) * width + Math.abs(dy) * height;
-        if (pixelDisplacement < 0.5) track.stationaryFrames++;
-        else track.stationaryFrames = 0;
+        // P8: deslocamento normalizado em pixels (S9: 1 px/quadro reinicia contagem).
+        const movePx = Math.hypot(dx * width, dy * height);
+        if (movePx < 0.75) track.stationaryFrames++;
+        else if (movePx >= 1) track.stationaryFrames = 0;
+        else track.stationaryFrames = Math.max(0, track.stationaryFrames - 1);
         blob.speed = Math.min(1, distance / Math.max(dt, 0.02) / 2);
         track.vx = track.vx * 0.5 + dx * 0.5;
         track.vy = track.vy * 0.5 + dy * 0.5;

@@ -805,6 +805,40 @@ test('Inverter e Preto e branco pintam o vídeo recortado aos blobs no overlay',
   assert.deepEqual(negated.filters, ['grayscale(1) contrast(6) invert(1)']);
 });
 
+test('Janelas vivas/Inverter recortam por máscara real do blob (destination-in)', () => {
+  const video = { videoWidth: 640, videoHeight: 360 };
+  const blobs = [{ left: .2, top: .2, right: .5, bottom: .5 }];
+  const mask = new Uint8Array(180 * 180).fill(0);
+  for (let y = 36; y < 90; y++) for (let x = 36; x < 90; x++) mask[y * 180 + x] = 1;
+  const result = { blobs, mask, width: 180, height: 180 };
+  const run = (effect, videoWindows) => {
+    const ops = [];
+    let images = 0;
+    const c = {
+      globalAlpha: 1, lineWidth: 1, strokeStyle: '', fillStyle: '', font: '', filter: 'none',
+      clearRect() {}, save() {}, restore() {}, scale() {}, translate() {},
+      beginPath() {}, rect() {}, clip() {}, drawImage() { images++; },
+      strokeRect() {}, fillText() {}, fillRect() {},
+      get globalCompositeOperation() { return 'source-over'; },
+      set globalCompositeOperation(value) { ops.push(value); },
+    };
+    const maskCanvas = { width: 0, height: 0 };
+    const maskContext = { createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData() {} };
+    const state = makeState({ effect, videoWindows, lastSignal: null, timing: {} });
+    const render = createRender({
+      state, video, overlayContext: c, overlayCanvas: { width: 320, height: 240 },
+      stageViewport: { width: 320, height: 240 }, maskCanvas, maskContext, maskImage: null, maskView: null,
+      cropRect: new Float32Array(4), mapPointA: new Float32Array(2), mapPointB: new Float32Array(2), gridPoint: new Float32Array(2),
+    });
+    render.drawMaskOverlay(result, video, {});
+    return { ops, images };
+  };
+  const styled = run('invert', false);
+  assert.ok(styled.ops.includes('destination-in'), 'Inverter deve recortar pela máscara');
+  const windows = run('dither', true);
+  assert.ok(windows.ops.includes('destination-in'), 'Janela viva deve recortar pela máscara');
+});
+
 test('Guias e Distâncias juntos acomodam os rótulos sem sobreposição', () => {
   const labels = [];
   const c = {

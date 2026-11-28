@@ -998,7 +998,9 @@ export function createRender({
     const viewWidth = rect.width / eyeCount;
     const viewHeight = rect.height;
     if (state.trailEffect) recordBlobTrails(result.blobs);
-    if (state.showMask || dotted) {
+    const canMaskClip = !!(maskCanvas && maskContext);
+    const wantsMaskClip = canMaskClip && (dotted || styled || (state.videoWindows && result.blobs?.length > 0));
+    if (canMaskClip && (state.showMask || wantsMaskClip)) {
       const resized = maskCanvas.width !== result.width || maskCanvas.height !== result.height;
       if (resized) {
         maskCanvas.width = result.width;
@@ -1036,6 +1038,24 @@ export function createRender({
         c.clip();
       }
       const mirrorX = (state.camera === 'user') !== state.flip;
+      const applyBlobMaskClip = () => {
+        if (!canMaskClip || !maskCanvas.width || !maskCanvas.height) return;
+        if (state.gearVr) {
+          calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+        } else {
+          calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
+        }
+        c.save();
+        c.globalCompositeOperation = 'destination-in';
+        c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
+        c.scale(mirrorX ? -1 : 1, 1);
+        if (state.gearVr) {
+          c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
+        } else {
+          c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
+        }
+        c.restore();
+      };
       if (dotted) {
         const sample = result.pixels && result.pixelWidth && result.pixelHeight
           ? { data: result.pixels, width: result.pixelWidth, height: result.pixelHeight }
@@ -1048,35 +1068,21 @@ export function createRender({
             : { paper: '#fff', dot: '#000' };
           drawStipple(c, source, viewWidth, viewHeight, offsetX, mirrorX, sample, clip, colors);
           // Recorta o Pontilhado pela máscara real dos blobs para não vazar no retângulo.
-          if (maskCanvas.width && maskCanvas.height) {
-            if (state.gearVr) {
-              calculateContainRect(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-            } else {
-              calculateCoverCrop(maskCanvas.width, maskCanvas.height, viewWidth, viewHeight, cropRect);
-            }
-            c.save();
-            c.globalCompositeOperation = 'destination-in';
-            c.translate(offsetX + (mirrorX ? viewWidth : 0), 0);
-            c.scale(mirrorX ? -1 : 1, 1);
-            if (state.gearVr) {
-              c.drawImage(maskCanvas, 0, 0, maskCanvas.width, maskCanvas.height, cropRect[0], cropRect[1], cropRect[2], cropRect[3]);
-            } else {
-              c.drawImage(maskCanvas, cropRect[0], cropRect[1], cropRect[2], cropRect[3], 0, 0, viewWidth, viewHeight);
-            }
-            c.restore();
-          }
+          applyBlobMaskClip();
         }
       }
       // Inverter e Preto e branco pintam o vídeo só dentro dos blobs, por cima do fundo.
       if (styled) {
         const filter = state.effect === 'invert' ? 'invert(1)' : 'grayscale(1) contrast(6)';
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied, filter);
+        applyBlobMaskClip();
       }
       // Com Pontilhado ligado o vídeo não entra na composição: os pontos são a imagem gravada.
       if (state.videoWindows && !dotted && !styled) {
         const windowStarted = performance.now();
         drawRawVideoWindows(c, result.blobs, viewWidth, viewHeight, offsetX, source, applied);
         windowCost += performance.now() - windowStarted;
+        applyBlobMaskClip();
       }
       if (state.showMask) {
         if (state.gearVr) {

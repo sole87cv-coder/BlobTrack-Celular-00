@@ -202,6 +202,36 @@ test('stationaryAbsorbFrames padrão zero desliga a absorção do núcleo puro',
   assert.equal(result.blobs.length, 1);
 });
 
+test('absorção estacionária não apaga pixels de blob vizinho dentro do bbox', () => {
+  const tracker = new BlobTrackerCore({ stationaryAbsorbFrames: 8 });
+  const fixture = createFrame();
+  initialize(tracker, fixture);
+
+  const drawU = (pixels) => {
+    // U estacionário: bbox cobre a cavidade central.
+    setBox(pixels, 20, 20, 230, 12); // coluna esquerda
+    setBox(pixels, 44, 20, 230, 12); // coluna direita
+    setBox(pixels, 20, 32, 230, 36); // barra inferior (36x12 cobre 20..56 x 32..44)
+    // limpa interior superior para formar cavidade (32..44 x 20..32)
+    for (let y = 20; y < 32; y++) for (let x = 32; x < 44; x++) {
+      const index = (y * width + x) * 4;
+      pixels[index] = pixels[index + 1] = pixels[index + 2] = 36;
+    }
+  };
+
+  let result;
+  for (let i = 0; i < 12; i++) {
+    fillBackground(fixture.pixels);
+    drawU(fixture.pixels);
+    // Blob móvel dentro da cavidade do bbox do U, desconectado.
+    setBox(fixture.pixels, 34 + (i % 3), 24, 230, 6);
+    result = update(tracker, fixture);
+  }
+  // O blob móvel deve continuar detectado mesmo após o U ser absorvido.
+  assert.ok(result.blobs.some(blob => blob.x > 0.09 && blob.x < 0.14 && blob.y > 0.11 && blob.y < 0.18),
+    `blob móvel esperado; blobs=${JSON.stringify(result.blobs.map(b => ({ x: b.x, y: b.y })))}`);
+});
+
 test('calibração média de oito quadros ignora uma mancha presente em um quadro', () => {
   const tracker = new BlobTrackerCore({ calibrateFrames: 8 });
   const fixture = createFrame();
@@ -314,5 +344,5 @@ test('aviso de pouca luz é protegido por estado e rearma após sair da condiç�
   const app = await readFile(new URL('../src/app.js', import.meta.url), 'utf8');
   assert.ok(app.includes('result.raw.lowLight && !state.lowLightNoticeShown'));
   assert.ok(app.includes('else if (!result.raw.lowLight) state.lowLightNoticeShown = false'));
-  assert.ok(app.includes("if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo')"));
+  assert.ok(app.includes("if (result.raw.sceneShift) { showToast('Cena mudou — refaça o fundo'); resetDisplayTracks(); }"));
 });

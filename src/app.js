@@ -124,6 +124,7 @@ const state = {
   performance: { analysisAverage: 0, renderAverage: 0, slowFrames: 0, fastFrames: 0, fpsAverage: 0, lastFrameAt: 0, limitFrames: 0, limitShown: false, effectsPaused: false, pauseReason: '', pauseCount: 0 },
   lowLightNoticeShown: false,
   lastFrame: 0, lastSignalsAt: 0, lastHudAt: 0, lastSignal: null, lastAccessibleCount: -1, lastAccessibleAt: 0, keyboardPoint: null, sessionBlocked: false, drawingRect: false, manualRects: [], dragRect: null, resizeRect: null, showRoiVeil: true,
+  displayTracks: new Map(),
   envelopes: { energy: 0, density: 0, speed: 0, coherence: 0, ambient: 0, zones: Array(6).fill(0) },
   audioEnabled: true, audioSensitivity: 1, audioOscillation: .4, audioPitchRange: 2, audioKey: 0, audioTimbre: 0, rhythmEnabled: true,
   audioEffects: { echo: false, space: false, chorus: false },
@@ -145,7 +146,7 @@ const perfProbe = createPerfProbe({ enabled: new URLSearchParams(location.search
 const glReadbackEnabled = new URLSearchParams(location.search).get('gl') === '1';
 function perfProbeMeta() {
   return {
-    cacheVersion: 'blobtrack-celular-00-v91',
+    cacheVersion: 'blobtrack-celular-00-v92',
     perfil: deviceProfile.name,
     fps: Number((state.performance.fpsAverage || 0).toFixed(2)),
     trackingWidth: state.trackingWidth,
@@ -475,7 +476,7 @@ async function startCamera() {
         showToast('Não foi possível reconectar a câmera');
       });
     }, { once: true });
-    updateExposureCapability(track); tracker.reset(); state.priorCentroid = null;
+    updateExposureCapability(track); tracker.reset(); resetDisplayTracks(); state.priorCentroid = null;
     handleAudioInterruption();
     log('Câmera ativa. O processamento acompanha o movimento da sala.');
     updateRecordingControls(recordingSnapshot);
@@ -488,7 +489,7 @@ async function recoverCameraStream() {
   try { await stopMedia(); await startCamera(); }
   finally { state.cameraRecovering = false; }
 }
-async function stopMedia() { state.active = false; document.body.classList.remove('session-active'); resumeLocaleObserver(); updateRecordingControls(recordingSnapshot); clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); }
+async function stopMedia() { state.active = false; document.body.classList.remove('session-active'); resumeLocaleObserver(); updateRecordingControls(recordingSnapshot); clearVideoComposition({ gl, fallbackContext, overlayContext, width:canvas.width, height:canvas.height }); state.stream?.getTracks().forEach(t => t.stop()); state.stream = null; if (video.srcObject) video.srcObject = null; tracker.reset(); resetDisplayTracks(); }
 function releaseSession() { sessionLock.release(); }
 async function stopSession() { await wakeLockService.release(); if(recordingSnapshot.state!=='idle')await stopRecording(); await stopMedia(); state.starting = false; state.switching = false; $('stageMessage').hidden = false; $('stagePill').hidden = true; $('stopButton').hidden = true; $('startButton2').hidden = false; $('shareButton').hidden = true; $('switchCamera').disabled = true; $('exposureButton').disabled = true; $('cameraLabel').textContent = 'Câmera aguardando'; setStatus('Sessão encerrada'); if(state.audioGain&&state.audio){const t=state.audio.currentTime;state.audioGain.gain.cancelScheduledValues(t);state.audioGain.gain.setTargetAtTime(0,t,.12);} releaseSession(); if(state.audio)setTimeout(()=>{if(!state.active)state.audio.suspend().catch(()=>{});},180); }
 async function switchCamera() { if (!state.active || state.switching) return; state.switching = true; state.camera = state.camera === 'environment' ? 'user' : 'environment'; await stopMedia(); await startCamera(); }
@@ -588,6 +589,36 @@ function getTrackingRoi(source) {
   return mask;
 }
 
+const DISPLAY_SMOOTH_TAU = 0.06;
+function resetDisplayTracks() { state.displayTracks.clear(); }
+function smoothBlobsForDisplay(blobs, dt) {
+  if (!blobs.length) { state.displayTracks.clear(); return blobs; }
+  const alpha = 1 - Math.exp(-Math.max(0.001, dt) / DISPLAY_SMOOTH_TAU);
+  const seen = new Set();
+  const out = new Array(blobs.length);
+  for (let i = 0; i < blobs.length; i++) {
+    const b = blobs[i];
+    const id = b.id;
+    seen.add(id);
+    const prev = state.displayTracks.get(id);
+    if (!prev) {
+      const s = { x: b.x, y: b.y, left: b.left, top: b.top, right: b.right, bottom: b.bottom, area: b.area };
+      state.displayTracks.set(id, s);
+      out[i] = b;
+      continue;
+    }
+    prev.x += (b.x - prev.x) * alpha;
+    prev.y += (b.y - prev.y) * alpha;
+    prev.left += (b.left - prev.left) * alpha;
+    prev.top += (b.top - prev.top) * alpha;
+    prev.right += (b.right - prev.right) * alpha;
+    prev.bottom += (b.bottom - prev.bottom) * alpha;
+    prev.area += (b.area - prev.area) * alpha;
+    out[i] = { ...b, x: prev.x, y: prev.y, left: prev.left, top: prev.top, right: prev.right, bottom: prev.bottom, area: prev.area };
+  }
+  for (const id of state.displayTracks.keys()) if (!seen.has(id)) state.displayTracks.delete(id);
+  return out;
+}
 function analyze(source = video) {
   if (!source?.videoWidth || !source?.videoHeight) return null;
   const t0 = performance.now();
@@ -752,8 +783,10 @@ function frame(now) {
             state.lowLightNoticeShown = true;
             showToast('Pouca luz: o rastreio pode ficar instável.');
           } else if (!result.raw.lowLight) state.lowLightNoticeShown = false;
-          if (result.raw.sceneShift) showToast('Cena mudou — refaça o fundo');
-          const applied = updateSignals(result.raw, result.dt, result.blobs, now);
+          if (result.raw.sceneShift) { showToast('Cena mudou — refaça o fundo'); resetDisplayTracks(); }
+          const rawBlobs = result.blobs;
+          const applied = updateSignals(result.raw, result.dt, rawBlobs, now);
+          result.blobs = smoothBlobsForDisplay(rawBlobs, result.dt);
           perfProbe.push('audio', state.timing.bus);
           perfProbe.memory();
           const renderStarted = performance.now();
@@ -1105,7 +1138,7 @@ $('extremeModeButton').addEventListener('click', () => {
 });
 $('maxConnectionDistance').addEventListener('input',event=>{state.maxConnectionDistance=clamp(Number(event.target.value),0.08,0.5);$('maxConnectionDistanceValue').textContent=`${Math.round(state.maxConnectionDistance*100)}%`;scheduleSavePreferences();});
 $('visualOnlyButton').addEventListener('click',event=>{state.visualOnly=!state.visualOnly;toggle(event.currentTarget,state.visualOnly);savePreferences();audioBus.queueSignals({type:'signals',signals:{...state.envelopes,zones:[...state.envelopes.zones],blobs:[]},master:state.reacting?state.master:0,muted:state.muted,sensitivity:state.audioSensitivity,audioEnabled:state.audioEnabled&&!state.visualOnly});});
-$('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();scheduleSavePreferences();});
+$('motionThreshold').addEventListener('input',e=>{state.threshold=Number(e.target.value);$('motionValue').textContent=fmt(state.threshold);tracker.reset();resetDisplayTracks();scheduleSavePreferences();});
 $('trackingWidth').addEventListener('input',e=>{state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(Number(e.target.value));});
 $('autoQualityButton').addEventListener('click',()=>{state.autoQuality=!state.autoQuality;state.performance.analysisAverage=0;state.performance.renderAverage=0;state.performance.slowFrames=0;state.performance.fastFrames=0;if(state.autoQuality)setTrackingWidth(deviceProfile.startWidth);$('autoQualityButton').classList.toggle('active',state.autoQuality);$('autoQualityButton').setAttribute('aria-pressed',String(state.autoQuality));$('autoQualityButton').textContent=state.autoQuality?'Automática · '+deviceProfile.name:'Automática desligada';savePreferences();});
 $('master').addEventListener('input',e=>{state.master=Number(e.target.value);$('masterValue').textContent=fmt(state.master);scheduleSavePreferences();});
@@ -1172,8 +1205,8 @@ bindAudioEffect('audioEchoButton','echo');
 bindAudioEffect('audioSpaceButton','space');
 bindAudioEffect('audioChorusButton','chorus');
 $('flipButton').addEventListener('click',e=>{state.flip=!state.flip;toggle(e.currentTarget,state.flip);});$('overlayButton').addEventListener('click',e=>{state.overlay=!state.overlay;toggle(e.currentTarget,state.overlay);});$('maskButton').addEventListener('click',e=>{state.showMask=!state.showMask;toggle(e.currentTarget,state.showMask);});
-$('backgroundButton').addEventListener('click',()=>{tracker.reset();showToast('Fundo refeito');});
-$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();showToast('Rastreio reiniciado');});
+$('backgroundButton').addEventListener('click',()=>{tracker.reset();resetDisplayTracks();showToast('Fundo refeito');});
+$('reseedButton').addEventListener('click',()=>{state.priorCentroid=null;tracker.reset();resetDisplayTracks();showToast('Rastreio reiniciado');});
 $('rectangleButton').addEventListener('click',e=>{
   state.drawingRect=!state.drawingRect;
   state.dragRect=null;
@@ -1195,7 +1228,7 @@ $('roiVeilButton').addEventListener('click',event=>{
   render.drawRoiVeil();
   scheduleSavePreferences();
 });
-function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;scheduleSavePreferences();}
+function setTrackingWidth(value){const next=Math.round(clamp(value,160,deviceProfile.maxWidth)/80)*80;if(next===state.trackingWidth)return;state.trackingWidth=next;tracker.reset();resetDisplayTracks();$('trackingWidth').value=String(next);$('trackingValue').textContent=`${next} px`;scheduleSavePreferences();}
 function adjustTracking(delta){state.autoQuality=false;$('autoQualityButton').classList.remove('active');$('autoQualityButton').textContent='Automática desligada';setTrackingWidth(state.trackingWidth+delta);}
 $('trackDown').addEventListener('click',()=>adjustTracking(-80));$('trackUp').addEventListener('click',()=>adjustTracking(80));
 $('captureButton').addEventListener('click',()=>{if(!canvas.width)return;try{const shot=document.createElement('canvas');shot.width=canvas.width;shot.height=canvas.height;const c=shot.getContext('2d');c.drawImage(canvas,0,0);c.drawImage(overlayCanvas,0,0);const a=document.createElement('a');a.download=`blobtrack-celular-${new Date().toISOString().replace(/[:.]/g,'-')}.png`;a.href=shot.toDataURL('image/png');a.click();}catch(e){showToast(`Captura: ${e.message}`);}});
